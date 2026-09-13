@@ -1,0 +1,7 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)..\..\Directory.Build.props" />
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Hispania.Media.Domain.Tests'">
+    <BaseOutputPath>bin\Hispania.Media.Domain.Tests\</BaseOutputPath>
+    <BaseIntermediateOutputPath>obj\Hispania.Media.Domain.Tests\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>
