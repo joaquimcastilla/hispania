@@ -6,6 +6,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Hispania.Library.Persistence.EFCore\Hispania.Library.Persistence.EFCore.csproj" />
+    <ProjectReference Include="..\..\..\contracts\metadata\Hispania.Metadata.Contracts.csproj" />
     <ProjectReference Include="..\..\..\application\library\Hispania.Library.Application.csproj" />
   </ItemGroup>
 </Project>

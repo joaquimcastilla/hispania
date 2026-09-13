@@ -3,6 +3,8 @@ using Hispania.Library.Persistence.Sqlite;
 using Hispania.Library.Application;
 using Hispania.Library.Contracts;
 using Hispania.Media.Domain.Identity;
+using Hispania.Media.Domain.Enrichment;
+using Hispania.Metadata.Contracts;
 using Hispania.Media.Domain.Sources;
 using Hispania.Playback.Application;
 using Hispania.Playback.Contracts;
@@ -321,4 +323,57 @@ public sealed class SqlitePersistenceTests
         Assert.Equal(decimalValue, SqliteScalarConversions.FromDecimal(SqliteScalarConversions.ToDecimal(decimalValue)));
         Assert.Equal(TimeSpan.FromTicks(123), TimeSpan.FromTicks(123));
     }
+}
+
+public sealed class MetadataEnrichmentPersistenceTests
+{
+    [Fact]
+    public async Task EnrichmentRoundTripsAcrossRestartAndIsIdempotent()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"hispania-metadata-{Guid.NewGuid():N}.sqlite");
+        var target = EnrichmentTarget.For(WorkId.New());
+        var identifier = new ExternalIdentifier(new ExternalIdentifierProvider("example"), new ExternalIdentifierNamespace("movie"), "42");
+        var provenance = new MetadataProvenance(MetadataProvenanceOrigin.ExternalProvider, new DateTimeOffset(2026, 9, 14, 12, 0, 0, TimeSpan.FromHours(2)), identifier.Provider, identifier, .5m);
+        var association = new ExternalIdentifierAssociation(ExternalIdentifierAssociationId.New(), identifier, target, new ExternalIdentifierAssociationLifecycleEntry(ExternalIdentifierAssociationStatus.Candidate, provenance.ObservedAt, provenance));
+        association.TransitionTo(new ExternalIdentifierAssociationLifecycleEntry(ExternalIdentifierAssociationStatus.Confirmed, provenance.ObservedAt.AddMinutes(1), provenance));
+        association.AddRelatedAssociation(new ExternalIdentifierAssociationRelation(ExternalIdentifierAssociationId.New(), ExternalIdentifierAssociationRelationKind.Alias, provenance, "Provider alias."));
+        var assertions = new[]
+        {
+            Assertion(target, "text", MetadataValue.Text("Title"), provenance, MetadataAssertionStatus.Active),
+            Assertion(target, "integer", MetadataValue.Integer(42), provenance, MetadataAssertionStatus.Active),
+            Assertion(target, "decimal", MetadataValue.Decimal(12.34m), provenance, MetadataAssertionStatus.Active),
+            Assertion(target, "boolean", MetadataValue.Boolean(true), provenance, MetadataAssertionStatus.Active),
+            Assertion(target, "date", MetadataValue.Date(new DateOnly(2024, 2, 3)), provenance, MetadataAssertionStatus.Active),
+            Assertion(target, "timestamp", MetadataValue.DateTimeOffset(provenance.ObservedAt), provenance, MetadataAssertionStatus.Active)
+        };
+        var artwork = new ArtworkReference(ArtworkReferenceId.New(), target, new ArtworkRole("poster"), new ArtworkLocator("https", "provider/image/42"), provenance);
+        var refresh = new MetadataRefreshState(target, identifier.Provider, identifier, provenance.ObservedAt, provenance.ObservedAt, "mapping-1", "payload-1", MetadataRefreshStatus.Succeeded);
+        var write = new MetadataEnrichmentWrite([association], assertions, [artwork], refresh);
+
+        await using (var services = new ServiceCollection().AddSqliteLibraryPersistence(path).BuildServiceProvider())
+        {
+            await services.GetRequiredService<SqliteMigrationRunner>().MigrateAndLoadAsync(services.GetRequiredService<EfLibraryCatalogStore>(), default);
+            var store = services.GetRequiredService<IMetadataEnrichmentStore>();
+            Assert.True(await store.ApplyAsync(write));
+            Assert.False(await store.ApplyAsync(write));
+        }
+
+        using var restarted = new ServiceCollection().AddSqliteLibraryPersistence(path).BuildServiceProvider();
+        await restarted.GetRequiredService<SqliteMigrationRunner>().MigrateAndLoadAsync(restarted.GetRequiredService<EfLibraryCatalogStore>(), default);
+        var snapshot = await restarted.GetRequiredService<IMetadataEnrichmentStore>().LoadAsync();
+        var rehydrated = Assert.Single(snapshot.Associations);
+        Assert.Equal(ExternalIdentifierAssociationStatus.Confirmed, rehydrated.CurrentStatus);
+        Assert.Equal(2, rehydrated.LifecycleEntries.Count);
+        Assert.Equal(provenance, rehydrated.LifecycleEntries[0].Evidence);
+        Assert.Single(rehydrated.RelatedAssociations);
+        Assert.Equal(6, snapshot.Assertions.Count);
+        Assert.Contains(snapshot.Assertions, x => x.Value.Kind == MetadataValueKind.Integer && x.Value.IntegerValue == 42);
+        Assert.Contains(snapshot.Assertions, x => x.Value.Kind == MetadataValueKind.Decimal && x.Value.DecimalValue == 12.34m);
+        Assert.Contains(snapshot.Assertions, x => x.Value.Kind == MetadataValueKind.Boolean && x.Value.BooleanValue == true);
+        Assert.Contains(snapshot.Assertions, x => x.Value.Kind == MetadataValueKind.Date && x.Value.DateValue == new DateOnly(2024, 2, 3));
+        Assert.Equal(artwork.Locator, Assert.Single(snapshot.ArtworkReferences).Locator);
+        Assert.Equal(refresh, Assert.Single(snapshot.RefreshStates));
+    }
+
+    private static MetadataAssertion Assertion(EnrichmentTarget target, string field, MetadataValue value, MetadataProvenance provenance, MetadataAssertionStatus status) => new(MetadataAssertionId.New(), target, new MetadataField(field), value, provenance, status);
 }

@@ -1,5 +1,6 @@
 using Hispania.Library.Contracts;
 using Hispania.Library.Persistence.EFCore;
+using Hispania.Metadata.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -16,6 +17,8 @@ public static class SqliteLibraryPersistence
         services.AddSingleton<EfLibraryCatalogStore>();
         services.AddSingleton<ILibraryCatalogStore>(provider => provider.GetRequiredService<EfLibraryCatalogStore>());
         services.AddSingleton<IMediaCatalogReader>(provider => provider.GetRequiredService<EfLibraryCatalogStore>());
+        services.AddSingleton<EfMetadataEnrichmentStore>();
+        services.AddSingleton<IMetadataEnrichmentStore>(provider => provider.GetRequiredService<EfMetadataEnrichmentStore>());
         services.AddSingleton<SqliteMigrationRunner>();
         return services;
     }

@@ -8,7 +8,7 @@
 
 ## Estado y ámbito
 
-Phase 9 define los contratos y primeros proveedores. Phase 2 ya fija conceptualmente que ExternalIdentifier, ExternalIdentifierAssociation, MetadataAssertion, provenance, effective-value policy y ArtworkReference son extensiones ortogonales y opcionales de Media.
+Metadata Providers 0.1 — Stage 1 implementa la frontera durable `IMetadataEnrichmentStore` y el roundtrip SQLite de Media 2E necesario para películas, incluido estado operativo de refresh. No implementa providers, búsqueda, matching, metadata efectiva, API/UI ni bytes de artwork. Phase 2 fija que ExternalIdentifier, ExternalIdentifierAssociation, MetadataAssertion, provenance, effective-value policy y ArtworkReference son extensiones ortogonales y opcionales de Media.
 
 Los proveedores externos no son identidad canónica; una entidad puede no tener identificadores externos. Identification, metadata y artwork son capacidades independientes y sustituibles.
 
