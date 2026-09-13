@@ -6,6 +6,7 @@
 - `docs/MEDIA_MODEL.md` y `docs/MEDIA_DOMAIN_DESIGN.md`.
 - ADR-0003; ADR-0005 como antecedente histórico superseded; ADR-0006 como frontera con sistemas futuros.
 - ADR-0007, ADR-0008, ADR-0009, ADR-0010 y ADR-0011.
+- ADR-0012, ADR-0013 y ADR-0014.
 
 ## Estado y ámbito
 

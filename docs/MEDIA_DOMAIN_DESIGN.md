@@ -4,7 +4,7 @@
 
 This is the conceptual design for Phase 2 — Domain and Media Model 0.2. It contains no C# types, persistence schema, public API, scanner behaviour, playback policy, or implementation decision.
 
-ADRs 0007–0011 formalise the accepted architectural decisions of Media 0.2. ADR-0007 supersedes ADR-0005. This remains a conceptual design: no production implementation is specified here.
+ADRs 0007–0014 formalise the accepted architectural decisions of Media 0.2. ADR-0007 supersedes ADR-0005. This remains a conceptual design: no production implementation is specified here.
 
 The model represents media independently of files, containers, paths, codecs, releases, providers, and current availability. It separates creative identity, reproducible realisation, temporal compatibility, semantic components, technical renditions, physical access, external identification, and metadata provenance.
 
@@ -100,9 +100,17 @@ Timeline relationships can state compatible, incompatible, unknown, or alignable
 
 ### Asset
 
-An **Asset** is a semantic media component, independent of codec, container, source, and current availability. Examples include `MainVideoAsset`, `SpanishDubAsset`, `CatalanDubAsset`, `EnglishCommentaryAsset`, `AudioDescriptionAsset`, `SubtitleAsset`, and `LyricAsset`. These examples are roles, not proposed C# classes.
+An **Asset** is a semantic media component, independent of codec, container, source, and current availability. Every Asset has exactly one closed structural **AssetMediaKind**: `Video`, `Audio`, `Text`, or `Image`. Adding a new MediaKind requires explicit domain evolution; modules and external providers cannot introduce one arbitrarily.
 
-Track is therefore a role-specific category of Asset, not another universal level. Language or locale helps describe a track but does not identify it: two Spanish dubs can differ in mix, intended region, timing, or content role. An Asset can exist without a known TechnicalRepresentation when a local catalogue contains semantic knowledge that has not yet been technically analysed.
+An Asset has zero or more unique, compatible **AssetRoles** from a HISPANIA-controlled domain vocabulary. The initial vocabulary is `main`, `dub`, `commentary`, `audio-description`, `subtitle`, and `lyrics`. `main` is compatible with Video or Audio; `dub`, `commentary`, and `audio-description` with Audio; and `subtitle` and `lyrics` with Text. More than one compatible role can describe the same Asset without requiring duplicate Assets. Future HISPANIA versions may extend the role vocabulary, but providers cannot introduce roles arbitrarily and no dynamic role registry is defined in Media 0.2.
+
+```text
+Asset
+├── MediaKind: exactly 1
+└── Roles: 0..N
+```
+
+Track is therefore a role-specific category of Asset, not another universal level. Language or locale, codec, resolution, title, provider, and stream index help describe a track or its exposure but are not AssetRoles and do not identify it: two Spanish dubs can differ in mix, intended region, timing, or content role. Image Assets do not initially use editorial roles because artwork editorial function is represented by `ArtworkReference`. An Asset can exist without a known TechnicalRepresentation when a local catalogue contains semantic knowledge that has not yet been technically analysed.
 
 ### AssetCoverage
 
@@ -112,7 +120,7 @@ For example, a partially lost Spanish dub can cover `00:00–12:34` and `41:10�
 
 ### TechnicalRepresentation
 
-A **TechnicalRepresentation** is a technically defined rendition of one Asset: encoded video, audio, text, image, or other technical form. It is not a filename, a container, a stream index, or a physical location. Codec, resolution, bitrate, and format describe a rendition but do not define semantic identity or quality.
+A **TechnicalRepresentation** is a technically defined rendition of one Asset in that Asset's MediaKind: encoded video, audio, text, or image. It is not a filename, a container, a stream index, or a physical location. Its technical profile must have the same MediaKind as its Asset. Codec, resolution, bitrate, and format describe a rendition but do not define semantic identity or quality.
 
 Video representations can record width, height, codec, profile, level, frame rate, bit depth, chroma, colour/HDR information, bitrate, and related technical data. Audio representations can record codec, sample rate, bit depth, channels/layout, object-audio capability, bitrate, and lossless/lossy nature. Text representations can record format, encoding, and synchronisation capabilities.
 
@@ -120,9 +128,9 @@ Video representations can record width, height, codec, profile, level, frame rat
 
 ### MediaSource
 
-A **MediaSource** is a physical or network availability/access record that can expose one or more TechnicalRepresentations: for example a local file, NAS object, HTTP object, optical medium, or future remote transport. Sources can become temporarily inaccessible or disappear from a local catalogue without destroying the identity of an Asset or a known representation. One representation can be accessible from several sources.
+A **MediaSource** is a physical or network availability/access record that can expose one or more TechnicalRepresentations: for example a local file, NAS object, HTTP object, optical medium, or future conventional remote transport. Sources can become temporarily inaccessible or disappear from a local catalogue without destroying the identity of an Asset or a known representation. One representation can be accessible from several sources.
 
-Container format, source-local locator, stream index, stream selection metadata, and future byte ranges belong to the representation-to-source access description. They do not turn an MKV, MP4, path, or URL into an Asset.
+A MediaSource retains a **SourceLocator** consisting of a declared `Scheme` and `OpaqueValue`. Media preserves the locator but does not interpret its transport, open its source, authenticate, or resolve credentials. The locator never contains passwords, access tokens, API keys, cookies, SMB credentials, or equivalent secrets; those concerns belong to future layers outside Media Domain. Container format, source-local locator, stream index, stream selection metadata, and future byte ranges belong to the representation-to-source access description. They do not turn an MKV, MP4, path, or URL into an Asset.
 
 ## Container and stream boundary
 
@@ -332,9 +340,9 @@ Work
 | Creator | Aggregate Root | Yes | Person or organisation; Artist is a contribution role |
 | MediaEntity | Entity | Yes | Concrete meaningful realisation |
 | Timeline | Entity | Yes | Temporal reference and relationship endpoint |
-| Asset | Entity | Yes | Semantic component; may exist without rendition |
-| TechnicalRepresentation | Entity | Yes | Technically distinguishable rendition |
-| MediaSource | Entity | Yes | Mutable availability/access record |
+| Asset | Entity | Yes | Semantic component with one closed MediaKind and zero or more compatible roles; may exist without rendition |
+| TechnicalRepresentation | Entity | Yes | Technically distinguishable rendition matching its Asset MediaKind |
+| MediaSource | Entity | Yes | Mutable availability/access record with a non-secret opaque locator |
 | Release | Aggregate Root | Yes | Publication context; non-exclusive membership |
 | ReleaseGroup | Aggregate Root | Yes | Optional publication family grouping Releases |
 | Collection | Aggregate Root | Yes | Grouping/order context; non-exclusive membership |
@@ -351,7 +359,7 @@ Work
 | Coverage interval, gap, offset | Value Object | No | Components of AssetCoverage |
 | Resolution label | Derived Value | No | Configurable classification derived from technical data |
 
-No identifier format is selected in this document.
+HISPANIA uses strongly typed internal IDs with a 128-bit UUID value. Newly generated IDs use UUID v7; existing IDs rehydrate unchanged. Persistence and wire representation remain undecided. See ADR-0012.
 
 ## Core invariants
 
@@ -377,6 +385,9 @@ No identifier format is selected in this document.
 20. A container or stream is not automatically an Asset.
 21. Every asserted Asset-to-Timeline compatibility is expressed by AssetCoverage; unrecorded compatibility remains unknown.
 22. A physical source may disappear without deleting historical knowledge of its representation.
+23. Every Asset has exactly one closed MediaKind; external providers do not define MediaKinds.
+24. AssetRoles are unique within an Asset, compatible with its MediaKind, and are not provider-controlled metadata.
+25. A SourceLocator is opaque to Media Domain and never contains secrets.
 
 ## Stress tests 22–28
 
@@ -398,7 +409,7 @@ Preference is selection policy, not domain identity. The graph retains enough in
 
 ## Related accepted ADRs
 
-The following ADRs formalise this design.
+ADRs 0007–0011 establish the graph and its original cross-cutting decisions. ADR-0012, ADR-0013, and ADR-0014 add accepted identity, Asset taxonomy, and source-locator boundaries; their full decisions remain in their ADRs.
 
 ### ADR-0007: Orthogonal media identity graph
 
@@ -462,4 +473,4 @@ The following are not Media 0.2 concepts and are not modelled here: Preservation
 
 ## Explicit non-decisions for Media 0.2
 
-This design does not decide C# aggregate boundaries, constructors, identifier format, persistence, hashing/deduplication, probing/scanning, FFmpeg integration, filesystem behaviour, codecs or languages as closed enums, playback, transcoding, user preferences, provider ownership, rights, or a synchronisation algorithm.
+This design does not decide C# aggregate boundaries, constructors, persistence, hashing/deduplication, probing/scanning, FFmpeg integration, filesystem behaviour, codecs or languages as closed enums, playback, transcoding, user preferences, provider ownership, rights, or a synchronisation algorithm.

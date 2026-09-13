@@ -2,7 +2,7 @@
 
 ## Status
 
-This is a concise index to the accepted Phase 2 conceptual design. `MEDIA_DOMAIN_DESIGN.md` defines the model; ADR-0007 through ADR-0011 are Accepted, and ADR-0007 supersedes ADR-0005. No implementation follows from this document.
+This is a concise index to the accepted Phase 2 conceptual design. `MEDIA_DOMAIN_DESIGN.md` defines the model; ADR-0007 through ADR-0014 are Accepted, and ADR-0007 supersedes ADR-0005. No implementation follows from this document.
 
 ## Core idea
 
@@ -27,13 +27,21 @@ External identification, metadata assertions, and artwork references are provena
 - **Work:** creative or conceptual identity.
 - **MediaEntity:** a meaningful reproducible realisation, such as a movie realisation, episode realisation, audio recording, music video, or broadcast.
 - **Timeline:** explicit temporal reference and compatibility endpoint.
-- **Asset:** semantic component, including main video, audio, dub, commentary, subtitle, lyric, or artwork when managed.
+- **Asset:** semantic component with exactly one closed MediaKind (`Video`, `Audio`, `Text`, or `Image`) and zero or more compatible semantic roles.
 - **TechnicalRepresentation:** concrete technical rendition of an Asset.
 - **MediaSource:** physical or network access to one or more representations.
 - **Release:** publication context.
 - **ReleaseGroup:** optional publication-family context for related Releases.
 - **Collection:** non-exclusive ordered or grouped context for MediaEntities.
 - **Creator:** person or organisation; artist, director, composer, and performer are contribution roles.
+
+An Asset has exactly one closed MediaKind and zero or more unique, compatible roles:
+
+```text
+Asset
+├── MediaKind: exactly 1
+└── Roles: 0..N
+```
 
 In Media 0.2, `Edition` is not a universal model concept. A cut/edit, remaster, encoding, release, and collection have distinct semantics.
 
@@ -45,6 +53,8 @@ In Media 0.2, `Edition` is not a universal model concept. A cut/edit, remaster, 
 4. Release and Collection membership are non-exclusive.
 5. External IDs are never canonical HISPANIA identity.
 6. Metadata assertions retain individual provenance; identification, metadata, and artwork are independent capabilities.
+7. Asset roles are unique, HISPANIA-controlled domain codes; providers do not introduce roles or MediaKinds arbitrarily.
+8. A SourceLocator records a scheme and opaque value without transport interpretation or secrets.
 
 ## Deferred decisions
 
