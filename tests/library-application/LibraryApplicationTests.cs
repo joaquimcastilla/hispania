@@ -11,9 +11,25 @@ namespace Hispania.Library.Application.Tests;
 public sealed class ProbedMediaMapperTests
 {
     [Fact]
+    public void IdentityFactoryCreatesDistinctVersion7DomainIds()
+    {
+        var identity = new ImportedPlayableMovieIdentityFactory().Create();
+        var ids = new[]
+        {
+            identity.WorkId.Value, identity.MediaEntityId.Value, identity.TimelineId.Value, identity.MediaSourceId.Value,
+            identity.MainVideo.AssetId.Value, identity.MainVideo.TechnicalRepresentationId.Value, identity.MainVideo.AssetCoverageId.Value,
+            identity.MainAudio.AssetId.Value, identity.MainAudio.TechnicalRepresentationId.Value, identity.MainAudio.AssetCoverageId.Value
+        };
+
+        Assert.Equal(ids.Length, ids.Distinct().Count());
+        Assert.All(ids, id => Assert.Equal(7, id.Version));
+    }
+
+    [Fact]
     public void MapsAValidH264AacMp4IntoOneCompleteMediaGraph()
     {
-        var outcome = new ProbedMediaMapper().Map(Candidate("Films/feature.mp4"), Success());
+        var identity = Identity();
+        var outcome = new ProbedMediaMapper().Map(Candidate("Films/feature.mp4"), Success(), identity);
 
         var entry = Assert.IsType<MediaMappingSucceeded>(outcome).Entry;
         var media = entry.Media;
@@ -47,12 +63,22 @@ public sealed class ProbedMediaMapperTests
         AssertCoverage(media.Timeline, media.AudioAsset.Id);
         AssertBinding(media.VideoAsset, media.Source.Id, 0);
         AssertBinding(media.AudioAsset, media.Source.Id, 1);
+        Assert.Equal(identity.WorkId, media.Work.Id);
+        Assert.Equal(identity.MediaEntityId, media.MediaEntity.Id);
+        Assert.Equal(identity.TimelineId, media.Timeline.Id);
+        Assert.Equal(identity.MediaSourceId, media.Source.Id);
+        Assert.Equal(identity.MainVideo.AssetId, media.VideoAsset.Id);
+        Assert.Equal(identity.MainVideo.TechnicalRepresentationId, media.VideoAsset.TechnicalRepresentations.Single().Id);
+        Assert.Equal(identity.MainVideo.AssetCoverageId, media.Timeline.Coverages.Single(coverage => coverage.AssetId == media.VideoAsset.Id).Id);
+        Assert.Equal(identity.MainAudio.AssetId, media.AudioAsset.Id);
+        Assert.Equal(identity.MainAudio.TechnicalRepresentationId, media.AudioAsset.TechnicalRepresentations.Single().Id);
+        Assert.Equal(identity.MainAudio.AssetCoverageId, media.Timeline.Coverages.Single(coverage => coverage.AssetId == media.AudioAsset.Id).Id);
     }
 
     [Fact]
     public void MapsAbsentDurationAsUnknown()
     {
-        var entry = Assert.IsType<MediaMappingSucceeded>(new ProbedMediaMapper().Map(Candidate(), Success(durationPresent: false))).Entry;
+        var entry = Assert.IsType<MediaMappingSucceeded>(new ProbedMediaMapper().Map(Candidate(), Success(durationPresent: false), Identity())).Entry;
 
         Assert.Null(entry.Media.Timeline.Duration);
     }
@@ -63,7 +89,7 @@ public sealed class ProbedMediaMapperTests
         var observedAt = DateTimeOffset.UnixEpoch;
         var candidate = new DiscoveredMediaCandidate(new LibraryFileReference("movies", "feature.mp4"), 42, observedAt);
 
-        var entry = Assert.IsType<MediaMappingSucceeded>(new ProbedMediaMapper().Map(candidate, Success())).Entry;
+        var entry = Assert.IsType<MediaMappingSucceeded>(new ProbedMediaMapper().Map(candidate, Success(), Identity())).Entry;
 
         Assert.Equal(42, entry.Snapshot.ByteLength);
         Assert.Equal(observedAt, entry.Snapshot.LastModifiedUtc);
@@ -82,7 +108,7 @@ public sealed class ProbedMediaMapperTests
             new AudioStreamObservation(1, "aac", sampleRate, channels, null, null)
         };
 
-        var outcome = new ProbedMediaMapper().Map(Candidate(), new ProbeSucceeded(new ProbeResult("mp4", null, streams)));
+        var outcome = new ProbedMediaMapper().Map(Candidate(), new ProbeSucceeded(new ProbeResult("mp4", null, streams)), Identity());
 
         Assert.Equal(MediaMappingFailureKind.InvalidObservation, Assert.IsType<MediaMappingRejected>(outcome).Kind);
     }
@@ -90,7 +116,7 @@ public sealed class ProbedMediaMapperTests
     [Fact]
     public void RejectsUnsupportedCodecs()
     {
-        var outcome = new ProbedMediaMapper().Map(Candidate(), Success(videoCodec: "hevc"));
+        var outcome = new ProbedMediaMapper().Map(Candidate(), Success(videoCodec: "hevc"), Identity());
 
         Assert.Equal(MediaMappingFailureKind.UnsupportedMedia, Assert.IsType<MediaMappingRejected>(outcome).Kind);
     }
@@ -106,13 +132,15 @@ public sealed class ProbedMediaMapperTests
             new AudioStreamObservation(1, "aac", 48000, 2, null, null)
         };
 
-        var entry = Assert.IsType<MediaMappingSucceeded>(new ProbedMediaMapper().Map(Candidate(), new ProbeSucceeded(new ProbeResult("mp4", null, streams)))).Entry;
+        var entry = Assert.IsType<MediaMappingSucceeded>(new ProbedMediaMapper().Map(Candidate(), new ProbeSucceeded(new ProbeResult("mp4", null, streams)), Identity())).Entry;
 
         AssertBinding(entry.Media.VideoAsset, entry.Media.Source.Id, 0);
         AssertBinding(entry.Media.AudioAsset, entry.Media.Source.Id, 1);
     }
 
     private static DiscoveredMediaCandidate Candidate(string relativePath = "feature.mp4") => new(new LibraryFileReference("movies", relativePath));
+
+    private static ImportedPlayableMovieIdentity Identity() => new ImportedPlayableMovieIdentityFactory().Create();
 
     private static ProbeSucceeded Success(string videoCodec = "h264", bool durationPresent = true) => new(new ProbeResult("mov,mp4,m4a", durationPresent ? TimeSpan.FromSeconds(123) : null,
     [
@@ -141,6 +169,60 @@ public sealed class ProbedMediaMapperTests
 public sealed class LibraryScannerTests
 {
     [Fact]
+    public async Task FirstScanCreatesIdsAndAnUnchangedRescanReusesThem()
+    {
+        var catalog = new InMemoryMediaCatalog();
+        var candidate = Candidate("feature.mp4", byteLength: 42, lastModifiedUtc: DateTimeOffset.UnixEpoch);
+
+        await Scanner([candidate], [Success()], catalog).ScanAsync();
+        var firstId = Assert.Single(catalog.GetAll()).Id;
+
+        await Scanner([candidate], [Success()], catalog).ScanAsync();
+
+        Assert.Equal(firstId, Assert.Single(catalog.GetAll()).Id);
+    }
+
+    [Fact]
+    public async Task ChangedObservedSnapshotCreatesANewIdentityBundle()
+    {
+        var catalog = new InMemoryMediaCatalog();
+        await Scanner([Candidate("feature.mp4", byteLength: 42, lastModifiedUtc: DateTimeOffset.UnixEpoch)], [Success()], catalog).ScanAsync();
+        var firstId = Assert.Single(catalog.GetAll()).Id;
+
+        await Scanner([Candidate("feature.mp4", byteLength: 43, lastModifiedUtc: DateTimeOffset.UnixEpoch)], [Success()], catalog).ScanAsync();
+
+        Assert.NotEqual(firstId, Assert.Single(catalog.GetAll()).Id);
+    }
+
+    [Fact]
+    public async Task ProbeFailureRemainsObservedAndPreservesTheLastValidCatalogEntry()
+    {
+        var catalog = new InMemoryMediaCatalog();
+        var candidate = Candidate("feature.mp4", byteLength: 42, lastModifiedUtc: DateTimeOffset.UnixEpoch);
+        await Scanner([candidate], [Success()], catalog).ScanAsync();
+        var firstId = Assert.Single(catalog.GetAll()).Id;
+
+        await Scanner([candidate], [new ProbeFailed(new ProbeFailure(ProbeFailureKind.CorruptMedia))], catalog).ScanAsync();
+
+        Assert.Equal(firstId, Assert.Single(catalog.GetAll()).Id);
+        var resolution = Assert.Single(await catalog.ResolveImportIdentitiesAsync(new LibraryScanScope(["movies"]), [new ImportIdentityRequest(new ImportKey("movies", "feature.mp4"), new LibrarySourceSnapshot(42, DateTimeOffset.UnixEpoch))]));
+        Assert.Equal(LibraryImportStatus.ProbeFailed, resolution.LastKnownStatus);
+    }
+
+    [Fact]
+    public async Task UnsupportedImportRemainsObservedInsteadOfBecomingDisappeared()
+    {
+        var catalog = new InMemoryMediaCatalog();
+        var candidate = Candidate("feature.mp4", byteLength: 42, lastModifiedUtc: DateTimeOffset.UnixEpoch);
+
+        await Scanner([candidate], [new ProbeFailed(new ProbeFailure(ProbeFailureKind.UnsupportedFormat))], catalog).ScanAsync();
+
+        var resolution = Assert.Single(await catalog.ResolveImportIdentitiesAsync(new LibraryScanScope(["movies"]), [new ImportIdentityRequest(new ImportKey("movies", "feature.mp4"), new LibrarySourceSnapshot(42, DateTimeOffset.UnixEpoch))]));
+        Assert.Equal(LibraryImportStatus.Unsupported, resolution.LastKnownStatus);
+        Assert.Empty(catalog.GetAll());
+    }
+
+    [Fact]
     public async Task EmptyDiscoveryReplacesTheCatalogWithAnEmptySnapshot()
     {
         var catalog = new InMemoryMediaCatalog();
@@ -155,7 +237,7 @@ public sealed class LibraryScannerTests
     {
         var catalog = new InMemoryMediaCatalog();
         var mapper = new ProbedMediaMapper();
-        var entry = Assert.IsType<MediaMappingSucceeded>(mapper.Map(Candidate("first.mp4"), Success())).Entry;
+        var entry = Assert.IsType<MediaMappingSucceeded>(mapper.Map(Candidate("first.mp4"), Success(), Identity())).Entry;
         var replacement = entry with { DisplayName = "updated" };
 
         catalog.Upsert(entry);
@@ -215,9 +297,21 @@ public sealed class LibraryScannerTests
         await Scanner([Candidate("existing.mp4")], [Success()], catalog).ScanAsync();
         using var cancellation = new CancellationTokenSource();
         var discovery = new CancellingDiscovery(Candidate("cancelled.mp4"), cancellation);
-        var scanner = new LibraryScanner(discovery, new FakeProbe([Success()]), new ProbedMediaMapper(), catalog);
+        var scanner = CreateScanner(discovery, new FakeProbe([Success()]), catalog);
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => scanner.ScanAsync(cancellation.Token));
+        Assert.Equal("existing", Assert.Single(catalog.GetAll()).DisplayName);
+    }
+
+    [Fact]
+    public async Task FailedScanDoesNotReplaceTheLastCompleteSnapshot()
+    {
+        var catalog = new InMemoryMediaCatalog();
+        await Scanner([Candidate("existing.mp4")], [Success()], catalog).ScanAsync();
+
+        var scanner = CreateScanner(new FakeDiscovery([Candidate("failed.mp4")]), new ThrowingProbe(), catalog);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => scanner.ScanAsync());
         Assert.Equal("existing", Assert.Single(catalog.GetAll()).DisplayName);
     }
 
@@ -228,7 +322,7 @@ public sealed class LibraryScannerTests
         File.WriteAllText(Path.Combine(directory.Path, "feature.mp4"), "fixture");
         var discovery = new LocalFileSystemMediaDiscovery(new LocalLibraryRootConfiguration([new LocalLibraryRoot("movies", directory.Path)]));
         var catalog = new InMemoryMediaCatalog();
-        var scanner = new LibraryScanner(discovery, new FakeProbe([Success()]), new ProbedMediaMapper(), catalog);
+        var scanner = CreateScanner(discovery, new FakeProbe([Success()]), catalog);
 
         var result = await scanner.ScanAsync();
 
@@ -236,10 +330,16 @@ public sealed class LibraryScannerTests
         Assert.Equal("movies/feature.mp4", Assert.Single(catalog.GetAll()).Media.Source.Locator.OpaqueValue);
     }
 
-    private static LibraryScanner Scanner(IEnumerable<DiscoveredMediaCandidate> candidates, IEnumerable<ProbeOutcome> outcomes, IMediaCatalog catalog) =>
-        new(new FakeDiscovery(candidates), new FakeProbe(outcomes), new ProbedMediaMapper(), catalog);
+    private static LibraryScanner Scanner(IEnumerable<DiscoveredMediaCandidate> candidates, IEnumerable<ProbeOutcome> outcomes, InMemoryMediaCatalog catalog) =>
+        CreateScanner(new FakeDiscovery(candidates), new FakeProbe(outcomes), catalog);
 
-    private static DiscoveredMediaCandidate Candidate(string relativePath) => new(new LibraryFileReference("movies", relativePath));
+    private static LibraryScanner CreateScanner(IMediaDiscovery discovery, IMediaProbe probe, InMemoryMediaCatalog catalog) =>
+        new(discovery, probe, new ProbedMediaMapper(), catalog, new ImportedPlayableMovieIdentityFactory(), new LibraryScanScope(["movies"]));
+
+    private static DiscoveredMediaCandidate Candidate(string relativePath, long? byteLength = null, DateTimeOffset? lastModifiedUtc = null) =>
+        new(new LibraryFileReference("movies", relativePath), byteLength, lastModifiedUtc);
+
+    private static ImportedPlayableMovieIdentity Identity() => new ImportedPlayableMovieIdentityFactory().Create();
 
     private static ProbeSucceeded Success() => new(new ProbeResult("mp4", TimeSpan.FromSeconds(1),
     [
@@ -280,6 +380,12 @@ public sealed class LibraryScannerTests
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(_outcomes.Dequeue());
         }
+    }
+
+    private sealed class ThrowingProbe : IMediaProbe
+    {
+        public ValueTask<ProbeOutcome> ProbeAsync(DiscoveredMediaCandidate candidate, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Probe failure.");
     }
 
     private sealed class TemporaryDirectory : IDisposable

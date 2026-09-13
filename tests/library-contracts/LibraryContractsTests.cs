@@ -6,6 +6,29 @@ namespace Hispania.Library.Contracts.Tests;
 public sealed class LibraryContractsTests
 {
     [Fact]
+    public void ImportKeyNormalizesSlashesAndUsesOrdinalEquality()
+    {
+        var normalized = new ImportKey("movies", "Films\\Arrival.mp4");
+
+        Assert.Equal("Films/Arrival.mp4", normalized.NormalizedRelativePath);
+        Assert.Equal(new ImportKey("movies", "Films/Arrival.mp4"), normalized);
+        Assert.NotEqual(new ImportKey("Movies", "Films/Arrival.mp4"), normalized);
+        Assert.NotEqual(new ImportKey("movies", "films/Arrival.mp4"), normalized);
+    }
+
+    [Theory]
+    [InlineData("/absolute.mp4")]
+    [InlineData("C:\\absolute.mp4")]
+    [InlineData(".")]
+    [InlineData("films/../movie.mp4")]
+    [InlineData("films//movie.mp4")]
+    [InlineData("films/\u0001movie.mp4")]
+    public void ImportKeyRejectsUnsafeRelativePaths(string relativePath)
+    {
+        Assert.Throws<ArgumentException>(() => new ImportKey("movies", relativePath));
+    }
+
+    [Fact]
     public void LibraryFileReferenceNormalizesSeparatorsWithoutExposingAnAbsolutePath()
     {
         var reference = new LibraryFileReference("movies", "Films\\Arrival.mp4");

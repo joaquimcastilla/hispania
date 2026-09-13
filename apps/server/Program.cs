@@ -30,9 +30,12 @@ if (string.IsNullOrWhiteSpace(ffprobePath))
 builder.Services.AddSingleton(roots);
 builder.Services.AddSingleton<IMediaCatalog, InMemoryMediaCatalog>();
 builder.Services.AddSingleton<IMediaCatalogReader>(provider => provider.GetRequiredService<IMediaCatalog>());
+builder.Services.AddSingleton<ILibraryCatalogStore>(provider => (InMemoryMediaCatalog)provider.GetRequiredService<IMediaCatalog>());
 builder.Services.AddSingleton<IMediaDiscovery, LocalFileSystemMediaDiscovery>();
 builder.Services.AddSingleton<IMediaProbe>(provider => new FfprobeMediaProbe(roots, new FfprobeOptions(ffprobePath)));
 builder.Services.AddSingleton<IProbedMediaMapper, ProbedMediaMapper>();
+builder.Services.AddSingleton<IImportedPlayableMovieIdentityFactory, ImportedPlayableMovieIdentityFactory>();
+builder.Services.AddSingleton(new LibraryScanScope(libraryOptions.Roots.Select(root => root.Key)));
 builder.Services.AddSingleton<LibraryScanner>();
 builder.Services.AddSingleton<IPlaybackPlanner, DirectPlayPlanner>();
 builder.Services.AddSingleton<ISourceContentAccessor, LocalFileSystemSourceContentAccessor>();

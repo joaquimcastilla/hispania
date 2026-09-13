@@ -24,17 +24,18 @@ public sealed record MediaMappingRejected(MediaMappingFailureKind Kind, string D
 
 public interface IProbedMediaMapper
 {
-    MediaMappingOutcome Map(DiscoveredMediaCandidate candidate, ProbeSucceeded probe);
+    MediaMappingOutcome Map(DiscoveredMediaCandidate candidate, ProbeSucceeded probe, ImportedPlayableMovieIdentity identity);
 }
 
 public sealed class ProbedMediaMapper : IProbedMediaMapper
 {
     private const string ObservationNamespace = "ffmpeg";
 
-    public MediaMappingOutcome Map(DiscoveredMediaCandidate candidate, ProbeSucceeded probe)
+    public MediaMappingOutcome Map(DiscoveredMediaCandidate candidate, ProbeSucceeded probe, ImportedPlayableMovieIdentity identity)
     {
         ArgumentNullException.ThrowIfNull(candidate);
         ArgumentNullException.ThrowIfNull(probe);
+        ArgumentNullException.ThrowIfNull(identity);
 
         if (!IsMp4(probe.Result.ContainerFormatCode))
         {
@@ -55,7 +56,7 @@ public sealed class ProbedMediaMapper : IProbedMediaMapper
 
         try
         {
-            return new MediaMappingSucceeded(CreateEntry(candidate, probe.Result.ObservedDuration, video, audio));
+            return new MediaMappingSucceeded(CreateEntry(candidate, probe.Result.ObservedDuration, video, audio, identity));
         }
         catch (DomainValidationException exception)
         {
@@ -67,17 +68,17 @@ public sealed class ProbedMediaMapper : IProbedMediaMapper
         }
     }
 
-    private static MediaCatalogEntry CreateEntry(DiscoveredMediaCandidate candidate, TimeSpan? observedDuration, VideoStreamObservation video, AudioStreamObservation audio)
+    private static MediaCatalogEntry CreateEntry(DiscoveredMediaCandidate candidate, TimeSpan? observedDuration, VideoStreamObservation video, AudioStreamObservation audio, ImportedPlayableMovieIdentity identity)
     {
         var file = candidate.File;
-        var work = new Work(WorkId.New(), WorkCategory.Movie);
-        var mediaEntity = work.AddMediaEntity(MediaEntityId.New(), MediaEntityCategory.MovieRealisation);
-        var timeline = mediaEntity.AddTimeline(TimelineId.New(), observedDuration is null ? null : new TimelineDuration(observedDuration.Value));
-        var source = new MediaSource(MediaSourceId.New(), LibrarySourceLocator.From(file));
+        var work = new Work(identity.WorkId, WorkCategory.Movie);
+        var mediaEntity = work.AddMediaEntity(identity.MediaEntityId, MediaEntityCategory.MovieRealisation);
+        var timeline = mediaEntity.AddTimeline(identity.TimelineId, observedDuration is null ? null : new TimelineDuration(observedDuration.Value));
+        var source = new MediaSource(identity.MediaSourceId, LibrarySourceLocator.From(file));
 
-        var videoAsset = new Asset(AssetId.New(), AssetMediaKind.Video, [AssetRole.Main]);
+        var videoAsset = new Asset(identity.MainVideo.AssetId, AssetMediaKind.Video, [AssetRole.Main]);
         var videoRepresentation = videoAsset.AddTechnicalRepresentation(
-            TechnicalRepresentationId.New(),
+            identity.MainVideo.TechnicalRepresentationId,
             new VideoTechnicalProfile(
                 new PixelDimensions(Required(video.Width, "Video width"), Required(video.Height, "Video height")),
                 new CodecIdentifier(ObservationNamespace, video.CodecCode!),
@@ -85,11 +86,11 @@ public sealed class ProbedMediaMapper : IProbedMediaMapper
                 Required(video.BitDepth, "Video bit depth"),
                 OptionalBitRate(video.BitRate)));
         videoRepresentation.AddSourceBinding(source, Exposure(video.StreamIndex));
-        timeline.AddCoverage(AssetCoverage.CreateCovered(AssetCoverageId.New(), timeline.Id, videoAsset.Id, CoverageKind.Full, null, TemporalAlignment.Identity));
+        timeline.AddCoverage(AssetCoverage.CreateCovered(identity.MainVideo.AssetCoverageId, timeline.Id, videoAsset.Id, CoverageKind.Full, null, TemporalAlignment.Identity));
 
-        var audioAsset = new Asset(AssetId.New(), AssetMediaKind.Audio, [AssetRole.Main]);
+        var audioAsset = new Asset(identity.MainAudio.AssetId, AssetMediaKind.Audio, [AssetRole.Main]);
         var audioRepresentation = audioAsset.AddTechnicalRepresentation(
-            TechnicalRepresentationId.New(),
+            identity.MainAudio.TechnicalRepresentationId,
             new AudioTechnicalProfile(
                 new CodecIdentifier(ObservationNamespace, audio.CodecCode!),
                 Required(audio.SampleRateHertz, "Audio sample rate"),
@@ -97,7 +98,7 @@ public sealed class ProbedMediaMapper : IProbedMediaMapper
                 OptionalPositive(audio.BitDepth, "Audio bit depth"),
                 OptionalBitRate(audio.BitRate)));
         audioRepresentation.AddSourceBinding(source, Exposure(audio.StreamIndex));
-        timeline.AddCoverage(AssetCoverage.CreateCovered(AssetCoverageId.New(), timeline.Id, audioAsset.Id, CoverageKind.Full, null, TemporalAlignment.Identity));
+        timeline.AddCoverage(AssetCoverage.CreateCovered(identity.MainAudio.AssetCoverageId, timeline.Id, audioAsset.Id, CoverageKind.Full, null, TemporalAlignment.Identity));
 
         var displayName = Path.GetFileNameWithoutExtension(file.RelativePath);
         var media = new ImportedMedia(work, mediaEntity, timeline, videoAsset, audioAsset, source);
