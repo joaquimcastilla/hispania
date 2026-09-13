@@ -63,6 +63,7 @@ Media Domain conceptual design: Completed. The accepted model is documented in `
 Implementation increments:
 
 - Media 2A — Identity + Core Media: Completed.
+- Media 2B — Timelines + Asset Coverage: Completed.
 
 No UI requirement yet.
 
