@@ -7,14 +7,14 @@
 
 ## Estado y ámbito
 
-Fase de roadmap: Phase 5 — First Web Client 0.5. Web UI 0.1 implementa un único flujo: listar el catálogo, seleccionar una película y reproducirla mediante el reproductor nativo del navegador. No incluye navegación, metadatos enriquecidos, usuarios ni controles de reproducción propios.
+Fase de roadmap: Phase 5 — First Web Client 0.5. **Web UI 0.1 — First Playable Movie está completado y verificado manualmente en navegador real** para el vertical slice MP4/H.264/AAC, Direct Play y HTTP Range. Implementa un único flujo: listar el catálogo, seleccionar una película y reproducirla mediante el reproductor nativo del navegador. Play, pause, seek, volume, mute y fullscreen fueron validados con controles nativos.
 
 La API pública disponible para este flujo es:
 
 - `GET /api/v1/media`, que devuelve elementos con `id` y `displayName`;
 - `GET /api/v1/media/{id}/stream`, que sirve Direct Play MP4 y HTTP Range.
 
-El cliente usa rutas relativas para compartir origen con el host ASP.NET en producción. El proxy de Vite sólo existe para desarrollo y reenvía `/api` al host local; no se abre CORS global.
+El cliente usa rutas relativas para compartir origen con el host ASP.NET en producción. `dotnet run` sirve el build existente de `apps/web/dist` para la prueba local; la publicación conserva el `wwwroot` publicado. El proxy de Vite sólo existe para desarrollo y reenvía `/api` al host local; no se abre CORS global.
 
 Los clientes sólo interactúan con la API pública y no contienen lógica de negocio crítica.
 

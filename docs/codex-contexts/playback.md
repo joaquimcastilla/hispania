@@ -11,8 +11,8 @@
 
 Fase de roadmap: Phase 6 — Playback Engine 0.6. El flujo previsto separa capacidades de cliente, fuentes disponibles, planificación y ejecución mediante PlaybackRequest, ClientCapabilities, PlaybackPlanner, PlaybackPlan y PlaybackExecutor.
 
-ADR-0015 está Accepted: define la frontera del primer Direct Play sin transcoding. Su implementación sigue requiriendo un ticket autorizado.
+ADR-0015 está Accepted y su primer Direct Play está implementado y verificado manualmente: un planner y un executor separados sirven MP4 con H.264 y AAC desde filesystem local. HTTP adapta resultados neutrales y single byte ranges; la Web UI usa el elemento `video` nativo. No hay transcoding, remuxing, subtítulos, autenticación, fuentes remotas ni negociación general de capacidades.
 
 ## Límites
 
-No existe implementación aceptada de playback. No diseña clientes, transcoding, almacenamiento ni contratos nuevos fuera del alcance decidido por ADR-0015 y una tarea autorizada. Planner y executor deben permanecer separados.
+No amplía clientes, transcoding, almacenamiento ni contratos nuevos fuera del alcance decidido por ADR-0015 y una tarea autorizada. Planner y executor deben permanecer separados.

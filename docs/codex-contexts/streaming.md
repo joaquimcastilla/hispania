@@ -9,7 +9,7 @@
 
 ## Estado y ámbito
 
-No tiene una fase autónoma: se relaciona con playback de Phase 6 y con media engine según el roadmap. ADR-0015 está Accepted para el primer Direct Play con byte ranges; no decide transcoding, remuxing, packaging ni streaming adaptativo. La arquitectura distingue demux, transcode y packaging como funciones que no deben mezclarse.
+No tiene una fase autónoma: se relaciona con playback de Phase 6 y con media engine según el roadmap. ADR-0015 está Accepted y el primer Direct Play con single byte ranges está implementado y verificado manualmente para MP4/H.264/AAC local. No decide transcoding, remuxing, packaging ni streaming adaptativo. La arquitectura distingue demux, transcode y packaging como funciones que no deben mezclarse.
 
 ## Límites
 

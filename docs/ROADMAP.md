@@ -70,6 +70,17 @@ No UI requirement yet.
 
 ## Phase 3 - Filesystem and Scanner 0.3
 
+Status: Initial local-library vertical slice completed; the full phase remains incomplete.
+
+Completed slice:
+
+- local filesystem discovery of `.mp4` files beneath configured roots;
+- ffprobe analysis;
+- mapping of MP4 with H.264 video and AAC audio;
+- in-memory catalogue used by the public API and Direct Play.
+
+Not completed: a persistent `ILibraryRepository`, SQLite, general media-format support and the broader contract set below.
+
 Implement contracts:
 
 - IFileSource
@@ -88,6 +99,10 @@ scan a directory and persist discovered media.
 
 ## Phase 4 - Public API 0.4
 
+Status: Partial.
+
+The initial public surface lists the in-memory media catalogue and streams a selected media entity for Direct Play. OpenAPI, the broader library API and the remaining endpoints are not completed.
+
 Create:
 
 - versioned REST API;
@@ -101,6 +116,21 @@ clients cannot bypass API.
 
 ## Phase 5 - First Web Client 0.5
 
+Status: **Web UI 0.1 — First Playable Movie completed.** The broader phase remains incomplete.
+
+The completed vertical slice was manually verified in a real browser with:
+
+```text
+local filesystem
+-> MP4 / H.264 / AAC
+-> Direct Play
+-> HTTP Range
+-> Web UI
+-> Play / Pause / Seek / Volume / Mute / Fullscreen
+```
+
+It serves a catalogue list, selection and the native browser player from the same ASP.NET origin. It does not add transcoding, remuxing, database persistence, metadata providers, authentication, posters, settings or the remaining Phase 5 screens.
+
 Implement:
 
 - basic home;
@@ -113,6 +143,10 @@ Goal:
 scan and play a local movie through the web client.
 
 ## Phase 6 - Playback Engine 0.6
+
+Status: Initial Direct Play slice completed; the full phase remains incomplete.
+
+The completed slice plans and executes local MP4/H.264/AAC Direct Play with single HTTP byte ranges. It deliberately excludes client capability negotiation, direct stream alternatives, transcoding, remuxing, subtitles and adaptive streaming.
 
 Build:
 
