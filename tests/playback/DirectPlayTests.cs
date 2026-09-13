@@ -58,7 +58,7 @@ public sealed class DirectPlayPlannerTests
         return catalog;
     }
 
-    internal static MediaCatalogEntry Entry(string videoCodec = "h264", string audioCodec = "aac", string container = "mp4", byte[]? bytes = null, LibrarySourceSnapshot? snapshot = null)
+    public static MediaCatalogEntry Entry(string videoCodec = "h264", string audioCodec = "aac", string container = "mp4", byte[]? bytes = null, LibrarySourceSnapshot? snapshot = null)
     {
         var file = new LibraryFileReference("movies", "film.mp4");
         var work = new Work(WorkId.New(), WorkCategory.Movie);
