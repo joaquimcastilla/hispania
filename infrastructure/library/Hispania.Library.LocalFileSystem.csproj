@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Hispania.Library.LocalFileSystem</AssemblyName>
+    <RootNamespace>Hispania.Library.LocalFileSystem</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\contracts\library\Hispania.Library.Contracts.csproj" />
+  </ItemGroup>
+</Project>
