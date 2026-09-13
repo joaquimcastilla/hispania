@@ -12,7 +12,9 @@
 
 `Media 0.2 conceptual design = frozen`.
 
-`Phase 2 implementation = in progress`.
+`Phase 2 implementation = complete`.
+
+Media 2A — Identity + Core Media; Media 2B — Timelines + Asset Coverage; Media 2C — Technical Representation + Media Source; Media 2D — Publication + Creator; and Media 2E — Metadata / Identification are complete. This closure does not complete later phases or introduce provider integrations, metadata resolution, persistence, authentication, transcoding, distributed media, or Preservation.
 
 El ámbito es el dominio Media y sus pruebas/documentación directamente relacionadas. El modelo aceptado es un grafo ortogonal de Work, MediaEntity, Timeline, Asset, AssetCoverage, TechnicalRepresentation, MediaSource, Release, ReleaseGroup, Collection, Creator y relaciones asociadas. Metadata e identificación son extensiones opcionales y modulares.
 

@@ -45,6 +45,8 @@ Two implementations of the same trivial test contract can be selected from confi
 
 ## Phase 2 - Domain and Media Model 0.2
 
+Status: Completed
+
 Define:
 
 - Work
@@ -58,7 +60,7 @@ Define:
 - Creator contribution roles
 - external identification, metadata provenance and artwork references
 
-Media Domain conceptual design: Completed. The accepted model is documented in `MEDIA_DOMAIN_DESIGN.md` and ADR-0007 through ADR-0014. Phase 2 is not complete until its implementation work is accepted.
+Media Domain conceptual design and implementation: Completed. The accepted model is documented in `MEDIA_DOMAIN_DESIGN.md` and ADR-0007 through ADR-0014.
 
 Implementation increments:
 

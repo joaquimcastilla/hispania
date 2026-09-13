@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-This is the conceptual design for Phase 2 — Domain and Media Model 0.2. It contains no C# types, persistence schema, public API, scanner behaviour, playback policy, or implementation decision.
+This is the conceptual design for Phase 2 — Domain and Media Model 0.2. Its implementation is complete. It contains no C# types, persistence schema, public API, scanner behaviour, playback policy, or implementation decision.
 
 ADRs 0007–0014 formalise the accepted architectural decisions of Media 0.2. ADR-0007 supersedes ADR-0005. This remains a conceptual design: no production implementation is specified here.
 

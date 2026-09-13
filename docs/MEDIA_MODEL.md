@@ -2,7 +2,7 @@
 
 ## Status
 
-This is a concise index to the accepted Phase 2 conceptual design. `MEDIA_DOMAIN_DESIGN.md` defines the model; ADR-0007 through ADR-0014 are Accepted, and ADR-0007 supersedes ADR-0005. No implementation follows from this document.
+This is a concise index to the accepted Phase 2 conceptual design. Media 0.2 implementation is complete: `MEDIA_DOMAIN_DESIGN.md` defines the model; ADR-0007 through ADR-0014 are Accepted, and ADR-0007 supersedes ADR-0005. This document remains conceptual and does not prescribe implementation details.
 
 ## Core idea
 
