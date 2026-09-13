@@ -74,16 +74,18 @@ No UI requirement yet.
 
 ## Phase 3 - Filesystem and Scanner 0.3
 
-Status: Initial local-library vertical slice completed; the full phase remains incomplete.
+Status: Initial local-library durable playable slice completed; the full phase remains incomplete.
 
 Completed slice:
 
 - local filesystem discovery of `.mp4` files beneath configured roots;
 - ffprobe analysis;
 - mapping of MP4 with H.264 video and AAC audio;
-- in-memory catalogue used by the public API and Direct Play.
+- durable SQLite catalogue used by the public API and Direct Play.
 
-Persistence 0.1 is in progress: contracts, import identity, reconciliation and the initial SQLite durable vertical slice are implemented and validated. The broader workflow remains incomplete.
+Persistence 0.1 — COMPLETE: the durable Library playable slice provides a SQLite catalogue, stable Domain IDs for unchanged rescans and process restarts, atomic completed-scan reconciliation, import statuses, rollback on failure/cancellation, a rehydrated playable graph, startup migrations/snapshot/scan/readiness, and Direct Play with HTTP Range after restart. It does not claim PostgreSQL or full Media 0.2 graph persistence.
+
+Future: Persistence 0.2 — Full Media Graph Persistence will add real roundtrip workflows for the remaining Media 2D/2E graph, technical profiles and coverage forms not exercised by this slice, plus a contract suite prepared for PostgreSQL.
 
 Implement contracts:
 
