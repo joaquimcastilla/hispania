@@ -4,7 +4,7 @@
 
 - `CODEX.md`, `PROJECT_CONTEXT.md`, `docs/ARCHITECTURE.md` y `docs/ROADMAP.md`.
 - `docs/MEDIA_MODEL.md` y las secciones de metadata de `docs/MEDIA_DOMAIN_DESIGN.md`.
-- ADR-0003, ADR-0007 y ADR-0011.
+- ADR-0003, ADR-0007, ADR-0011 y ADR-0017.
 
 ## Estado y ámbito
 
