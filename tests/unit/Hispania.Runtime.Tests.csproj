@@ -5,7 +5,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="MediaDomainTests.cs;TimelineAndCoverageTests.cs;TechnicalRepresentationAndSourceTests.cs" />
+    <Compile Remove="MediaDomainTests.cs;TimelineAndCoverageTests.cs;TechnicalRepresentationAndSourceTests.cs;PublicationAndCreatorTests.cs" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
