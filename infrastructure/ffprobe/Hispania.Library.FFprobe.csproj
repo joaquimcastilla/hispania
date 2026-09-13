@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>Hispania.Library.FFprobe</AssemblyName><RootNamespace>Hispania.Library.FFprobe</RootNamespace></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\contracts\library\Hispania.Library.Contracts.csproj" />
+    <ProjectReference Include="..\library\Hispania.Library.LocalFileSystem.csproj" />
+  </ItemGroup>
+</Project>
