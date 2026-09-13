@@ -57,6 +57,18 @@ public sealed class ProbedMediaMapperTests
         Assert.Null(entry.Media.Timeline.Duration);
     }
 
+    [Fact]
+    public void PreservesDiscoverySnapshotOutsideMediaDomain()
+    {
+        var observedAt = DateTimeOffset.UnixEpoch;
+        var candidate = new DiscoveredMediaCandidate(new LibraryFileReference("movies", "feature.mp4"), 42, observedAt);
+
+        var entry = Assert.IsType<MediaMappingSucceeded>(new ProbedMediaMapper().Map(candidate, Success())).Entry;
+
+        Assert.Equal(42, entry.Snapshot.ByteLength);
+        Assert.Equal(observedAt, entry.Snapshot.LastModifiedUtc);
+    }
+
     [Theory]
     [InlineData(0, 1080, 8, 48000, 2)]
     [InlineData(1920, 1080, 0, 48000, 2)]

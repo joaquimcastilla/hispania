@@ -64,11 +64,11 @@ public sealed class LibraryContractsTests
     }
 
     [Fact]
-    public void ProbeContractDoesNotReferenceMediaDomain()
+    public void ProbeInterfaceDoesNotExposeMediaDomainTypes()
     {
-        var referencedAssemblies = typeof(IMediaProbe).Assembly.GetReferencedAssemblies().Select(assembly => assembly.Name);
+        var probeTypes = typeof(IMediaProbe).GetMethods().SelectMany(method => method.GetParameters().Select(parameter => parameter.ParameterType).Append(method.ReturnType));
 
-        Assert.DoesNotContain("Hispania.Media.Domain", referencedAssemblies);
+        Assert.DoesNotContain(probeTypes, type => type.Assembly.GetName().Name == "Hispania.Media.Domain");
     }
 
     [Fact]

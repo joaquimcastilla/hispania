@@ -55,7 +55,7 @@ public sealed class ProbedMediaMapper : IProbedMediaMapper
 
         try
         {
-            return new MediaMappingSucceeded(CreateEntry(candidate.File, probe.Result.ObservedDuration, video, audio));
+            return new MediaMappingSucceeded(CreateEntry(candidate, probe.Result.ObservedDuration, video, audio));
         }
         catch (DomainValidationException exception)
         {
@@ -67,8 +67,9 @@ public sealed class ProbedMediaMapper : IProbedMediaMapper
         }
     }
 
-    private static MediaCatalogEntry CreateEntry(LibraryFileReference file, TimeSpan? observedDuration, VideoStreamObservation video, AudioStreamObservation audio)
+    private static MediaCatalogEntry CreateEntry(DiscoveredMediaCandidate candidate, TimeSpan? observedDuration, VideoStreamObservation video, AudioStreamObservation audio)
     {
+        var file = candidate.File;
         var work = new Work(WorkId.New(), WorkCategory.Movie);
         var mediaEntity = work.AddMediaEntity(MediaEntityId.New(), MediaEntityCategory.MovieRealisation);
         var timeline = mediaEntity.AddTimeline(TimelineId.New(), observedDuration is null ? null : new TimelineDuration(observedDuration.Value));
@@ -100,7 +101,7 @@ public sealed class ProbedMediaMapper : IProbedMediaMapper
 
         var displayName = Path.GetFileNameWithoutExtension(file.RelativePath);
         var media = new ImportedMedia(work, mediaEntity, timeline, videoAsset, audioAsset, source);
-        return new MediaCatalogEntry(mediaEntity.Id, displayName, file, media);
+        return new MediaCatalogEntry(mediaEntity.Id, displayName, file, new LibrarySourceSnapshot(candidate.ByteLength, candidate.LastModifiedUtc), media);
     }
 
     private static ContainerExposure Exposure(int streamIndex) =>

@@ -1,33 +1,10 @@
 using Hispania.Library.Contracts;
-using Hispania.Media.Domain.Assets;
 using Hispania.Media.Domain.Identity;
-using Hispania.Media.Domain.MediaEntities;
-using Hispania.Media.Domain.Sources;
-using Hispania.Media.Domain.Timelines;
-using Hispania.Media.Domain.Works;
 
 namespace Hispania.Library.Application;
 
-public sealed record ImportedMedia(
-    Work Work,
-    MediaEntity MediaEntity,
-    Timeline Timeline,
-    Asset VideoAsset,
-    Asset AudioAsset,
-    MediaSource Source);
-
-public sealed record MediaCatalogEntry(
-    MediaEntityId Id,
-    string DisplayName,
-    LibraryFileReference File,
-    ImportedMedia Media);
-
-public interface IMediaCatalog
+public interface IMediaCatalog : IMediaCatalogReader
 {
-    IReadOnlyCollection<MediaCatalogEntry> GetAll();
-
-    MediaCatalogEntry? GetById(MediaEntityId id);
-
     void Upsert(MediaCatalogEntry entry);
 
     void Replace(IEnumerable<MediaCatalogEntry> entries);

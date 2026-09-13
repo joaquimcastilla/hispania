@@ -96,16 +96,7 @@ public sealed class LocalFileSystemMediaDiscovery : IMediaDiscovery
 
     private static void ValidateRoot(ConfiguredLocalLibraryRoot root)
     {
-        if (!Directory.Exists(root.CanonicalPhysicalPath))
-        {
-            throw new DirectoryNotFoundException($"Configured local library root '{root.RootKey}' does not exist.");
-        }
-
-        var attributes = File.GetAttributes(root.CanonicalPhysicalPath);
-        if ((attributes & FileAttributes.ReparsePoint) != 0)
-        {
-            throw new InvalidOperationException($"Configured local library root '{root.RootKey}' cannot be a reparse point.");
-        }
+        RootPathResolver.EnsureAccessibleRoot(root);
     }
 
     private static string[] GetDirectoryEntries(string directory)

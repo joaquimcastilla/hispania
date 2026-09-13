@@ -3,4 +3,7 @@
     <AssemblyName>Hispania.Library.Contracts</AssemblyName>
     <RootNamespace>Hispania.Library.Contracts</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\core\domain\Hispania.Media.Domain.csproj" />
+  </ItemGroup>
 </Project>

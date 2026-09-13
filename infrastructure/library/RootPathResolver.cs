@@ -43,6 +43,22 @@ internal static class RootPathResolver
         return relativePath;
     }
 
+    public static void EnsureAccessibleRoot(ConfiguredLocalLibraryRoot root)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        if (!Directory.Exists(root.CanonicalPhysicalPath))
+        {
+            throw new DirectoryNotFoundException($"Configured local library root '{root.RootKey}' does not exist.");
+        }
+
+        if (IsReparsePoint(root.CanonicalPhysicalPath))
+        {
+            throw new InvalidOperationException($"Configured local library root '{root.RootKey}' cannot be a reparse point.");
+        }
+    }
+
+    public static bool IsReparsePoint(string path) => (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+
     private static void EnsureContained(string canonicalRoot, string canonicalCandidatePath)
     {
         var relativePath = Path.GetRelativePath(canonicalRoot, canonicalCandidatePath);
