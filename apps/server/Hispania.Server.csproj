@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Hispania.Server</AssemblyName>
+    <RootNamespace>Hispania.Server</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\contracts\architecture-test\Hispania.ArchitectureTest.Contracts.csproj" />
+    <ProjectReference Include="..\..\core\runtime\Hispania.Runtime.csproj" />
+    <ProjectReference Include="..\..\modules\architecture-test\Hispania.ArchitectureTest.Modules.csproj" />
+  </ItemGroup>
+</Project>

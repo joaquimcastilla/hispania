@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <AssemblyName>Hispania.Kernel</AssemblyName>
+    <RootNamespace>Hispania.Kernel</RootNamespace>
+  </PropertyGroup>
+</Project>

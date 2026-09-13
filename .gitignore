@@ -1,0 +1,17 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+
+# IDE and editor state
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Local .NET tooling
+.dotnet/
+TestResults/
+
+# OS files
+Thumbs.db
+.DS_Store
