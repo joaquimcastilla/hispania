@@ -64,6 +64,7 @@ Implementation increments:
 
 - Media 2A — Identity + Core Media: Completed.
 - Media 2B — Timelines + Asset Coverage: Completed.
+- Media 2C — Technical Representation + Media Source: Completed.
 
 No UI requirement yet.
 
