@@ -130,7 +130,7 @@ Video representations can record width, height, codec, profile, level, frame rat
 
 A **MediaSource** is a physical or network availability/access record that can expose one or more TechnicalRepresentations: for example a local file, NAS object, HTTP object, optical medium, or future conventional remote transport. Sources can become temporarily inaccessible or disappear from a local catalogue without destroying the identity of an Asset or a known representation. One representation can be accessible from several sources.
 
-A MediaSource retains a **SourceLocator** consisting of a declared `Scheme` and `OpaqueValue`. Media preserves the locator but does not interpret its transport, open its source, authenticate, or resolve credentials. The locator never contains passwords, access tokens, API keys, cookies, SMB credentials, or equivalent secrets; those concerns belong to future layers outside Media Domain. Container format, source-local locator, stream index, stream selection metadata, and future byte ranges belong to the representation-to-source access description. They do not turn an MKV, MP4, path, or URL into an Asset.
+A MediaSource retains a **SourceLocator** consisting of a declared `Scheme` and `OpaqueValue`. Media preserves the locator but does not interpret its transport, open its source, authenticate, or resolve credentials. The locator never contains passwords, access tokens, API keys, cookies, SMB credentials, or equivalent secrets; those concerns belong to future layers outside Media Domain. A locator scheme begins with a letter, is normalised to lowercase, and may contain letters, digits, `+`, `-`, and `.`; `ArtworkLocator` uses the same grammar while remaining a distinct value object. Container format, source-local locator, stream index, stream selection metadata, and future byte ranges belong to the representation-to-source access description. They do not turn an MKV, MP4, path, or URL into an Asset.
 
 ## Container and stream boundary
 
@@ -220,9 +220,11 @@ musicbrainz / release-group / …
 musicbrainz / artist / …
 ```
 
-An **ExternalIdentifierAssociation** is the stateful relationship from that value to a HISPANIA target. It preserves matching evidence, origin, verification state, invalidation, and replacement/migration history. An identifiable HISPANIA entity has `0..N` such associations and remains valid with none. Identifiers from the same provider may coexist when their namespaces or roles differ; `tmdb/movie/123` and `tmdb/collection/123`, for example, are not interchangeable. The model deliberately has no provider-specific properties such as `TmdbMovieId` or `MusicBrainzReleaseId`.
+An **ExternalIdentifierAssociation** is the stateful relationship from that value to a HISPANIA target. It has immutable identifier and target references, an append-only local lifecycle, and zero or more auditable relations to other associations. Each lifecycle entry records its state, decision timestamp, `MetadataProvenance` evidence, and an optional textual reason. This is aggregate-owned state, not domain-event or event-sourcing infrastructure. `rejected` and `invalidated` entries require that reason; it is free text rather than a global reason catalogue so that the local audit retains the specific decision without designing a reason-registry subsystem. An identifiable HISPANIA entity has `0..N` such associations and remains valid with none. Identifiers from the same provider may coexist when their namespaces or roles differ; `tmdb/movie/123` and `tmdb/collection/123`, for example, are not interchangeable. The model deliberately has no provider-specific properties such as `TmdbMovieId` or `MusicBrainzReleaseId`.
 
-`candidate`, `confirmed`, and `rejected` are local matching states of this server or of the module that supplied evidence. They are not network certification, global verification, or a claim about any distributed catalogue.
+`candidate`, `confirmed`, `rejected`, and `invalidated` are local matching states of this server or of the module that supplied evidence. `Candidate → Confirmed`, `Candidate → Rejected`, and `Confirmed → Invalidated` are the only local transitions. Rejected and invalidated associations are terminal: later evidence creates a new association with a new HISPANIA ID rather than reopening the prior decision. These states are not network certification, global verification, or a claim about any distributed catalogue.
+
+`Migration`, `Successor`, and `Alias` are evidenced relations owned by an association and directed to another association ID. Migration records an explicit namespace or identifier migration; Successor records that another association replaces this one; Alias records distinct tuples evidenced as the same external identity. Media Domain rejects self-relations and duplicate `(RelatedAssociationId, Kind)` pairs, but deliberately does not resolve the referenced association or validate it through a repository.
 
 ### Correct attachment and provider mappings
 
@@ -246,6 +248,10 @@ External identifiers attach to the HISPANIA concept that the provider identifier
 
 `Series` and `Episode` are Work categories; `Recording` is an AudioRecording category of MediaEntity. This is why their external identifiers cannot all attach to the same level.
 
+### Extensible code governance
+
+`ContributionRole`, `MetadataField`, and `ArtworkRole` are extensible domain-code value objects. Media Domain validates their representation and normalisation only. HISPANIA mappings and modules govern which semantic codes HISPANIA admits and translate provider vocabularies into those codes. Providers do not directly inject a new semantic vocabulary into Media Domain; this does not define a dynamic registry or turn those concepts into enums.
+
 ### External-identifier eligibility
 
 ExternalIdentifiers are appropriate on **Work**, **Creator**, **MediaEntity** when a provider identifies that realisation (notably an AudioRecording), **Release**, **ReleaseGroup**, and **Collection** when the provider actually identifies that grouping. `Series` and `Episode` receive them as Work categories; `Artist` receives them as a Creator role; `Recording` receives them as a MediaEntity category.
@@ -257,7 +263,7 @@ When a provider supplies an identifier for a particular poster, cover, or image 
 ### ExternalIdentifier conflict and migration invariants
 
 1. The tuple `(Provider, Namespace, Value)` is immutable identifier evidence; correcting an association does not rewrite the tuple or an internal ID.
-2. A tuple can have at most one **confirmed** active HISPANIA target within its declared namespace semantics.
+2. A tuple can have at most one **confirmed** active HISPANIA target within its declared namespace semantics. This is an invariant of the relevant set of associations, not of one association in isolation: a future Application/Persistence layer queries that set when confirming or resolving a conflict. Media Domain owns only local lifecycle, keeps no global static state, introduces no repository, and provides no global certification.
 3. Several candidate associations for the same tuple may exist only while unverified; they block automatic merge and require evidence-based resolution.
 4. Re-matching rejects or invalidates the incorrect association, retaining its provenance and reason. It does not mutate or merge the affected internal entities automatically.
 5. Provider namespace changes create an explicit migration, alias, or successor association. Old and new namespaces are never silently treated as equal.
@@ -353,7 +359,7 @@ Work
 | Metadata assertion/provenance | Relationship | Yes | Preserves competing field-level claims and their origin |
 | Artwork reference/provenance | Relationship | Yes | Independent of identification and metadata retrieval |
 | ExternalIdentifier | Value Object | No | Provider, namespace/entity type, and provider value |
-| ExternalIdentifierAssociation | Relationship | Yes | Stateful attachment, evidence, verification, invalidation, and migration |
+| ExternalIdentifierAssociation | Relationship | Yes | Stateful attachment with lifecycle evidence, invalidation, and migration/successor/alias relations |
 | Technical profile | Value Object | No | Video, audio, or text properties |
 | Source access/container/stream locator | Value Object | No | Source-specific packaging/access facts |
 | Coverage interval, gap, offset | Value Object | No | Components of AssetCoverage |

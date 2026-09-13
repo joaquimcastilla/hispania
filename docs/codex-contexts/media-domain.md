@@ -16,6 +16,8 @@
 
 El ámbito es el dominio Media y sus pruebas/documentación directamente relacionadas. El modelo aceptado es un grafo ortogonal de Work, MediaEntity, Timeline, Asset, AssetCoverage, TechnicalRepresentation, MediaSource, Release, ReleaseGroup, Collection, Creator y relaciones asociadas. Metadata e identificación son extensiones opcionales y modulares.
 
+Las asociaciones de identificadores externos conservan un lifecycle local auditable con evidencia, invalidación y relaciones de migración, sucesión y alias. La unicidad de asociaciones `Confirmed` es una invariante de conjunto para una futura capa Application/Persistence: Media Domain no usa estado global estático, repositorios ni certificación global. `ContributionRole`, `MetadataField` y `ArtworkRole` validan sintaxis y normalización en el dominio; los mappings y módulos HISPANIA gobiernan el vocabulario semántico y traducen los valores de providers. `ArtworkLocator.Scheme` sigue la misma gramática declarativa de `SourceScheme` sin acoplar ambos tipos.
+
 ## Límites
 
 Puede implementar únicamente el incremento de Phase 2 que una tarea autorice, con sus tests y documentación inmediata. No sustituye las decisiones aún abiertas documentadas en `MEDIA_DOMAIN_DESIGN.md`, ni modifica Kernel, runtime, contratos de otros subsistemas o infraestructura sin declararlo y obtener autorización.
