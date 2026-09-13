@@ -1,6 +1,10 @@
 # ADR-0005: Media Identity Is Separate From File Identity
 
-Status: Accepted
+Status: Superseded by ADR-0007
+
+## Supersession
+
+ADR-0007 replaces the mandatory hierarchical model with an orthogonal local media-identity graph. This ADR is retained as historical context.
 
 ## Decision
 

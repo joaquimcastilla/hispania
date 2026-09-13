@@ -48,14 +48,17 @@ Two implementations of the same trivial test contract can be selected from confi
 Define:
 
 - Work
-- Edition
-- Timeline
 - MediaEntity
-- MediaSource
+- Timeline
 - Asset
-- language tracks
-- subtitle tracks
-- metadata identity
+- TechnicalRepresentation
+- MediaSource
+- AssetCoverage
+- Release, ReleaseGroup and Collection
+- Creator contribution roles
+- external identification, metadata provenance and artwork references
+
+Media Domain conceptual design: Completed. The accepted model is documented in `MEDIA_DOMAIN_DESIGN.md` and ADR-0007 through ADR-0011. Phase 2 is not complete until its implementation work is accepted.
 
 No UI requirement yet.
 

@@ -180,11 +180,15 @@ Una obra no equivale a un archivo.
 Debe existir separación entre:
 
 - Work
-- Edition
-- Timeline
 - MediaEntity
+- Timeline
+- Asset
+- TechnicalRepresentation
 - MediaSource
-- Track / Asset
+- Release / ReleaseGroup / Collection
+- Creator y sus roles de contribución
+
+Las relaciones entre estos conceptos son un grafo ortogonal, no una jerarquía obligatoria. `Edition` no es un contenedor universal. La especificación conceptual vigente está en `docs/MEDIA_DOMAIN_DESIGN.md`, formalizada por ADR-0007 a ADR-0011.
 
 Una entidad puede tener múltiples representaciones.
 

@@ -1,132 +1,51 @@
 # Media Model
 
+## Status
+
+This is a concise index to the accepted Phase 2 conceptual design. `MEDIA_DOMAIN_DESIGN.md` defines the model; ADR-0007 through ADR-0011 are Accepted, and ADR-0007 supersedes ADR-0005. No implementation follows from this document.
+
 ## Core idea
 
-Una obra no es un archivo.
+A Work is not a file. Files, containers, paths, codecs, provider records, and current availability do not define canonical media identity.
 
-Un archivo es una posible representación física de una parte de una obra o edición.
-
-## Main Entities
-
-### Work
-
-Identidad conceptual.
-
-Ejemplos:
-
-- una película;
-- una serie;
-- una canción;
-- un documental;
-- una emisión;
-- una obra audiovisual.
-
-### Edition
-
-Versión concreta de una obra.
-
-Ejemplos:
-
-- theatrical cut;
-- director's cut;
-- censored TV cut;
-- remaster;
-- regional version.
-
-### Timeline
-
-Referencia temporal compatible entre assets.
-
-Dos assets sólo deben considerarse intercambiables si son compatibles con la misma timeline o existe una transformación explícita entre timelines.
-
-### MediaEntity
-
-Entidad reproducible o navegable.
-
-Tipos previstos:
-
-- Movie
-- Series
-- Season
-- Episode
-- Track
-- Album
-- Artist
-- MusicVideo
-- Photo
-- Playlist
-- Collection
-
-### MediaSource / Asset
-
-Representación concreta.
-
-Ejemplos:
-
-- video 2160p;
-- video 1080p;
-- audio español 5.1;
-- audio inglés Atmos;
-- subtitle es-ES;
-- lyrics;
-- artwork.
-
-## Music example
+The model is an orthogonal graph, not a mandatory hierarchy:
 
 ```text
-Track
-Queen - Bohemian Rhapsody
-|
-+-- audio FLAC
-+-- audio AAC
-+-- music video 1080p
-+-- music video 4K
-+-- lyrics original
-+-- timed lyrics
-+-- translation ES
-+-- translation CA
-+-- video subtitles
+Work → MediaEntity → Timeline
+Timeline ← AssetCoverage → Asset → TechnicalRepresentation → MediaSource
+
+Release → MediaEntity
+ReleaseGroup → Release
+Collection → MediaEntity
+Creator → Work / MediaEntity / Release (role-specific contribution)
 ```
 
-Audio y videoclip pertenecen a la misma entidad semántica cuando corresponda.
+External identification, metadata assertions, and artwork references are provenance-bearing extensions over the appropriate entities.
 
-## Movie example
+## Concept summary
 
-```text
-Work: Movie
-|
-+-- Edition: Theatrical
-    |
-    +-- Timeline A
-        |
-        +-- Video 2160p
-        +-- Video 1080p
-        +-- Audio es-ES 5.1
-        +-- Audio en-US 5.1
-        +-- Subtitles es-ES
-        +-- Subtitles ca-ES
-```
+- **Work:** creative or conceptual identity.
+- **MediaEntity:** a meaningful reproducible realisation, such as a movie realisation, episode realisation, audio recording, music video, or broadcast.
+- **Timeline:** explicit temporal reference and compatibility endpoint.
+- **Asset:** semantic component, including main video, audio, dub, commentary, subtitle, lyric, or artwork when managed.
+- **TechnicalRepresentation:** concrete technical rendition of an Asset.
+- **MediaSource:** physical or network access to one or more representations.
+- **Release:** publication context.
+- **ReleaseGroup:** optional publication-family context for related Releases.
+- **Collection:** non-exclusive ordered or grouped context for MediaEntities.
+- **Creator:** person or organisation; artist, director, composer, and performer are contribution roles.
 
-## Hashes
-
-Assets inmutables pueden identificarse por contenido.
-
-Candidato recomendado:
-
-- BLAKE3 para hashing rápido;
-- SHA-256 cuando interoperabilidad lo requiera.
-
-No decidir definitivamente sin ADR.
+In Media 0.2, `Edition` is not a universal model concept. A cut/edit, remaster, encoding, release, and collection have distinct semantics.
 
 ## Rules
 
-1. Work != File.
-2. Edition != Work.
-3. Timeline compatibility must be explicit.
-4. Audio tracks are first-class assets.
-5. Subtitle tracks are first-class assets.
-6. Lyrics are not identical to video subtitles.
-7. Metadata providers do not own canonical identity.
-8. Local file path is an implementation detail.
-9. Remote assets must fit the same model.
-10. A media entity may exist without any available playable asset.
+1. Work, Asset, and TechnicalRepresentation remain known independently of currently available sources.
+2. Temporal compatibility is explicit; equal duration, Work, language, codec, or resolution is insufficient evidence.
+3. A container and its streams are source-specific exposure data, not Assets by default.
+4. Release and Collection membership are non-exclusive.
+5. External IDs are never canonical HISPANIA identity.
+6. Metadata assertions retain individual provenance; identification, metadata, and artwork are independent capabilities.
+
+## Deferred decisions
+
+Hashing, deduplication, persistence, source probing, metadata-resolution algorithms, artwork retention, and playback policy remain undecided. See `MEDIA_DOMAIN_DESIGN.md` for open questions and ADR links.
