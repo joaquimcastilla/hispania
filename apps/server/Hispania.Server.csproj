@@ -16,6 +16,8 @@
     <ProjectReference Include="..\..\application\playback\Hispania.Playback.Application.csproj" />
     <ProjectReference Include="..\..\infrastructure\library\Hispania.Library.LocalFileSystem.csproj" />
     <ProjectReference Include="..\..\infrastructure\ffprobe\Hispania.Library.FFprobe.csproj" />
+    <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.Sqlite\Hispania.Library.Persistence.Sqlite.csproj" />
+    <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.EFCore\Hispania.Library.Persistence.EFCore.csproj" />
     <ProjectReference Include="..\..\contracts\library\Hispania.Library.Contracts.csproj" />
     <ProjectReference Include="..\..\contracts\playback\Hispania.Playback.Contracts.csproj" />
     <ProjectReference Include="..\..\core\domain\Hispania.Media.Domain.csproj" />

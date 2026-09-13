@@ -83,7 +83,7 @@ Completed slice:
 - mapping of MP4 with H.264 video and AAC audio;
 - in-memory catalogue used by the public API and Direct Play.
 
-Not completed: a persistent `ILibraryRepository`, SQLite, general media-format support and the broader contract set below.
+Persistence 0.1 is in progress: contracts, import identity, reconciliation and the initial SQLite durable vertical slice are implemented and validated. The broader workflow remains incomplete.
 
 Implement contracts:
 

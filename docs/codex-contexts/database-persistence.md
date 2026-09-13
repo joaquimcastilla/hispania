@@ -8,7 +8,9 @@
 
 ## Estado y ámbito
 
-La persistencia inicial está prevista en Phase 3 como `ILibraryRepository` con una implementación SQLite. No hay modelo de persistencia, esquema ni proveedor aprobados en este contexto.
+Persistence 0.1 está en implementación. La frontera de escritura es `ILibraryCatalogStore`; `IMediaCatalogReader` conserva el contrato síncrono usado por Playback. La implementación inicial usa SQLite detrás de Infrastructure, con EF Core confinado a `infrastructure/persistence` y migrations propiedad del provider.
+
+La configuración inicial es `Persistence:Sqlite:Path` (también `Persistence__Sqlite__Path`). Si no se proporciona, el host usa el directorio local de datos de aplicación, fuera del árbol fuente. Las migrations se aplican y el snapshot se carga antes del scan inicial; un fallo bloquea el arranque/readiness.
 
 Las interfaces viven en contratos o dominio de aplicación y las implementaciones en módulos; el dominio no conoce SQL.
 

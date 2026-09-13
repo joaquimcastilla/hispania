@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>Hispania.Library.Persistence.EFCore</AssemblyName><RootNamespace>Hispania.Library.Persistence.EFCore</RootNamespace></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\contracts\library\Hispania.Library.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\core\domain\Hispania.Media.Domain.csproj" />
+  </ItemGroup>
+</Project>
