@@ -66,6 +66,7 @@ Implementation increments:
 - Media 2B — Timelines + Asset Coverage: Completed.
 - Media 2C — Technical Representation + Media Source: Completed.
 - Media 2D — Publication + Creator: Completed.
+- Media 2E — Metadata / Identification: Completed.
 
 No UI requirement yet.
 
