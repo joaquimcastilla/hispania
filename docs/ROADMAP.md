@@ -58,7 +58,11 @@ Define:
 - Creator contribution roles
 - external identification, metadata provenance and artwork references
 
-Media Domain conceptual design: Completed. The accepted model is documented in `MEDIA_DOMAIN_DESIGN.md` and ADR-0007 through ADR-0011. Phase 2 is not complete until its implementation work is accepted.
+Media Domain conceptual design: Completed. The accepted model is documented in `MEDIA_DOMAIN_DESIGN.md` and ADR-0007 through ADR-0014. Phase 2 is not complete until its implementation work is accepted.
+
+Implementation increments:
+
+- Media 2A — Identity + Core Media: Completed.
 
 No UI requirement yet.
 
