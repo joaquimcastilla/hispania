@@ -3,7 +3,4 @@
     <AssemblyName>Hispania.ModuleSystem.Contracts</AssemblyName>
     <RootNamespace>Hispania.ModuleSystem.Contracts</RootNamespace>
   </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\core\kernel\Hispania.Kernel.csproj" />
-  </ItemGroup>
 </Project>

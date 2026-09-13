@@ -1,5 +1,4 @@
 using Hispania.ArchitectureTest.Contracts;
-using Hispania.Kernel;
 using Hispania.ModuleSystem.Contracts;
 
 namespace Hispania.ArchitectureTest.Modules;

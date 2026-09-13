@@ -1,5 +1,3 @@
-using Hispania.Kernel;
-
 namespace Hispania.ModuleSystem.Contracts;
 
 public interface IModule

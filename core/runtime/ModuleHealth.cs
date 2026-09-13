@@ -1,4 +1,4 @@
-using Hispania.Kernel;
+using Hispania.ModuleSystem.Contracts;
 
 namespace Hispania.Runtime;
 

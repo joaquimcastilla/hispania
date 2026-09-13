@@ -6,7 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <ProjectReference Include="..\kernel\Hispania.Kernel.csproj" />
     <ProjectReference Include="..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />
   </ItemGroup>
 </Project>

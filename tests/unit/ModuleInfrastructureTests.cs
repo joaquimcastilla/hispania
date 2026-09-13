@@ -1,6 +1,5 @@
 using Hispania.ArchitectureTest.Contracts;
 using Hispania.ArchitectureTest.Modules;
-using Hispania.Kernel;
 using Hispania.ModuleSystem.Contracts;
 using Hispania.Runtime;
 using Microsoft.Extensions.Configuration;

@@ -61,6 +61,8 @@ The initial module infrastructure separates the module catalogue, operational li
 
 The application host is the composition root and may reference static module implementations only to register them. Consumers depend on contracts, never on concrete module classes. Host health remains distinct from temporary module diagnostics.
 
+`ModuleDescriptor` is part of `Hispania.ModuleSystem.Contracts`: it defines the public identity of a module (`Id`, `Name`, `Version`) alongside `IModule`, without requiring module implementers to reference the kernel.
+
 ## 4. Dependency Rule
 
 Las dependencias deben apuntar hacia contratos y dominio estable.

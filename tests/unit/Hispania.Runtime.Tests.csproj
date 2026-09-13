@@ -16,7 +16,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\contracts\architecture-test\Hispania.ArchitectureTest.Contracts.csproj" />
     <ProjectReference Include="..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />
-    <ProjectReference Include="..\..\core\kernel\Hispania.Kernel.csproj" />
     <ProjectReference Include="..\..\core\runtime\Hispania.Runtime.csproj" />
     <ProjectReference Include="..\..\modules\architecture-test\Hispania.ArchitectureTest.Modules.csproj" />
   </ItemGroup>

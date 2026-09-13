@@ -1,4 +1,4 @@
-namespace Hispania.Kernel;
+namespace Hispania.ModuleSystem.Contracts;
 
 public sealed record ModuleDescriptor
 {

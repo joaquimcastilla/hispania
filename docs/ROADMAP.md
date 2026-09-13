@@ -4,6 +4,8 @@ This roadmap is architectural first.
 
 ## Phase 0 - Project Constitution
 
+Status: Completed
+
 Deliverables:
 
 - README
@@ -21,6 +23,8 @@ Goal:
 make future decisions traceable.
 
 ## Phase 1 - Kernel 0.1
+
+Status: Completed
 
 Build:
 
