@@ -4,5 +4,6 @@ public enum ExternalIdentifierAssociationStatus
 {
     Candidate,
     Confirmed,
-    Rejected
+    Rejected,
+    Invalidated
 }

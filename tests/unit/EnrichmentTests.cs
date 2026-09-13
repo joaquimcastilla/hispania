@@ -106,31 +106,134 @@ public sealed class EnrichmentTests
         Assert.Equal(7, targets.Distinct().Count());
     }
 
-    [Theory]
-    [InlineData(ExternalIdentifierAssociationStatus.Candidate)]
-    [InlineData(ExternalIdentifierAssociationStatus.Confirmed)]
-    [InlineData(ExternalIdentifierAssociationStatus.Rejected)]
-    public void AssociationPreservesLocalStateIdentifierAndTarget(ExternalIdentifierAssociationStatus status)
+    [Fact]
+    public void AssociationStartsAsCandidateWithAnAuditableLifecycleEntry()
     {
-        var identifier = Identifier("42");
-        var target = EnrichmentTarget.For(WorkId.New());
-        var association = new ExternalIdentifierAssociation(ExternalIdentifierAssociationId.New(), identifier, target, status);
+        var occurredAt = new DateTimeOffset(2026, 9, 13, 12, 0, 0, TimeSpan.Zero);
+        var evidence = Evidence(occurredAt);
+        var association = Association(Lifecycle(ExternalIdentifierAssociationStatus.Candidate, occurredAt, evidence));
 
-        Assert.Equal(status, association.Status);
-        Assert.Equal(identifier, association.Identifier);
-        Assert.Equal(target, association.Target);
+        Assert.Equal(ExternalIdentifierAssociationStatus.Candidate, association.CurrentStatus);
+        var entry = Assert.Single(association.LifecycleEntries);
+        Assert.Equal(ExternalIdentifierAssociationStatus.Candidate, entry.Status);
+        Assert.Equal(occurredAt, entry.OccurredAt);
+        Assert.Same(evidence, entry.Evidence);
     }
 
     [Fact]
-    public void AssociationDoesNotUseGlobalStaticStateForDistinctCandidates()
+    public void AssociationTransitionsFromCandidateToConfirmed()
     {
-        var identifier = Identifier("42");
-        var first = new ExternalIdentifierAssociation(
-            ExternalIdentifierAssociationId.New(), identifier, EnrichmentTarget.For(WorkId.New()), ExternalIdentifierAssociationStatus.Candidate);
-        var second = new ExternalIdentifierAssociation(
-            ExternalIdentifierAssociationId.New(), identifier, EnrichmentTarget.For(WorkId.New()), ExternalIdentifierAssociationStatus.Candidate);
+        var association = Association(Lifecycle(ExternalIdentifierAssociationStatus.Candidate));
+        association.TransitionTo(Lifecycle(ExternalIdentifierAssociationStatus.Confirmed));
 
-        Assert.NotEqual(first.Target, second.Target);
+        Assert.Equal(ExternalIdentifierAssociationStatus.Confirmed, association.CurrentStatus);
+        Assert.Equal(ExternalIdentifierAssociationStatus.Confirmed, association.LifecycleEntries[^1].Status);
+    }
+
+    [Fact]
+    public void AssociationTransitionsFromCandidateToRejectedWithReason()
+    {
+        var association = Association(Lifecycle(ExternalIdentifierAssociationStatus.Candidate));
+        association.TransitionTo(Lifecycle(ExternalIdentifierAssociationStatus.Rejected, reason: "Tuple refers to another work."));
+
+        Assert.Equal(ExternalIdentifierAssociationStatus.Rejected, association.CurrentStatus);
+        Assert.Equal("Tuple refers to another work.", association.LifecycleEntries[^1].Reason);
+    }
+
+    [Fact]
+    public void AssociationTransitionsFromConfirmedToInvalidatedWithReason()
+    {
+        var association = Association(Lifecycle(ExternalIdentifierAssociationStatus.Candidate));
+        association.TransitionTo(Lifecycle(ExternalIdentifierAssociationStatus.Confirmed));
+        association.TransitionTo(Lifecycle(ExternalIdentifierAssociationStatus.Invalidated, reason: "Provider retired the identifier."));
+
+        Assert.Equal(ExternalIdentifierAssociationStatus.Invalidated, association.CurrentStatus);
+        Assert.Equal("Provider retired the identifier.", association.LifecycleEntries[^1].Reason);
+    }
+
+    [Fact]
+    public void AssociationRejectsInvalidTransitions()
+    {
+        var association = Association(Lifecycle(ExternalIdentifierAssociationStatus.Candidate));
+
+        Assert.Equal(
+            "external-identifier-association.transition.invalid",
+            Assert.Throws<DomainValidationException>(() => association.TransitionTo(Lifecycle(ExternalIdentifierAssociationStatus.Invalidated, reason: "Not confirmed."))).Code);
+    }
+
+    [Theory]
+    [InlineData(ExternalIdentifierAssociationStatus.Rejected)]
+    [InlineData(ExternalIdentifierAssociationStatus.Invalidated)]
+    public void RejectedAndInvalidatedAssociationsAreTerminal(ExternalIdentifierAssociationStatus status)
+    {
+        var association = Association(Lifecycle(status, reason: "Terminal lifecycle state."));
+
+        Assert.Equal(
+            "external-identifier-association.transition.invalid",
+            Assert.Throws<DomainValidationException>(() => association.TransitionTo(Lifecycle(ExternalIdentifierAssociationStatus.Candidate))).Code);
+    }
+
+    [Theory]
+    [InlineData(ExternalIdentifierAssociationStatus.Rejected)]
+    [InlineData(ExternalIdentifierAssociationStatus.Invalidated)]
+    public void TerminalLifecycleEntriesRequireReasons(ExternalIdentifierAssociationStatus status)
+    {
+        Assert.Equal(
+            "external-identifier-association.lifecycle-entry.reason.required",
+            Assert.Throws<DomainValidationException>(() => Lifecycle(status)).Code);
+    }
+
+    [Fact]
+    public void LifecycleEntryRejectsAnUndefinedStatus()
+    {
+        Assert.Equal(
+            "external-identifier-association.lifecycle-entry.status.invalid",
+            Assert.Throws<DomainValidationException>(() => Lifecycle((ExternalIdentifierAssociationStatus)99)).Code);
+    }
+
+    [Theory]
+    [InlineData(ExternalIdentifierAssociationRelationKind.Migration)]
+    [InlineData(ExternalIdentifierAssociationRelationKind.Successor)]
+    [InlineData(ExternalIdentifierAssociationRelationKind.Alias)]
+    public void AssociationAcceptsAuditableMigrationSuccessorAndAliasRelations(ExternalIdentifierAssociationRelationKind kind)
+    {
+        var association = Association(Lifecycle(ExternalIdentifierAssociationStatus.Candidate));
+        var evidence = Evidence(new DateTimeOffset(2026, 9, 13, 12, 1, 0, TimeSpan.Zero));
+        var relation = new ExternalIdentifierAssociationRelation(ExternalIdentifierAssociationId.New(), kind, evidence, "Provider mapping evidence.");
+
+        association.AddRelatedAssociation(relation);
+
+        Assert.Same(relation, Assert.Single(association.RelatedAssociations));
+        Assert.Equal(kind, association.RelatedAssociations[0].Kind);
+        Assert.Same(evidence, association.RelatedAssociations[0].Evidence);
+    }
+
+    [Fact]
+    public void AssociationRejectsSelfAndDuplicateRelationsButAllowsDifferentKinds()
+    {
+        var association = Association(Lifecycle(ExternalIdentifierAssociationStatus.Candidate));
+        var evidence = Evidence(DateTimeOffset.UtcNow);
+        var relatedId = ExternalIdentifierAssociationId.New();
+
+        Assert.Equal(
+            "external-identifier-association.relation.self",
+            Assert.Throws<DomainValidationException>(() => association.AddRelatedAssociation(new ExternalIdentifierAssociationRelation(association.Id, ExternalIdentifierAssociationRelationKind.Alias, evidence))).Code);
+
+        association.AddRelatedAssociation(new ExternalIdentifierAssociationRelation(relatedId, ExternalIdentifierAssociationRelationKind.Alias, evidence));
+        association.AddRelatedAssociation(new ExternalIdentifierAssociationRelation(relatedId, ExternalIdentifierAssociationRelationKind.Successor, evidence));
+
+        Assert.Equal(
+            "external-identifier-association.relation.duplicate",
+            Assert.Throws<DomainValidationException>(() => association.AddRelatedAssociation(new ExternalIdentifierAssociationRelation(relatedId, ExternalIdentifierAssociationRelationKind.Alias, evidence))).Code);
+        Assert.Equal(2, association.RelatedAssociations.Count);
+    }
+
+    [Fact]
+    public void AssociationRelationRejectsAnUndefinedKind()
+    {
+        Assert.Equal(
+            "external-identifier-association.relation.kind.invalid",
+            Assert.Throws<DomainValidationException>(() => new ExternalIdentifierAssociationRelation(ExternalIdentifierAssociationId.New(), (ExternalIdentifierAssociationRelationKind)99, Evidence(DateTimeOffset.UtcNow))).Code);
     }
 
     [Theory]
@@ -276,6 +379,35 @@ public sealed class EnrichmentTests
         Assert.Throws<DomainValidationException>(() => new ArtworkRole("provider_role"));
     }
 
+    [Theory]
+    [InlineData("http")]
+    [InlineData("https")]
+    [InlineData("urn+artwork.v1")]
+    [InlineData("provider-art")]
+    [InlineData("abc.def")]
+    public void ArtworkLocatorAcceptsTheSourceSchemeGrammar(string scheme)
+    {
+        Assert.Equal(scheme, new ArtworkLocator(scheme, "opaque").Scheme);
+    }
+
+    [Fact]
+    public void ArtworkLocatorNormalizesSchemeToLowercase()
+    {
+        Assert.Equal("urn+artwork.v1", new ArtworkLocator("URN+Artwork.V1", "opaque").Scheme);
+    }
+
+    [Theory]
+    [InlineData("1http")]
+    [InlineData("http scheme")]
+    [InlineData("http_scheme")]
+    [InlineData("http:")]
+    public void ArtworkLocatorRejectsSchemesOutsideTheSourceSchemeGrammar(string scheme)
+    {
+        Assert.Equal(
+            "artwork-locator.scheme.invalid",
+            Assert.Throws<DomainValidationException>(() => new ArtworkLocator(scheme, "opaque")).Code);
+    }
+
     [Fact]
     public void ArtworkReferencesDoNotModelAssetsRepresentationsOrSources()
     {
@@ -291,6 +423,22 @@ public sealed class EnrichmentTests
     private static ExternalIdentifierNamespace Namespace(string value) => new(value);
 
     private static ExternalIdentifier Identifier(string value) => new(Provider("example"), Namespace("work"), value);
+
+    private static ExternalIdentifierAssociation Association(ExternalIdentifierAssociationLifecycleEntry initialLifecycleEntry) =>
+        new(ExternalIdentifierAssociationId.New(), Identifier("42"), EnrichmentTarget.For(WorkId.New()), initialLifecycleEntry);
+
+    private static ExternalIdentifierAssociationLifecycleEntry Lifecycle(
+        ExternalIdentifierAssociationStatus status,
+        DateTimeOffset? occurredAt = null,
+        MetadataProvenance? evidence = null,
+        string? reason = null)
+    {
+        var timestamp = occurredAt ?? new DateTimeOffset(2026, 9, 13, 12, 0, 0, TimeSpan.Zero);
+        return new ExternalIdentifierAssociationLifecycleEntry(status, timestamp, evidence ?? Evidence(timestamp), reason);
+    }
+
+    private static MetadataProvenance Evidence(DateTimeOffset observedAt) =>
+        new(MetadataProvenanceOrigin.Manual, observedAt, confidence: 0.75m);
 
     private static MetadataProvenance ManualProvenance() => new(MetadataProvenanceOrigin.Manual, DateTimeOffset.UtcNow);
 
