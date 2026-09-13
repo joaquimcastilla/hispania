@@ -10,6 +10,7 @@ using Hispania.Playback.Contracts;
 using Hispania.Server;
 
 var builder = WebApplication.CreateBuilder(args);
+WebUiStaticAssets.Configure(builder.Environment);
 
 builder.Services.AddArchitectureTestModules();
 builder.Services.AddModuleRuntime();

@@ -29,8 +29,8 @@ internal static class FfprobeJsonParser
         var index = ParseRequiredInt(StringValue(stream, "index")); var kind = StringValue(stream, "codec_type"); var codec = StringValue(stream, "codec_name");
         return kind switch
         {
-            "video" => new VideoStreamObservation(index, codec, ParseNullableInt(StringValue(stream,"width")), ParseNullableInt(StringValue(stream,"height")), ParseRational(StringValue(stream,"avg_frame_rate")), ParseNullableInt(StringValue(stream,"bits_per_raw_sample")) ?? ParseNullableInt(StringValue(stream,"bits_per_sample")), ParseNullableLong(StringValue(stream,"bit_rate"))),
-            "audio" => new AudioStreamObservation(index, codec, ParseNullableInt(StringValue(stream,"sample_rate")), ParseNullableInt(StringValue(stream,"channels")), ParseNullableInt(StringValue(stream,"bits_per_raw_sample")) ?? ParseNullableInt(StringValue(stream,"bits_per_sample")), ParseNullableLong(StringValue(stream,"bit_rate"))),
+            "video" => new VideoStreamObservation(index, codec, ParseNullableInt(StringValue(stream,"width")), ParseNullableInt(StringValue(stream,"height")), ParseRational(StringValue(stream,"avg_frame_rate")), ParseNullablePositiveInt(StringValue(stream,"bits_per_raw_sample")) ?? ParseNullablePositiveInt(StringValue(stream,"bits_per_sample")), ParseNullableLong(StringValue(stream,"bit_rate"))),
+            "audio" => new AudioStreamObservation(index, codec, ParseNullableInt(StringValue(stream,"sample_rate")), ParseNullableInt(StringValue(stream,"channels")), ParseNullablePositiveInt(StringValue(stream,"bits_per_raw_sample")) ?? ParseNullablePositiveInt(StringValue(stream,"bits_per_sample")), ParseNullableLong(StringValue(stream,"bit_rate"))),
             _ => new UnsupportedStreamObservation(index, kind, codec)
         };
     }
@@ -38,6 +38,11 @@ internal static class FfprobeJsonParser
     private static ObservedRational? ParseRational(string? value) { if (Unknown(value) || value == "0/0") return null; var parts = value!.Split('/'); if (parts.Length != 2 || !long.TryParse(parts[0], CultureInfo.InvariantCulture, out var numerator) || !long.TryParse(parts[1], CultureInfo.InvariantCulture, out var denominator) || denominator == 0) throw new FormatException(); return new ObservedRational(numerator, denominator); }
     private static int ParseRequiredInt(string? value) => ParseNullableInt(value) ?? throw new FormatException();
     private static int? ParseNullableInt(string? value) => Unknown(value) ? null : int.Parse(value!, CultureInfo.InvariantCulture);
+    private static int? ParseNullablePositiveInt(string? value)
+    {
+        var parsed = ParseNullableInt(value);
+        return parsed is 0 ? null : parsed;
+    }
     private static long? ParseNullableLong(string? value) => Unknown(value) ? null : long.Parse(value!, CultureInfo.InvariantCulture);
     private static string? StringValue(JsonElement element, string name) => element.TryGetProperty(name, out var value) ? value.ValueKind == JsonValueKind.String ? value.GetString() : value.GetRawText() : null;
     private static bool Unknown(string? value) => string.IsNullOrWhiteSpace(value) || string.Equals(value, "N/A", StringComparison.OrdinalIgnoreCase);
