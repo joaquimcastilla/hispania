@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Hispania.Library.Application</AssemblyName>
+    <RootNamespace>Hispania.Library.Application</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\contracts\library\Hispania.Library.Contracts.csproj" />
+    <ProjectReference Include="..\..\core\domain\Hispania.Media.Domain.csproj" />
+  </ItemGroup>
+</Project>
