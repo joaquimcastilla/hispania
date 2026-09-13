@@ -1,10 +1,12 @@
 using Hispania.Media.Domain.Identity;
+using Hispania.Media.Domain.TechnicalRepresentations;
 
 namespace Hispania.Media.Domain.Assets;
 
 public sealed class Asset
 {
     private readonly HashSet<AssetRole> _roles = [];
+    private readonly Dictionary<TechnicalRepresentationId, TechnicalRepresentation> _technicalRepresentations = [];
 
     public Asset(AssetId id, AssetMediaKind mediaKind, IEnumerable<AssetRole>? roles = null)
     {
@@ -31,6 +33,35 @@ public sealed class Asset
     public AssetMediaKind MediaKind { get; }
 
     public IReadOnlyCollection<AssetRole> Roles => _roles.ToArray();
+
+    public IReadOnlyCollection<TechnicalRepresentation> TechnicalRepresentations => _technicalRepresentations.Values.ToArray();
+
+    public TechnicalRepresentation AddTechnicalRepresentation(TechnicalRepresentationId id, TechnicalProfile profile)
+    {
+        if (id is null)
+        {
+            throw new DomainValidationException("technical-representation.id.required", "A TechnicalRepresentation ID is required.");
+        }
+
+        if (profile is null)
+        {
+            throw new DomainValidationException("technical-representation.profile.required", "A TechnicalProfile is required.");
+        }
+
+        if (profile.MediaKind != MediaKind)
+        {
+            throw new DomainValidationException("technical-representation.profile.media-kind.mismatch", "A TechnicalProfile must match its Asset MediaKind.");
+        }
+
+        if (_technicalRepresentations.ContainsKey(id))
+        {
+            throw new DomainValidationException("asset.technical-representation.duplicate", "An Asset cannot contain the same TechnicalRepresentation twice.");
+        }
+
+        var representation = new TechnicalRepresentation(id, Id, profile);
+        _technicalRepresentations.Add(id, representation);
+        return representation;
+    }
 
     public void AddRole(AssetRole role)
     {
