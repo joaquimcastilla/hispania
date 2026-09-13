@@ -12,6 +12,10 @@
 .dotnet/
 TestResults/
 
+# Frontend dependencies and build output
+apps/web/node_modules/
+apps/web/dist/
+
 # OS files
 Thumbs.db
 .DS_Store

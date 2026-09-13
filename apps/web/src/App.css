@@ -1,0 +1,60 @@
+:root {
+  color: #f2f4f8;
+  background: #11151c;
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+video {
+  font: inherit;
+}
+
+.app-shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+h1,
+h2 {
+  margin-top: 0;
+}
+
+section {
+  border-top: 1px solid #4a5568;
+  padding-top: 1rem;
+  margin-top: 1.5rem;
+}
+
+.movie-list {
+  padding: 0;
+  list-style: none;
+}
+
+.movie-button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  padding: 0.8rem 1rem;
+  border: 1px solid #64748b;
+  border-radius: 0.25rem;
+  color: inherit;
+  background: #1e293b;
+  cursor: pointer;
+  text-align: left;
+}
+
+.movie-button[aria-pressed="true"] {
+  border-color: #60a5fa;
+  background: #1d4ed8;
+}
+
+.player video {
+  width: 100%;
+  max-width: 100%;
+  background: #000;
+}

@@ -47,10 +47,14 @@ builder.Services.AddSingleton<IArchitectureDemonstrationService>(serviceProvider
 
 var app = builder.Build();
 
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.MapGet("/healthz", () => Results.Ok());
 app.MapGet("/readyz", () => Results.Ok());
 app.MapGet("/internal/module-test", (IArchitectureDemonstrationService service) => Results.Ok(service.GetResponse()));
 app.MapGet("/internal/modules/health", (IModuleRuntime runtime) => Results.Ok(runtime.ListHealth()));
 app.MapDirectPlayEndpoints();
+app.MapFallbackToFile("index.html");
 
 app.Run();

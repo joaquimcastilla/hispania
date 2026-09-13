@@ -3,7 +3,11 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>Hispania.Server</AssemblyName>
     <RootNamespace>Hispania.Server</RootNamespace>
+    <WebDistPath>$(MSBuildProjectDirectory)\..\web\dist\</WebDistPath>
   </PropertyGroup>
+  <ItemGroup Condition="Exists('$(WebDistPath)')">
+    <Content Include="$(WebDistPath)**\*" Link="wwwroot\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\contracts\architecture-test\Hispania.ArchitectureTest.Contracts.csproj" />
     <ProjectReference Include="..\..\core\runtime\Hispania.Runtime.csproj" />
