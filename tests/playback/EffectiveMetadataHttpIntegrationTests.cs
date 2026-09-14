@@ -156,6 +156,7 @@ public sealed class EffectiveMetadataHttpIntegrationTests
         public ValueTask<bool> WorkExistsAsync(WorkId workId, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
         public ValueTask<MetadataEnrichmentSnapshot> LoadAsync(CancellationToken cancellationToken = default) => inner.LoadAsync(cancellationToken);
         public ValueTask<MetadataEnrichmentTargetSnapshot> LoadForTargetAsync(EnrichmentTarget target, CancellationToken cancellationToken = default) => inner.LoadForTargetAsync(target, cancellationToken);
+        public ValueTask<IReadOnlyCollection<MetadataEnrichmentTargetSnapshot>> LoadForTargetsAsync(IReadOnlyCollection<EnrichmentTarget> targets, CancellationToken cancellationToken = default) => inner.LoadForTargetsAsync(targets, cancellationToken);
         public ValueTask<bool> ApplyAsync(MetadataEnrichmentWrite write, CancellationToken cancellationToken = default) => inner.ApplyAsync(write, cancellationToken);
     }
 

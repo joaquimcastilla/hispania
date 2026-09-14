@@ -89,4 +89,16 @@ public sealed class EffectiveMetadataProjectionReader(IMetadataEnrichmentStore s
         var snapshot = await store.LoadForTargetAsync(target, cancellationToken);
         return resolver.Resolve(target, snapshot.Assertions, snapshot.ArtworkReferences);
     }
+
+    public async ValueTask<IReadOnlyCollection<EffectiveMetadataProjection>> ReadManyAsync(IReadOnlyCollection<EnrichmentTarget> targets, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(targets);
+        var distinct = targets.Distinct().ToArray();
+        if (distinct.Length == 0) return [];
+        var snapshots = await store.LoadForTargetsAsync(distinct, cancellationToken);
+        var byTarget = snapshots.ToDictionary(x => x.Target);
+        return distinct.Select(target => byTarget.TryGetValue(target, out var snapshot)
+            ? resolver.Resolve(target, snapshot.Assertions, snapshot.ArtworkReferences)
+            : resolver.Resolve(target, [], [])).ToArray();
+    }
 }

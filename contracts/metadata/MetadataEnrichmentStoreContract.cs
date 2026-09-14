@@ -42,6 +42,9 @@ public interface IMetadataEnrichmentStore
     /// <summary>Loads only the enrichment facts required for one target projection.</summary>
     ValueTask<MetadataEnrichmentTargetSnapshot> LoadForTargetAsync(EnrichmentTarget target, CancellationToken cancellationToken = default);
 
+    /// <summary>Loads enrichment facts for multiple targets without one store round trip per target.</summary>
+    ValueTask<IReadOnlyCollection<MetadataEnrichmentTargetSnapshot>> LoadForTargetsAsync(IReadOnlyCollection<EnrichmentTarget> targets, CancellationToken cancellationToken = default);
+
     /// <returns>false when an equivalent refresh payload was already applied.</returns>
     ValueTask<bool> ApplyAsync(MetadataEnrichmentWrite write, CancellationToken cancellationToken = default);
 }

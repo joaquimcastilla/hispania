@@ -49,4 +49,6 @@ public interface IEffectiveMetadataResolver
 public interface IEffectiveMetadataProjectionReader
 {
     ValueTask<EffectiveMetadataProjection> ReadAsync(EnrichmentTarget target, CancellationToken cancellationToken = default);
+
+    ValueTask<IReadOnlyCollection<EffectiveMetadataProjection>> ReadManyAsync(IReadOnlyCollection<EnrichmentTarget> targets, CancellationToken cancellationToken = default);
 }

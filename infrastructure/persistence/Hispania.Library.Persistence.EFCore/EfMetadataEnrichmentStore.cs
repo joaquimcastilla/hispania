@@ -42,6 +42,25 @@ public sealed class EfMetadataEnrichmentStore(IDbContextFactory<LibraryCatalogDb
         return new MetadataEnrichmentTargetSnapshot(target, assertions, artwork);
     }
 
+    public async ValueTask<IReadOnlyCollection<MetadataEnrichmentTargetSnapshot>> LoadForTargetsAsync(IReadOnlyCollection<EnrichmentTarget> targets, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(targets);
+        var distinct = targets.Distinct().ToArray();
+        if (distinct.Length == 0) return [];
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var records = new List<MetadataAssertionRecord>();
+        var artworkRecords = new List<ArtworkReferenceRecord>();
+        foreach (var group in distinct.GroupBy(TargetCode))
+        {
+            var ids = group.Select(TargetId).ToArray();
+            records.AddRange(await db.MetadataAssertions.AsNoTracking().Where(x => x.TargetKind == group.Key && ids.Contains(x.TargetId)).ToListAsync(cancellationToken));
+            artworkRecords.AddRange(await db.ArtworkReferences.AsNoTracking().Where(x => x.TargetKind == group.Key && ids.Contains(x.TargetId)).ToListAsync(cancellationToken));
+        }
+        return distinct.Select(target => new MetadataEnrichmentTargetSnapshot(target,
+            records.Where(x => x.TargetKind == TargetCode(target) && x.TargetId == TargetId(target)).Select(RehydrateAssertion).ToArray(),
+            artworkRecords.Where(x => x.TargetKind == TargetCode(target) && x.TargetId == TargetId(target)).Select(RehydrateArtwork).ToArray())).ToArray();
+    }
+
     public async ValueTask<bool> ApplyAsync(MetadataEnrichmentWrite write, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(write);

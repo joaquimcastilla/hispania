@@ -1,6 +1,8 @@
 using Hispania.Library.Contracts;
 using Hispania.Media.Domain.Identity;
 using Hispania.Playback.Contracts;
+using Hispania.Media.Domain.Enrichment;
+using Hispania.Metadata.Contracts;
 
 namespace Hispania.Server;
 
@@ -8,11 +10,27 @@ public static class DirectPlayEndpoints
 {
     public static IEndpointRouteBuilder MapDirectPlayEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/v1/media", (IMediaCatalogReader catalog) =>
-            Results.Json(catalog.GetAll().Select(entry => new MediaListItem(entry.Id.Value, entry.DisplayName))));
+        endpoints.MapGet("/api/v1/media", ListAsync);
 
         endpoints.MapGet("/api/v1/media/{mediaEntityId}/stream", StreamAsync);
         return endpoints;
+    }
+
+    private static async Task<IResult> ListAsync(IMediaCatalogReader catalog, IServiceProvider services, CancellationToken cancellationToken)
+    {
+        var entries = catalog.GetAll();
+        var targets = entries.Select(entry => EnrichmentTarget.For(entry.Media.Work.Id)).ToArray();
+        var reader = services.GetService(typeof(IEffectiveMetadataProjectionReader)) as IEffectiveMetadataProjectionReader;
+        var projections = reader is null ? [] : await reader.ReadManyAsync(targets, cancellationToken);
+        var byTarget = projections.ToDictionary(x => x.Target);
+        return Results.Json(entries.Select(entry =>
+        {
+            var projection = byTarget.GetValueOrDefault(EnrichmentTarget.For(entry.Media.Work.Id));
+            return new MediaListItem(entry.Id.Value, entry.DisplayName, new EffectiveMediaListSummary(
+                projection?.Title.Value,
+                projection?.ReleaseDate.Value,
+                projection is null ? null : EffectiveArtworkLocator.From(projection.Poster)));
+        }));
     }
 
     private static async Task StreamAsync(HttpContext context, string mediaEntityId, IPlaybackPlanner planner, IDirectPlayExecutor executor)
@@ -91,7 +109,12 @@ public static class DirectPlayEndpoints
         }
     }
 
-    private sealed record MediaListItem(Guid Id, string DisplayName);
+    public sealed record MediaListItem(Guid Id, string DisplayName, EffectiveMediaListSummary Effective);
+    public sealed record EffectiveMediaListSummary(string? Title, DateOnly? ReleaseDate, EffectiveArtworkLocator? Poster);
+    public sealed record EffectiveArtworkLocator(string Scheme, string Value)
+    {
+        internal static EffectiveArtworkLocator? From(EffectiveArtworkSelection selection) => selection.Locator is null ? null : new(selection.Locator.Scheme, selection.Locator.OpaqueValue);
+    }
 }
 
 internal abstract record HttpRangeParseResult

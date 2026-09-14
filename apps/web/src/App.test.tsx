@@ -42,6 +42,24 @@ describe("App", () => {
     expect(document.querySelector("video")).toHaveAttribute("src", "/api/v1/media/media-id/stream");
   });
 
+  it("uses effective title and release year in the library grid", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([{ id: "media-id", displayName: "local-file", effective: { title: "Seduction and Snacks", releaseDate: "2021-01-01", poster: { scheme: "tmdb-image", value: "/poster.jpg" } } }])));
+    render(<App />);
+    expect(await screen.findByRole("button", { name: /Seduction and Snacks/ })).toBeInTheDocument();
+    expect(screen.getByText("2021")).toBeInTheDocument();
+  });
+
+  it("loads effective metadata detail while keeping Play available", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn((url: string) => url.endsWith("/metadata")
+      ? catalogResponse({ title: { value: "Title" }, originalTitle: { value: "Original" }, description: { value: "Description" }, releaseDate: { value: "2021-01-01" }, artwork: { poster: {}, backdrop: {} } })
+      : catalogResponse([{ id: "media-id", displayName: "local-file", effective: { title: "Title" } }])));
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Title" }));
+    expect(await screen.findByText("Description")).toBeInTheDocument();
+    expect(document.querySelector("video")).toHaveAttribute("src", "/api/v1/media/media-id/stream");
+  });
+
   it("renders an error when the catalog request fails", async () => {
     vi.stubGlobal("fetch", vi.fn(() => catalogResponse(null, false)));
 
