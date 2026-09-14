@@ -10,6 +10,7 @@ using Hispania.Playback.Application;
 using Hispania.Playback.Contracts;
 using Hispania.Server;
 using Hispania.Metadata.Application;
+using Hispania.Metadata.Contracts;
 using Hispania.Metadata.Tmdb;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -37,6 +38,8 @@ if (string.IsNullOrWhiteSpace(sqlitePath))
     sqlitePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "catalog.sqlite");
 }
 builder.Services.AddSqliteLibraryPersistence(sqlitePath);
+builder.Services.AddSingleton<IEffectiveMetadataResolver, EffectiveMetadataResolver>();
+builder.Services.AddSingleton<IEffectiveMetadataProjectionReader, EffectiveMetadataProjectionReader>();
 var tmdbOptions = builder.Configuration.GetSection("Metadata:Tmdb").Get<TmdbMovieMetadataProviderOptions>() ?? new TmdbMovieMetadataProviderOptions();
 if (tmdbOptions.Enabled)
 {
@@ -73,6 +76,7 @@ app.MapGet("/readyz", (LibraryReadiness readiness) => readiness.IsReady ? Result
 app.MapGet("/internal/module-test", (IArchitectureDemonstrationService service) => Results.Ok(service.GetResponse()));
 app.MapGet("/internal/modules/health", (IModuleRuntime runtime) => Results.Ok(runtime.ListHealth()));
 app.MapDirectPlayEndpoints();
+app.MapEffectiveMetadataEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();
