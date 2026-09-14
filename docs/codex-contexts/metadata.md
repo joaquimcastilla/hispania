@@ -10,6 +10,14 @@
 
 Metadata Providers 0.1 — Stage 1 implementa la frontera durable `IMetadataEnrichmentStore` y el roundtrip SQLite de Media 2E necesario para películas, incluido estado operativo de refresh. No implementa providers, búsqueda, matching, metadata efectiva, API/UI ni bytes de artwork. Phase 2 fija que ExternalIdentifier, ExternalIdentifierAssociation, MetadataAssertion, provenance, effective-value policy y ArtworkReference son extensiones ortogonales y opcionales de Media.
 
+Stage 3 añade el adapter de películas TMDB (`Hispania.Metadata.Tmdb`). Se activa sólo con `Metadata:Tmdb:Enabled=true`; requiere `Metadata:Tmdb:ReadAccessToken`, permite `Language` (por defecto `es-ES`) y `Timeout` (positivo, máximo dos minutos). Las variables equivalentes usan `Metadata__Tmdb__...`. El token es un secreto de configuración y no se registra ni se serializa.
+
+El adapter usa Bearer authentication y los endpoints `search/movie` y `movie/{id}`. Sus identificadores son `tmdb` / `movie`, con mapping version `tmdb-movie-v1`. Normaliza exclusivamente title, original-title, description y release-date; campos vacíos se omiten y una fecha presente inválida es una respuesta inválida. Poster y backdrop se conservan como locators opacos `tmdb-image` (sin URL final, descarga ni image configuration). TMDB popularity puede ser una señal de proveedor durante búsqueda, nunca confidence/provenance.
+
+Las respuestas normalizadas llevan `ObservedAt` del procesamiento local y un fingerprint SHA-256 hexadecimal sobre una representación canónica del documento, no sobre JSON TMDB. 401/403/404 se devuelven como unsupported, 429/5xx/red como unavailable, timeout como timeout, JSON inválido como invalid response y cancelación como cancelled. No hay retries.
+
+Quedan diferidos auto-match/confirm, API/UI, artwork download/proxy, image configuration, TTL/retries, IMDb, series/personas/releases y metadata efectiva. Metadata Providers 0.1 no se considera completo por este stage.
+
 Los proveedores externos no son identidad canónica; una entidad puede no tener identificadores externos. Identification, metadata y artwork son capacidades independientes y sustituibles.
 
 ## Límites

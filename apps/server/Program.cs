@@ -9,6 +9,8 @@ using Hispania.Library.Persistence.Sqlite;
 using Hispania.Playback.Application;
 using Hispania.Playback.Contracts;
 using Hispania.Server;
+using Hispania.Metadata.Application;
+using Hispania.Metadata.Tmdb;
 
 var builder = WebApplication.CreateBuilder(args);
 WebUiStaticAssets.Configure(builder.Environment);
@@ -35,6 +37,12 @@ if (string.IsNullOrWhiteSpace(sqlitePath))
     sqlitePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "catalog.sqlite");
 }
 builder.Services.AddSqliteLibraryPersistence(sqlitePath);
+var tmdbOptions = builder.Configuration.GetSection("Metadata:Tmdb").Get<TmdbMovieMetadataProviderOptions>() ?? new TmdbMovieMetadataProviderOptions();
+if (tmdbOptions.Enabled)
+{
+    builder.Services.AddTmdbMovieMetadataProvider(tmdbOptions);
+    builder.Services.AddSingleton<MovieMetadataApplicationService>();
+}
 builder.Services.AddSingleton<IMediaDiscovery, LocalFileSystemMediaDiscovery>();
 builder.Services.AddSingleton<IMediaProbe>(provider => new FfprobeMediaProbe(roots, new FfprobeOptions(ffprobePath)));
 builder.Services.AddSingleton<IProbedMediaMapper, ProbedMediaMapper>();

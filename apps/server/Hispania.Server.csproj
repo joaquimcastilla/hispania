@@ -21,5 +21,7 @@
     <ProjectReference Include="..\..\contracts\library\Hispania.Library.Contracts.csproj" />
     <ProjectReference Include="..\..\contracts\playback\Hispania.Playback.Contracts.csproj" />
     <ProjectReference Include="..\..\core\domain\Hispania.Media.Domain.csproj" />
+    <ProjectReference Include="..\..\application\metadata\Hispania.Metadata.Application.csproj" />
+    <ProjectReference Include="..\..\infrastructure\metadata\Hispania.Metadata.Tmdb\Hispania.Metadata.Tmdb.csproj" />
   </ItemGroup>
 </Project>

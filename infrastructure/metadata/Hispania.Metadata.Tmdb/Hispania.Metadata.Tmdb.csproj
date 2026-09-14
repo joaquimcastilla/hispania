@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>Hispania.Metadata.Tmdb</AssemblyName><RootNamespace>Hispania.Metadata.Tmdb</RootNamespace></PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\..\..\contracts\metadata\Hispania.Metadata.Contracts.csproj" /></ItemGroup>
+  <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
+</Project>
