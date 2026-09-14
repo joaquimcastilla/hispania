@@ -14,7 +14,9 @@ Stage 3 añade el adapter de películas TMDB (`Hispania.Metadata.Tmdb`). Se acti
 
 El adapter usa Bearer authentication y los endpoints `search/movie` y `movie/{id}`. Sus identificadores son `tmdb` / `movie`, con mapping version `tmdb-movie-v1`. Normaliza exclusivamente title, original-title, description y release-date; campos vacíos se omiten y una fecha presente inválida es una respuesta inválida. Poster y backdrop se conservan como locators opacos `tmdb-image` (sin URL final, descarga ni image configuration). TMDB popularity puede ser una señal de proveedor durante búsqueda, nunca confidence/provenance.
 
-Las respuestas normalizadas llevan `ObservedAt` del procesamiento local y un fingerprint SHA-256 hexadecimal sobre una representación canónica del documento, no sobre JSON TMDB. 401/403/404 se devuelven como unsupported, 429/5xx/red como unavailable, timeout como timeout, JSON inválido como invalid response y cancelación como cancelled. No hay retries.
+Las respuestas normalizadas llevan `ObservedAt` del procesamiento local y un fingerprint SHA-256 hexadecimal sobre una representación canónica del documento, no sobre JSON TMDB. 401/403/404 se devuelven como unsupported, 429/5xx/red como unavailable, timeout como timeout y JSON inválido como invalid response; la cancelación solicitada por el llamador se propaga. No hay retries.
+
+Stage 4 valida el vertical completo con HTTP falso y SQLite real: búsqueda efímera, selección y confirmación explícitas, fetch/apply, refresh y rehidratación tras restart. También cubre idempotencia, supersession ante payload cambiado, delta acumulativo de artwork y ausencia de escrituras parciales ante error o cancelación.
 
 Quedan diferidos auto-match/confirm, API/UI, artwork download/proxy, image configuration, TTL/retries, IMDb, series/personas/releases y metadata efectiva. Metadata Providers 0.1 no se considera completo por este stage.
 

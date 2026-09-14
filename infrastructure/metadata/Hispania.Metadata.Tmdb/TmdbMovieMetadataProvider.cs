@@ -100,7 +100,7 @@ public sealed class TmdbMovieMetadataProvider : IMovieMetadataProvider
             message.Dispose();
             return (null, result);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return (null, new MovieProviderCancelled()); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (OperationCanceledException) { return (null, new MovieProviderTimeout("TMDB request timed out.")); }
         catch (HttpRequestException) { return (null, new MovieProviderUnavailable("TMDB is unavailable.")); }
     }

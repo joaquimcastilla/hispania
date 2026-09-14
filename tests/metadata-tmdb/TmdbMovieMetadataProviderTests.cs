@@ -67,8 +67,7 @@ public sealed class TmdbMovieMetadataProviderTests
         var timeout = await Provider(_ => throw new OperationCanceledException()).SearchAsync(new("Title", null, null));
         Assert.IsType<MovieProviderTimeout>(timeout);
         using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
-        var cancelled = await Provider(_ => throw new OperationCanceledException()).SearchAsync(new("Title", null, null), cancellation.Token);
-        Assert.IsType<MovieProviderCancelled>(cancelled);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Provider(_ => throw new OperationCanceledException()).SearchAsync(new("Title", null, null), cancellation.Token).AsTask());
     }
 
     private static TmdbMovieMetadataProvider Provider(Func<HttpRequestMessage, HttpResponseMessage> send, Func<DateTimeOffset>? now = null)
