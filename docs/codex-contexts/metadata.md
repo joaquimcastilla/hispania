@@ -8,7 +8,14 @@
 
 ## Estado y ámbito
 
-Metadata Providers 0.1 — Stage 1 implementa la frontera durable `IMetadataEnrichmentStore` y el roundtrip SQLite de Media 2E necesario para películas, incluido estado operativo de refresh. No implementa providers, búsqueda, matching, metadata efectiva, API/UI ni bytes de artwork. Phase 2 fija que ExternalIdentifier, ExternalIdentifierAssociation, MetadataAssertion, provenance, effective-value policy y ArtworkReference son extensiones ortogonales y opcionales de Media.
+Metadata Providers 0.1 — COMPLETE. Su alcance cerrado es: arquitectura de provider de metadata de películas, workflow durable de enrichment y el primer adapter real de películas TMDB. No significa que todas las features de metadata ni la UI completa de metadata estén terminadas.
+
+- Stage 1 — COMPLETE: `IMetadataEnrichmentStore`, roundtrip SQLite de Media 2E y estado operativo de refresh.
+- Stage 2 — COMPLETE: contratos específicos de película, señales/candidates de búsqueda y workflow Application de selección y confirmación explícitas.
+- Stage 3 — COMPLETE: adapter `Hispania.Metadata.Tmdb`, normalización y HTTP determinista.
+- Stage 4 — COMPLETE: vertical adapter → Application → SQLite → restart validado con HTTP falso determinista.
+
+Media 2E fija que ExternalIdentifier, ExternalIdentifierAssociation, MetadataAssertion, provenance, effective-value policy y ArtworkReference son extensiones ortogonales y opcionales de Media.
 
 Stage 3 añade el adapter de películas TMDB (`Hispania.Metadata.Tmdb`). Se activa sólo con `Metadata:Tmdb:Enabled=true`; requiere `Metadata:Tmdb:ReadAccessToken`, permite `Language` (por defecto `es-ES`) y `Timeout` (positivo, máximo dos minutos). Las variables equivalentes usan `Metadata__Tmdb__...`. El token es un secreto de configuración y no se registra ni se serializa.
 
@@ -18,7 +25,7 @@ Las respuestas normalizadas llevan `ObservedAt` del procesamiento local y un fin
 
 Stage 4 valida el vertical completo con HTTP falso y SQLite real: búsqueda efímera, selección y confirmación explícitas, fetch/apply, refresh y rehidratación tras restart. También cubre idempotencia, supersession ante payload cambiado, delta acumulativo de artwork y ausencia de escrituras parciales ante error o cancelación.
 
-Quedan diferidos auto-match/confirm, API/UI, artwork download/proxy, image configuration, TTL/retries, IMDb, series/personas/releases y metadata efectiva. Metadata Providers 0.1 no se considera completo por este stage.
+Quedan explícitamente diferidos: effective metadata resolution; provider ranking; auto-match y auto-confirm; metadata HTTP API; presentación de metadata en Web UI; download/cache/proxy de artwork e image configuration; retry/backoff; scheduler; freshness TTL; IMDb; providers de series, personas y música; y API/autorización para confirmación manual. Una búsqueda live de TMDB es una comprobación operativa opcional pendiente de secret local: no bloquea 0.1 porque adapter, E2E y CI son deterministas y no usan internet.
 
 Los proveedores externos no son identidad canónica; una entidad puede no tener identificadores externos. Identification, metadata y artwork son capacidades independientes y sustituibles.
 

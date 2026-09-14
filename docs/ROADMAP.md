@@ -204,6 +204,8 @@ Contracts:
 
 ## Phase 9 - Metadata 0.9
 
+Metadata Providers 0.1 — COMPLETE. This completed bounded slice is the movie metadata provider architecture, durable enrichment workflow, and the first real TMDB movie adapter. It includes movie-specific provider contracts; ephemeral search candidates; explicit Candidate selection and confirmation; provider-neutral normalized documents; Media 2E mapping with provenance and artwork references; SQLite persistence and refresh state; canonical fingerprint idempotency; supersession/delta history; restart rehydration; deterministic adapter HTTP tests; and real Application + SQLite end-to-end coverage. It does not claim effective metadata resolution, metadata API/UI, artwork delivery, provider ranking or automatic matching, additional providers, freshness scheduling, or credential-management features.
+
 Contracts:
 
 - IMetadataProvider
