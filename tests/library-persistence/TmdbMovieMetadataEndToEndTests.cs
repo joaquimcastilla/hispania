@@ -43,6 +43,9 @@ public sealed class TmdbMovieMetadataEndToEndTests
             Assert.All(applied.Assertions, x => { Assert.Equal(EnrichmentTarget.For(work), x.Target); Assert.Equal(MetadataProvenanceOrigin.ExternalProvider, x.Provenance.Origin); Assert.Equal("tmdb", x.Provenance.Provider!.Value); Assert.Equal(candidate.ExternalIdentifier, x.Provenance.RelatedExternalIdentifier); Assert.Null(x.Provenance.Confidence); });
             Assert.Contains(applied.ArtworkReferences, x => x.Role.Code == "poster" && x.Locator.Scheme == "tmdb-image" && x.Locator.OpaqueValue == "/poster-a.jpg");
             Assert.Contains(applied.ArtworkReferences, x => x.Role.Code == "backdrop" && x.Locator.Scheme == "tmdb-image" && x.Locator.OpaqueValue == "/backdrop.jpg");
+            var projection = await new EffectiveMetadataProjectionReader(store, new EffectiveMetadataResolver()).ReadAsync(EnrichmentTarget.For(work));
+            Assert.Equal("Seduction and Snacks", projection.Title.Value); Assert.Equal("Seduction & Snacks", projection.OriginalTitle.Value); Assert.Equal("Version A", projection.Description.Value); Assert.Equal(new DateOnly(2021, 1, 1), projection.ReleaseDate.Value);
+            Assert.Equal("/poster-a.jpg", projection.Poster.Locator!.OpaqueValue); Assert.Equal("/backdrop.jpg", projection.Backdrop.Locator!.OpaqueValue);
             var refresh = Assert.Single(applied.RefreshStates); Assert.Equal(MetadataRefreshStatus.Succeeded, refresh.Status); Assert.Equal("tmdb-movie-v1", refresh.MappingVersion); Assert.Equal(fingerprint, refresh.PayloadFingerprint); Assert.NotNull(refresh.LastSuccessAt);
             assertionIds = applied.Assertions.Select(x => x.Id.Value).ToArray(); artworkIds = applied.ArtworkReferences.Select(x => x.Id.Value).ToArray();
             await application.FetchAndApplyMovieMetadataAsync(associationId);
@@ -53,6 +56,8 @@ public sealed class TmdbMovieMetadataEndToEndTests
         var association = Assert.Single(rehydrated.Associations); Assert.Equal(associationId, association.Id); Assert.Equal(ExternalIdentifierAssociationStatus.Confirmed, association.CurrentStatus); Assert.Equal(2, association.LifecycleEntries.Count);
         Assert.Equal(assertionIds.Order(), rehydrated.Assertions.Select(x => x.Id.Value).Order()); Assert.Equal(artworkIds.Order(), rehydrated.ArtworkReferences.Select(x => x.Id.Value).Order());
         Assert.Equal(fingerprint, Assert.Single(rehydrated.RefreshStates).PayloadFingerprint);
+        var restartedProjection = await new EffectiveMetadataProjectionReader(restarted.GetRequiredService<IMetadataEnrichmentStore>(), new EffectiveMetadataResolver()).ReadAsync(EnrichmentTarget.For(work));
+        Assert.Equal("Seduction and Snacks", restartedProjection.Title.Value); Assert.Equal("/poster-a.jpg", restartedProjection.Poster.Locator!.OpaqueValue);
     }
 
     [Fact]

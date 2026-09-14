@@ -27,6 +27,21 @@ public sealed class EfMetadataEnrichmentStore(IDbContextFactory<LibraryCatalogDb
         return new MetadataEnrichmentSnapshot(associations, assertions, artwork, refresh);
     }
 
+    public async ValueTask<MetadataEnrichmentTargetSnapshot> LoadForTargetAsync(EnrichmentTarget target, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var targetKind = TargetCode(target);
+        var targetId = TargetId(target);
+        var assertions = (await db.MetadataAssertions.AsNoTracking()
+            .Where(x => x.TargetKind == targetKind && x.TargetId == targetId)
+            .ToListAsync(cancellationToken)).Select(RehydrateAssertion).ToArray();
+        var artwork = (await db.ArtworkReferences.AsNoTracking()
+            .Where(x => x.TargetKind == targetKind && x.TargetId == targetId)
+            .ToListAsync(cancellationToken)).Select(RehydrateArtwork).ToArray();
+        return new MetadataEnrichmentTargetSnapshot(target, assertions, artwork);
+    }
+
     public async ValueTask<bool> ApplyAsync(MetadataEnrichmentWrite write, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(write);
