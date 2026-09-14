@@ -4,7 +4,7 @@
 
 - `CODEX.md`, `PROJECT_CONTEXT.md`, `docs/ARCHITECTURE.md` y `docs/ROADMAP.md`.
 - `docs/MEDIA_MODEL.md` y las secciones de metadata de `docs/MEDIA_DOMAIN_DESIGN.md`.
-- ADR-0003, ADR-0007, ADR-0011 y ADR-0017.
+- ADR-0003, ADR-0007, ADR-0011, ADR-0017 y ADR-0018.
 
 ## Estado y ámbito
 
@@ -25,7 +25,9 @@ Las respuestas normalizadas llevan `ObservedAt` del procesamiento local y un fin
 
 Stage 4 valida el vertical completo con HTTP falso y SQLite real: búsqueda efímera, selección y confirmación explícitas, fetch/apply, refresh y rehidratación tras restart. También cubre idempotencia, supersession ante payload cambiado, delta acumulativo de artwork y ausencia de escrituras parciales ante error o cancelación.
 
-Quedan explícitamente diferidos: effective metadata resolution; provider ranking; auto-match y auto-confirm; metadata HTTP API; presentación de metadata en Web UI; download/cache/proxy de artwork e image configuration; retry/backoff; scheduler; freshness TTL; IMDb; providers de series, personas y música; y API/autorización para confirmación manual. Una búsqueda live de TMDB es una comprobación operativa opcional pendiente de secret local: no bloquea 0.1 porque adapter, E2E y CI son deterministas y no usan internet.
+Effective Metadata 0.1 tiene política aceptada en ADR-0018, `effective-metadata-v0.1`, pero aún no implementación. Es una proyección pura y determinista calculada bajo demanda desde assertions y artwork references: `Manual > LocalProcess > ExternalProvider`, con `ObservedAt DESC` y desempates canónicos. Sólo cubre `title`, `original-title`, `description`, `release-date`, `poster`, `backdrop` y `logo`; no usa fallbacks de filename, ranking de provider, confidence, tablas materializadas ni cache.
+
+Quedan explícitamente diferidos: implementación de effective metadata resolution; provider ranking; auto-match y auto-confirm; metadata HTTP API; presentación de metadata en Web UI; download/cache/proxy de artwork e image configuration; retry/backoff; scheduler; freshness TTL; IMDb; providers de series, personas y música; y API/autorización para confirmación manual. Una búsqueda live de TMDB es una comprobación operativa opcional pendiente de secret local: no bloquea 0.1 porque adapter, E2E y CI son deterministas y no usan internet.
 
 Los proveedores externos no son identidad canónica; una entidad puede no tener identificadores externos. Identification, metadata y artwork son capacidades independientes y sustituibles.
 
