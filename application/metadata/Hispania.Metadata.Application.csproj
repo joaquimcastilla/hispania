@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>Hispania.Metadata.Application</AssemblyName><RootNamespace>Hispania.Metadata.Application</RootNamespace></PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\..\contracts\metadata\Hispania.Metadata.Contracts.csproj" /><ProjectReference Include="..\..\core\domain\Hispania.Media.Domain.csproj" /></ItemGroup>
+</Project>

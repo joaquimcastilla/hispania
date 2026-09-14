@@ -1,4 +1,5 @@
 using Hispania.Media.Domain.Enrichment;
+using Hispania.Media.Domain.Identity;
 
 namespace Hispania.Metadata.Contracts;
 
@@ -24,11 +25,13 @@ public sealed record MetadataEnrichmentWrite(
     IReadOnlyCollection<ExternalIdentifierAssociation> Associations,
     IReadOnlyCollection<MetadataAssertion> Assertions,
     IReadOnlyCollection<ArtworkReference> ArtworkReferences,
-    MetadataRefreshState RefreshState);
+    MetadataRefreshState? RefreshState);
 
 /// <summary>Durable boundary for Media 2E enrichment and its operational refresh state.</summary>
 public interface IMetadataEnrichmentStore
 {
+    ValueTask<bool> WorkExistsAsync(WorkId workId, CancellationToken cancellationToken = default);
+
     ValueTask<MetadataEnrichmentSnapshot> LoadAsync(CancellationToken cancellationToken = default);
 
     /// <returns>false when an equivalent refresh payload was already applied.</returns>

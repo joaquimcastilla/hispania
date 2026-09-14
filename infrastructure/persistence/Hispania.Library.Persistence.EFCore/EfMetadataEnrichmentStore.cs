@@ -8,6 +8,13 @@ namespace Hispania.Library.Persistence.EFCore;
 
 public sealed class EfMetadataEnrichmentStore(IDbContextFactory<LibraryCatalogDbContext> contextFactory) : IMetadataEnrichmentStore
 {
+    public async ValueTask<bool> WorkExistsAsync(WorkId workId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(workId);
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+        return await db.Works.AnyAsync(x => x.Id == workId.Value, cancellationToken);
+    }
+
     public async ValueTask<MetadataEnrichmentSnapshot> LoadAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
@@ -25,23 +32,46 @@ public sealed class EfMetadataEnrichmentStore(IDbContextFactory<LibraryCatalogDb
         ArgumentNullException.ThrowIfNull(write);
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var state = RefreshRecord(write.RefreshState);
-        var duplicate = await db.MetadataRefreshStates.AnyAsync(x => x.TargetKind == state.TargetKind && x.TargetId == state.TargetId && x.ProviderCode == state.ProviderCode && x.ExternalIdentifierKey == state.ExternalIdentifierKey && x.MappingVersion == state.MappingVersion && x.PayloadFingerprintKey == state.PayloadFingerprintKey, cancellationToken);
-        if (duplicate) return false;
+        var state = write.RefreshState is null ? null : RefreshRecord(write.RefreshState);
+        if (state is not null)
+        {
+            var duplicate = await db.MetadataRefreshStates.AnyAsync(x => x.TargetKind == state.TargetKind && x.TargetId == state.TargetId && x.ProviderCode == state.ProviderCode && x.ExternalIdentifierKey == state.ExternalIdentifierKey && x.MappingVersion == state.MappingVersion && x.PayloadFingerprintKey == state.PayloadFingerprintKey, cancellationToken);
+            if (duplicate) return false;
+        }
         foreach (var association in write.Associations)
         {
-            if (!await db.ExternalIdentifierAssociations.AnyAsync(x => x.Id == association.Id.Value, cancellationToken))
+            var persistedAssociation = await db.ExternalIdentifierAssociations.SingleOrDefaultAsync(x => x.Id == association.Id.Value, cancellationToken);
+            if (persistedAssociation is null)
             {
                 db.ExternalIdentifierAssociations.Add(AssociationRecord(association));
                 foreach (var entry in association.LifecycleEntries.Select((entry, ordinal) => LifecycleRecord(association.Id.Value, ordinal, entry))) db.ExternalIdentifierLifecycles.Add(entry);
                 foreach (var relation in association.RelatedAssociations) db.ExternalIdentifierRelations.Add(RelationRecord(association.Id.Value, relation));
             }
+            else
+            {
+                persistedAssociation.CurrentStatusCode = Code(association.CurrentStatus);
+                db.ExternalIdentifierLifecycles.RemoveRange(await db.ExternalIdentifierLifecycles.Where(x => x.AssociationId == association.Id.Value).ToListAsync(cancellationToken));
+                db.ExternalIdentifierRelations.RemoveRange(await db.ExternalIdentifierRelations.Where(x => x.AssociationId == association.Id.Value).ToListAsync(cancellationToken));
+                foreach (var entry in association.LifecycleEntries.Select((entry, ordinal) => LifecycleRecord(association.Id.Value, ordinal, entry))) db.ExternalIdentifierLifecycles.Add(entry);
+                foreach (var relation in association.RelatedAssociations) db.ExternalIdentifierRelations.Add(RelationRecord(association.Id.Value, relation));
+            }
         }
         foreach (var assertion in write.Assertions)
-            if (!await db.MetadataAssertions.AnyAsync(x => x.Id == assertion.Id.Value, cancellationToken)) db.MetadataAssertions.Add(AssertionRecord(assertion));
+        {
+            var persistedAssertion = await db.MetadataAssertions.SingleOrDefaultAsync(x => x.Id == assertion.Id.Value, cancellationToken);
+            if (persistedAssertion is null)
+            {
+                db.MetadataAssertions.Add(AssertionRecord(assertion));
+            }
+            else
+            {
+                persistedAssertion.StatusCode = Code(assertion.Status);
+                persistedAssertion.SupersededByAssertionId = assertion.SupersededByAssertionId?.Value;
+            }
+        }
         foreach (var artwork in write.ArtworkReferences)
             if (!await db.ArtworkReferences.AnyAsync(x => x.Id == artwork.Id.Value, cancellationToken)) db.ArtworkReferences.Add(ArtworkRecord(artwork));
-        db.MetadataRefreshStates.Add(state);
+        if (state is not null) db.MetadataRefreshStates.Add(state);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return true;
