@@ -126,4 +126,19 @@ describe("App", () => {
     render(<App />);
     expect(await screen.findByText("This product uses the TMDB API but is not endorsed or certified by TMDB.")).toBeInTheDocument();
   });
+
+  it("keeps every library section visible and shows honest unavailable states", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([])));
+    render(<App />);
+
+    expect(screen.getByRole("navigation", { name: "Navegación principal" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Películas" })).toHaveAttribute("aria-current", "page");
+    for (const label of ["Series", "Colecciones", "Música"]) {
+      await user.click(screen.getByRole("button", { name: label }));
+      expect(await screen.findByRole("heading", { name: label, level: 1 })).toBeInTheDocument();
+      expect(screen.getByText("Aún no disponible")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: label })).toHaveAttribute("aria-current", "page");
+    }
+  });
 });
