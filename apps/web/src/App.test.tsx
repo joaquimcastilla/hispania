@@ -39,6 +39,7 @@ describe("App", () => {
 
     expect(selection).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("heading", { name: "Big Buck Bunny", level: 2 })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Play" }));
     expect(document.querySelector("video")).toHaveAttribute("src", "/api/v1/media/media-id/stream");
   });
 
@@ -76,6 +77,7 @@ describe("App", () => {
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Title" }));
     expect(await screen.findByText("Description")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Play" }));
     expect(document.querySelector("video")).toHaveAttribute("src", "/api/v1/media/media-id/stream");
   });
 
@@ -83,7 +85,7 @@ describe("App", () => {
     const user = userEvent.setup();
     const detailPosterUrl = "/api/v1/artwork/detail-artwork?variant=poster-card";
     vi.stubGlobal("fetch", vi.fn((url: string) => url.endsWith("/metadata")
-      ? catalogResponse({ title: { value: "Detail title" }, originalTitle: {}, description: {}, releaseDate: {}, artwork: { poster: { deliveryUrl: detailPosterUrl }, backdrop: {} } })
+      ? catalogResponse({ title: { value: "Detail title" }, originalTitle: {}, description: {}, releaseDate: {}, artwork: { poster: { deliveryUrl: detailPosterUrl }, backdrop: { deliveryUrl: "/api/v1/artwork/backdrop?variant=backdrop-detail" } } })
       : catalogResponse([{ id: "media-id", displayName: "local-file", effective: { title: "Detail title", posterUrl: null } }])));
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Detail title" }));
@@ -91,10 +93,12 @@ describe("App", () => {
     const detailImage = await screen.findByRole("img", { name: "Detail title" });
     expect(detailImage).toHaveClass("detail-artwork");
     expect(detailImage).toHaveAttribute("src", detailPosterUrl);
+    expect(document.querySelector("img.detail-backdrop")).toHaveAttribute("src", "/api/v1/artwork/backdrop?variant=backdrop-detail");
     fireEvent.error(detailImage);
     expect(screen.queryByRole("img", { name: "Detail title" })).not.toBeInTheDocument();
     expect(screen.getByTestId("detail-artwork-placeholder")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Detail title" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Play" }));
     expect(document.querySelector("video")).toHaveAttribute("src", "/api/v1/media/media-id/stream");
   });
 
@@ -106,6 +110,7 @@ describe("App", () => {
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "No detail poster" }));
     expect(await screen.findByTestId("detail-artwork-placeholder")).toBeInTheDocument();
+    expect(screen.getByTestId("backdrop-placeholder")).toBeInTheDocument();
   });
 
   it("renders an error when the catalog request fails", async () => {
@@ -114,5 +119,11 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No se ha podido cargar el catálogo.");
+  });
+
+  it("shows TMDB attribution", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([])));
+    render(<App />);
+    expect(await screen.findByText("This product uses the TMDB API but is not endorsed or certified by TMDB.")).toBeInTheDocument();
   });
 });
