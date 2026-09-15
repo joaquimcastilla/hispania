@@ -20,7 +20,7 @@ public static class TmdbServiceCollectionExtensions
         services.AddHttpClient<TmdbMovieMetadataProvider>(client =>
         {
             client.BaseAddress = new Uri("https://api.themoviedb.org/3/");
-            client.Timeout = options.Timeout;
+            client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.ReadAccessToken);
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         });

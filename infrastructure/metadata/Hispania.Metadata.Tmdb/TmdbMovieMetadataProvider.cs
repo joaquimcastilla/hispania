@@ -33,7 +33,7 @@ public sealed class TmdbMovieMetadataProvider : IMovieMetadataProvider
     public async ValueTask<MovieProviderResult> SearchAsync(MovieSearchRequest request, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.TitleCandidate)) return new MovieProviderInvalidResponse("A movie title is required.");
-        var query = $"search/movie?query={Uri.EscapeDataString(request.TitleCandidate)}&language={Uri.EscapeDataString(options.Language)}";
+        var query = $"search/movie?query={Uri.EscapeDataString(request.TitleCandidate)}&language={Uri.EscapeDataString(options.Language)}&region={Uri.EscapeDataString(options.Region)}&include_adult=false&page=1";
         if (request.Year is int year) query += $"&primary_release_year={year}";
         var response = await SendAsync(query, cancellationToken);
         if (response.Result is not null) return response.Result;

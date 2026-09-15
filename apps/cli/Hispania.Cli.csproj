@@ -4,4 +4,9 @@
     <AssemblyName>Hispania.Cli</AssemblyName>
     <RootNamespace>Hispania.Cli</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\contracts\metadata\Hispania.Metadata.Contracts.csproj" />
+    <ProjectReference Include="..\..\infrastructure\metadata\Hispania.Metadata.Tmdb\Hispania.Metadata.Tmdb.csproj" />
+  </ItemGroup>
+  <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
 </Project>

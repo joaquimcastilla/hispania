@@ -19,6 +19,9 @@ public sealed class TmdbMovieMetadataProviderTests
         Assert.Contains("query=A%20%26%20B", captured.RequestUri.Query);
         Assert.Contains("primary_release_year=2021", captured.RequestUri.Query);
         Assert.Contains("language=es-ES", captured.RequestUri.Query);
+        Assert.Contains("region=ES", captured.RequestUri.Query);
+        Assert.Contains("include_adult=false", captured.RequestUri.Query);
+        Assert.Contains("page=1", captured.RequestUri.Query);
         Assert.Equal("Bearer", captured.Headers.Authorization!.Scheme);
         Assert.Equal("fake-token", captured.Headers.Authorization.Parameter);
         var candidate = Assert.Single(result.Value, x => x.ExternalIdentifier.Value == "12");
@@ -68,6 +71,14 @@ public sealed class TmdbMovieMetadataProviderTests
         Assert.IsType<MovieProviderTimeout>(timeout);
         using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Provider(_ => throw new OperationCanceledException()).SearchAsync(new("Title", null, null), cancellation.Token).AsTask());
+    }
+
+    [Fact]
+    public async Task EmptyDetailsFieldsAndArtworkAreOmitted()
+    {
+        var result = Assert.IsType<MovieProviderSuccess<NormalizedMovieDocument>>(await Provider(_ => Json(HttpStatusCode.OK, """{"id":12,"title":"Title","original_title":"","overview":"","release_date":"","poster_path":null,"backdrop_path":null}""")).GetMovieAsync(new(new("tmdb"), new("movie"), "12")));
+        Assert.Single(result.Value.Fields);
+        Assert.Empty(result.Value.Artwork);
     }
 
     private static TmdbMovieMetadataProvider Provider(Func<HttpRequestMessage, HttpResponseMessage> send, Func<DateTimeOffset>? now = null)
