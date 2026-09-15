@@ -122,7 +122,7 @@ clients cannot bypass API.
 
 ## Phase 5 - First Web Client 0.5
 
-Status: **Web UI 0.1 — First Playable Movie completed.** The broader phase remains incomplete.
+Status: **Web UI 0.1 — First Playable Movie and Movie Detail / Library UX 0.1 completed.** The broader phase remains incomplete.
 
 The completed vertical slice was manually verified in a real browser with:
 
@@ -136,6 +136,8 @@ local filesystem
 ```
 
 It serves a catalogue list, selection and the native browser player from the same ASP.NET origin. It does not add transcoding, remuxing, database persistence, metadata providers, authentication, posters, settings or the remaining Phase 5 screens.
+
+Movie Detail / Library UX 0.1 — COMPLETE: a real local library scan, durable SQLite restart with stable `MediaEntityId`, API list, Web card/selection, detail view and native Direct Play were verified manually with the local movie. Poster/backdrop fallback was verified manually because this Work has no persisted enrichment/artwork; provider artwork delivery remains covered by deterministic E2E. The current visual design validates structure and functionality, not HISPANIA's final visual design.
 
 Implement:
 
