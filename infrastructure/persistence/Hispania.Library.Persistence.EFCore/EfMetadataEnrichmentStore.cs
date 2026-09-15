@@ -61,6 +61,14 @@ public sealed class EfMetadataEnrichmentStore(IDbContextFactory<LibraryCatalogDb
             artworkRecords.Where(x => x.TargetKind == TargetCode(target) && x.TargetId == TargetId(target)).Select(RehydrateArtwork).ToArray())).ToArray();
     }
 
+    public async ValueTask<ArtworkReference?> GetArtworkReferenceByIdAsync(ArtworkReferenceId id, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var record = await db.ArtworkReferences.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id.Value, cancellationToken);
+        return record is null ? null : RehydrateArtwork(record);
+    }
+
     public async ValueTask<bool> ApplyAsync(MetadataEnrichmentWrite write, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(write);

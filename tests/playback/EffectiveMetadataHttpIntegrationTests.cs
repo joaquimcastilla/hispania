@@ -55,9 +55,12 @@ public sealed class EffectiveMetadataHttpIntegrationTests
         Assert.Equal("tmdb", root.GetProperty("releaseDate").GetProperty("externalIdentifier").GetProperty("provider").GetString());
         var artwork = root.GetProperty("artwork");
         Assert.Equal("poster", artwork.GetProperty("poster").GetProperty("locatorValue").GetString());
+        Assert.Equal($"/api/v1/artwork/{poster.Id.Value}?variant=poster-card", artwork.GetProperty("poster").GetProperty("deliveryUrl").GetString());
         Assert.Equal("tmdb", artwork.GetProperty("poster").GetProperty("provider").GetString());
         Assert.Equal("backdrop", artwork.GetProperty("backdrop").GetProperty("locatorValue").GetString());
+        Assert.Equal($"/api/v1/artwork/{backdrop.Id.Value}?variant=backdrop-detail", artwork.GetProperty("backdrop").GetProperty("deliveryUrl").GetString());
         Assert.Equal("LocalProcess", artwork.GetProperty("backdrop").GetProperty("origin").GetString());
+        Assert.Null(artwork.GetProperty("logo").GetProperty("deliveryUrl").GetString());
         Assert.Equal("NoEligibleArtworkReference", artwork.GetProperty("logo").GetProperty("resolutionReason").GetString());
     }
 
@@ -73,6 +76,7 @@ public sealed class EffectiveMetadataHttpIntegrationTests
         using var json = JsonDocument.Parse(await existing.Content.ReadAsStringAsync());
         Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("title").GetProperty("value").ValueKind);
         Assert.Equal("NoEligibleAssertion", json.RootElement.GetProperty("title").GetProperty("resolutionReason").GetString());
+        Assert.Null(json.RootElement.GetProperty("artwork").GetProperty("poster").GetProperty("deliveryUrl").GetString());
     }
 
     [Fact]
@@ -127,6 +131,72 @@ public sealed class EffectiveMetadataHttpIntegrationTests
         Assert.Equal("/backdrop.jpg", root.GetProperty("artwork").GetProperty("backdrop").GetProperty("locatorValue").GetString());
         Assert.Equal("tmdb", root.GetProperty("title").GetProperty("provider").GetString());
         Assert.Equal(EffectiveMetadataResolver.PolicyVersion, root.GetProperty("policyVersion").GetString());
+        Assert.Equal($"/api/v1/artwork/{root.GetProperty("artwork").GetProperty("poster").GetProperty("winnerArtworkReferenceId").GetGuid()}?variant=poster-card", root.GetProperty("artwork").GetProperty("poster").GetProperty("deliveryUrl").GetString());
+        Assert.Equal($"/api/v1/artwork/{root.GetProperty("artwork").GetProperty("backdrop").GetProperty("winnerArtworkReferenceId").GetGuid()}?variant=backdrop-detail", root.GetProperty("artwork").GetProperty("backdrop").GetProperty("deliveryUrl").GetString());
+
+        using var listResponse = await host.Client.GetAsync("/api/v1/media");
+        using var list = JsonDocument.Parse(await listResponse.Content.ReadAsStringAsync());
+        Assert.Equal($"/api/v1/artwork/{root.GetProperty("artwork").GetProperty("poster").GetProperty("winnerArtworkReferenceId").GetGuid()}?variant=poster-card", list.RootElement[0].GetProperty("effective").GetProperty("posterUrl").GetString());
+    }
+
+    [Fact]
+    public async Task MediaListExposesOnlyTheWinnerPosterAsAHispaniaDeliveryUrl()
+    {
+        await using var host = await Host.CreateAsync();
+        var target = EnrichmentTarget.For(host.Entry.Media.Work.Id);
+        var poster = Artwork(target, "poster", "/poster.jpg", External("tmdb", "123", Earlier));
+        await host.Store.ApplyAsync(new MetadataEnrichmentWrite([], [], [poster], null));
+
+        using var response = await host.Client.GetAsync("/api/v1/media");
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var effective = json.RootElement[0].GetProperty("effective");
+
+        Assert.Equal($"/api/v1/artwork/{poster.Id.Value}?variant=poster-card", effective.GetProperty("posterUrl").GetString());
+        Assert.Equal(poster.Id.Value, Guid.Parse(effective.GetProperty("posterUrl").GetString()!.Split('/')[4].Split('?')[0]));
+        Assert.DoesNotContain("image.tmdb.org", effective.GetProperty("posterUrl").GetString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("tmdb-image", effective.GetProperty("posterUrl").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MediaListUsesNullWhenThereIsNoEffectivePoster()
+    {
+        await using var host = await Host.CreateAsync();
+        using var response = await host.Client.GetAsync("/api/v1/media");
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(JsonValueKind.Null, json.RootElement[0].GetProperty("effective").GetProperty("posterUrl").ValueKind);
+    }
+
+    [Fact]
+    public async Task RestartedSqliteKeepsTheSamePosterDeliveryUrlAndArtworkId()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "hispania-effective-http", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var entry = DirectPlayPlannerTests.Entry();
+            string initial;
+            ArtworkReferenceId artworkId;
+            await using (var first = await Host.CreateAsync(directory, entry))
+            {
+                var poster = Artwork(EnrichmentTarget.For(entry.Media.Work.Id), "poster", "/poster.jpg", External("tmdb", "123", Earlier));
+                artworkId = poster.Id;
+                await first.Store.ApplyAsync(new MetadataEnrichmentWrite([], [], [poster], null));
+                initial = await first.Client.GetStringAsync("/api/v1/media");
+            }
+
+            await using var restarted = await Host.CreateAsync(directory, entry);
+            var after = await restarted.Client.GetStringAsync("/api/v1/media");
+            using var initialJson = JsonDocument.Parse(initial);
+            using var afterJson = JsonDocument.Parse(after);
+            var expected = $"/api/v1/artwork/{artworkId.Value}?variant=poster-card";
+            Assert.Equal(expected, initialJson.RootElement[0].GetProperty("effective").GetProperty("posterUrl").GetString());
+            Assert.Equal(expected, afterJson.RootElement[0].GetProperty("effective").GetProperty("posterUrl").GetString());
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(directory, true);
+        }
     }
 
     private static MetadataAssertion Assertion(EnrichmentTarget target, string field, MetadataValue value, MetadataProvenance provenance, MetadataAssertionStatus status = MetadataAssertionStatus.Active)
@@ -157,6 +227,7 @@ public sealed class EffectiveMetadataHttpIntegrationTests
         public ValueTask<MetadataEnrichmentSnapshot> LoadAsync(CancellationToken cancellationToken = default) => inner.LoadAsync(cancellationToken);
         public ValueTask<MetadataEnrichmentTargetSnapshot> LoadForTargetAsync(EnrichmentTarget target, CancellationToken cancellationToken = default) => inner.LoadForTargetAsync(target, cancellationToken);
         public ValueTask<IReadOnlyCollection<MetadataEnrichmentTargetSnapshot>> LoadForTargetsAsync(IReadOnlyCollection<EnrichmentTarget> targets, CancellationToken cancellationToken = default) => inner.LoadForTargetsAsync(targets, cancellationToken);
+        public ValueTask<ArtworkReference?> GetArtworkReferenceByIdAsync(ArtworkReferenceId id, CancellationToken cancellationToken = default) => inner.GetArtworkReferenceByIdAsync(id, cancellationToken);
         public ValueTask<bool> ApplyAsync(MetadataEnrichmentWrite write, CancellationToken cancellationToken = default) => inner.ApplyAsync(write, cancellationToken);
     }
 
@@ -185,6 +256,7 @@ public sealed class EffectiveMetadataHttpIntegrationTests
             var app = builder.Build();
             await app.Services.GetRequiredService<SqliteMigrationRunner>().MigrateAndLoadAsync(app.Services.GetRequiredService<EfLibraryCatalogStore>(), default);
             app.MapEffectiveMetadataEndpoints();
+            app.MapMediaListEndpoint();
             await app.StartAsync();
             return new Host(app, app.GetTestClient(), app.Services.GetRequiredService<IMetadataEnrichmentStore>(), entry, directory);
         }

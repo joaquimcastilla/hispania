@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -42,11 +42,30 @@ describe("App", () => {
     expect(document.querySelector("video")).toHaveAttribute("src", "/api/v1/media/media-id/stream");
   });
 
-  it("uses effective title and release year in the library grid", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([{ id: "media-id", displayName: "local-file", effective: { title: "Seduction and Snacks", releaseDate: "2021-01-01", poster: { scheme: "tmdb-image", value: "/poster.jpg" } } }])));
+  it("uses effective title, year, and posterUrl in the library grid", async () => {
+    const posterUrl = "/api/v1/artwork/artwork-id?variant=poster-card";
+    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([{ id: "media-id", displayName: "local-file", effective: { title: "Seduction and Snacks", releaseDate: "2021-01-01", posterUrl } }])));
     render(<App />);
     expect(await screen.findByRole("button", { name: /Seduction and Snacks/ })).toBeInTheDocument();
     expect(screen.getByText("2021")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Seduction and Snacks" })).toHaveAttribute("src", posterUrl);
+    expect(screen.getByRole("img", { name: "Seduction and Snacks" })).toHaveAttribute("loading", "lazy");
+  });
+
+  it("keeps a per-card placeholder when posterUrl is missing or the image fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([
+      { id: "with-poster", displayName: "With poster", effective: { title: "With poster", posterUrl: "/api/v1/artwork/a?variant=poster-card" } },
+      { id: "without-poster", displayName: "Without poster", effective: { title: "Without poster", posterUrl: null } }
+    ])));
+    render(<App />);
+
+    const image = await screen.findByRole("img", { name: "With poster" });
+    expect(screen.getByTestId("grid-artwork-placeholder")).toBeInTheDocument();
+    fireEvent.error(image);
+    expect(screen.queryByRole("img", { name: "With poster" })).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("grid-artwork-placeholder")).toHaveLength(2);
+    expect(screen.getByText("With poster")).toBeInTheDocument();
+    expect(screen.getByText("Without poster")).toBeInTheDocument();
   });
 
   it("loads effective metadata detail while keeping Play available", async () => {
@@ -58,6 +77,35 @@ describe("App", () => {
     await user.click(await screen.findByRole("button", { name: "Title" }));
     expect(await screen.findByText("Description")).toBeInTheDocument();
     expect(document.querySelector("video")).toHaveAttribute("src", "/api/v1/media/media-id/stream");
+  });
+
+  it("renders the detail poster deliveryUrl and falls back locally on error", async () => {
+    const user = userEvent.setup();
+    const detailPosterUrl = "/api/v1/artwork/detail-artwork?variant=poster-card";
+    vi.stubGlobal("fetch", vi.fn((url: string) => url.endsWith("/metadata")
+      ? catalogResponse({ title: { value: "Detail title" }, originalTitle: {}, description: {}, releaseDate: {}, artwork: { poster: { deliveryUrl: detailPosterUrl }, backdrop: {} } })
+      : catalogResponse([{ id: "media-id", displayName: "local-file", effective: { title: "Detail title", posterUrl: null } }])));
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Detail title" }));
+
+    const detailImage = await screen.findByRole("img", { name: "Detail title" });
+    expect(detailImage).toHaveClass("detail-artwork");
+    expect(detailImage).toHaveAttribute("src", detailPosterUrl);
+    fireEvent.error(detailImage);
+    expect(screen.queryByRole("img", { name: "Detail title" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("detail-artwork-placeholder")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Detail title" })).toBeInTheDocument();
+    expect(document.querySelector("video")).toHaveAttribute("src", "/api/v1/media/media-id/stream");
+  });
+
+  it("uses a detail placeholder when metadata has no poster deliveryUrl", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn((url: string) => url.endsWith("/metadata")
+      ? catalogResponse({ title: { value: "No detail poster" }, originalTitle: {}, description: {}, releaseDate: {}, artwork: { poster: {}, backdrop: {} } })
+      : catalogResponse([{ id: "media-id", displayName: "local-file", effective: { title: "No detail poster" } }])));
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "No detail poster" }));
+    expect(await screen.findByTestId("detail-artwork-placeholder")).toBeInTheDocument();
   });
 
   it("renders an error when the catalog request fails", async () => {

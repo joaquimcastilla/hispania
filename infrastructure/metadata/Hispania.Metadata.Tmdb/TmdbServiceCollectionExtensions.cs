@@ -6,6 +6,12 @@ namespace Hispania.Metadata.Tmdb;
 
 public static class TmdbServiceCollectionExtensions
 {
+    public static IServiceCollection AddTmdbArtworkContentResolver(this IServiceCollection services)
+    {
+        services.AddHttpClient<IArtworkContentResolver, TmdbArtworkContentResolver>();
+        return services;
+    }
+
     public static IServiceCollection AddTmdbMovieMetadataProvider(this IServiceCollection services, TmdbMovieMetadataProviderOptions options)
     {
         if (!options.Enabled) return services;

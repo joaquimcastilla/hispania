@@ -44,9 +44,9 @@ public sealed record EffectiveMediaMetadataResponse(
         EffectiveMetadataFieldResponse<string>.From(projection.Description),
         EffectiveMetadataFieldResponse<DateOnly?>.From(projection.ReleaseDate),
         new EffectiveArtworkResponse(
-            EffectiveArtworkItemResponse.From(projection.Poster),
-            EffectiveArtworkItemResponse.From(projection.Backdrop),
-            EffectiveArtworkItemResponse.From(projection.Logo)));
+            EffectiveArtworkItemResponse.From(projection.Poster, ArtworkDeliveryVariant.PosterCard),
+            EffectiveArtworkItemResponse.From(projection.Backdrop, ArtworkDeliveryVariant.BackdropDetail),
+            EffectiveArtworkItemResponse.From(projection.Logo, null)));
 }
 
 public sealed record EffectiveMetadataFieldResponse<T>(
@@ -79,6 +79,7 @@ public sealed record EffectiveArtworkItemResponse(
     string Role,
     string? LocatorScheme,
     string? LocatorValue,
+    string? DeliveryUrl,
     Guid? WinnerArtworkReferenceId,
     string? Origin,
     string? Provider,
@@ -87,10 +88,11 @@ public sealed record EffectiveArtworkItemResponse(
     decimal? Confidence,
     string ResolutionReason)
 {
-    internal static EffectiveArtworkItemResponse From(EffectiveArtworkSelection selection) => new(
+    internal static EffectiveArtworkItemResponse From(EffectiveArtworkSelection selection, ArtworkDeliveryVariant? deliveryVariant) => new(
         selection.Role.Code,
         selection.Locator?.Scheme,
         selection.Locator?.OpaqueValue,
+        deliveryVariant is null ? null : ArtworkDeliveryUrl.For(selection, deliveryVariant.Value),
         selection.WinnerArtworkReferenceId?.Value,
         selection.SourceProvenance?.Origin.ToString(),
         selection.SourceProvenance?.Provider?.Value,

@@ -38,6 +38,7 @@ if (string.IsNullOrWhiteSpace(sqlitePath))
     sqlitePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "catalog.sqlite");
 }
 builder.Services.AddSqliteLibraryPersistence(sqlitePath);
+builder.Services.AddTmdbArtworkContentResolver();
 builder.Services.AddSingleton<IEffectiveMetadataResolver, EffectiveMetadataResolver>();
 builder.Services.AddSingleton<IEffectiveMetadataProjectionReader, EffectiveMetadataProjectionReader>();
 var tmdbOptions = builder.Configuration.GetSection("Metadata:Tmdb").Get<TmdbMovieMetadataProviderOptions>() ?? new TmdbMovieMetadataProviderOptions();
@@ -77,6 +78,7 @@ app.MapGet("/internal/module-test", (IArchitectureDemonstrationService service) 
 app.MapGet("/internal/modules/health", (IModuleRuntime runtime) => Results.Ok(runtime.ListHealth()));
 app.MapDirectPlayEndpoints();
 app.MapEffectiveMetadataEndpoints();
+app.MapArtworkDeliveryEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();

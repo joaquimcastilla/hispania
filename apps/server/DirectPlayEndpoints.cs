@@ -10,9 +10,14 @@ public static class DirectPlayEndpoints
 {
     public static IEndpointRouteBuilder MapDirectPlayEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/v1/media", ListAsync);
-
+        endpoints.MapMediaListEndpoint();
         endpoints.MapGet("/api/v1/media/{mediaEntityId}/stream", StreamAsync);
+        return endpoints;
+    }
+
+    public static IEndpointRouteBuilder MapMediaListEndpoint(this IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapGet("/api/v1/media", ListAsync);
         return endpoints;
     }
 
@@ -29,7 +34,8 @@ public static class DirectPlayEndpoints
             return new MediaListItem(entry.Id.Value, entry.DisplayName, new EffectiveMediaListSummary(
                 projection?.Title.Value,
                 projection?.ReleaseDate.Value,
-                projection is null ? null : EffectiveArtworkLocator.From(projection.Poster)));
+                projection is null ? null : EffectiveArtworkLocator.From(projection.Poster),
+                projection is null ? null : ArtworkDeliveryUrl.For(projection.Poster, ArtworkDeliveryVariant.PosterCard)));
         }));
     }
 
@@ -110,7 +116,7 @@ public static class DirectPlayEndpoints
     }
 
     public sealed record MediaListItem(Guid Id, string DisplayName, EffectiveMediaListSummary Effective);
-    public sealed record EffectiveMediaListSummary(string? Title, DateOnly? ReleaseDate, EffectiveArtworkLocator? Poster);
+    public sealed record EffectiveMediaListSummary(string? Title, DateOnly? ReleaseDate, EffectiveArtworkLocator? Poster, string? PosterUrl);
     public sealed record EffectiveArtworkLocator(string Scheme, string Value)
     {
         internal static EffectiveArtworkLocator? From(EffectiveArtworkSelection selection) => selection.Locator is null ? null : new(selection.Locator.Scheme, selection.Locator.OpaqueValue);
