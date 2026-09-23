@@ -11,7 +11,7 @@
 
 Fase de roadmap: Phase 6 — Playback Engine 0.6. El flujo previsto separa capacidades de cliente, fuentes disponibles, planificación y ejecución mediante PlaybackRequest, ClientCapabilities, PlaybackPlanner, PlaybackPlan y PlaybackExecutor.
 
-ADR-0015 está Accepted y su primer Direct Play está implementado y verificado manualmente: un planner y un executor separados sirven MP4 con H.264 y AAC desde filesystem local. HTTP adapta resultados neutrales y single byte ranges; la Web UI usa el elemento `video` nativo. No hay transcoding, remuxing, subtítulos, autenticación, fuentes remotas ni negociación general de capacidades.
+ADR-0015 está Accepted y su primer Direct Play está implementado y verificado manualmente: un planner y un executor separados sirven MP4 con H.264 y AAC desde filesystem local. HTTP adapta resultados neutrales y single byte ranges; la Web UI usa el elemento `video` nativo. Existe un fallback experimental de conversión FFmpeg para AVI/MP4 incompatibles, alojado hoy en el servidor HTTP. No hay negociación general de capacidades, subtítulos, autenticación ni fuentes remotas.
 
 ## Límites
 

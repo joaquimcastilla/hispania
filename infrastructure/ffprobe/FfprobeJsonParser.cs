@@ -15,7 +15,6 @@ internal static class FfprobeJsonParser
             if (!root.TryGetProperty("format", out var format) || !root.TryGetProperty("streams", out var streams) || streams.ValueKind != JsonValueKind.Array) return Invalid();
             var name = StringValue(format, "format_name");
             if (string.IsNullOrWhiteSpace(name)) return Invalid();
-            if (!name.Split(',').Any(value => string.Equals(value, "mp4", StringComparison.OrdinalIgnoreCase))) return new ProbeFailed(new ProbeFailure(ProbeFailureKind.UnsupportedFormat));
             var observations = new List<ProbeStreamObservation>();
             foreach (var stream in streams.EnumerateArray()) observations.Add(ParseStream(stream));
             return new ProbeSucceeded(new ProbeResult(name, ParseDuration(StringValue(format, "duration")), observations));

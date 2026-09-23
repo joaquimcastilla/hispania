@@ -1,0 +1,9 @@
+.tmdb-identification { display: grid; gap: .7rem; margin-top: 1.4rem; padding: 1rem; border: 1px solid rgba(126, 193, 255, .35); border-radius: .7rem; background: rgba(8, 15, 27, .7); text-shadow: none; }
+.tmdb-identification h3 { margin: 0; }
+.tmdb-identification button { width: fit-content; min-height: 38px; padding: .5rem .8rem; color: #eaf5ff; border: 1px solid #5c95c5; border-radius: .45rem; background: #19304a; cursor: pointer; font-weight: 750; }
+.tmdb-identification button:disabled { cursor: wait; opacity: .7; }
+.tmdb-candidates { display: grid; gap: .65rem; }
+.tmdb-candidate { display: grid; gap: .25rem; padding: .8rem; border: 1px solid #3d5878; border-radius: .55rem; background: rgba(23, 37, 56, .78); }
+.tmdb-candidate span { color: #b7c4d5; font-size: .9rem; }
+.tmdb-identification [role="alert"] { margin: 0; color: #ffb5b5; }
+.tmdb-identification [role="status"] { margin: 0; color: #b9e5c2; }

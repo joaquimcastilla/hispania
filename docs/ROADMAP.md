@@ -1,5 +1,13 @@
 # Roadmap
 
+## Estado verificado — 2026-09-23
+
+La solución compila y supera 412 pruebas .NET. El cliente web supera 29 pruebas y compila para producción. Stage B–E del editor están implementadas; sigue pendiente la comprobación manual con navegador y TMDB real. Existe un fallback experimental a FFmpeg para AVI/MP4 incompatibles; todavía no constituye Phase 7. La revisión de fronteras y riesgos está en `MODULARITY_AUDIT_2026-09-23.md`.
+
+## Stage E verification note — 2026-09-22
+
+Stage E — Web Metadata Editor: COMPLETE by automated verification. Backend: 389/389 tests; frontend: 20/20 tests. The editor consumes the updated read model after PUT/DELETE, preserves drafts on failed saves, distinguishes `PUT []` from `DELETE`, and is wired to the real `/media/{mediaId}/metadata/edit` route. Live browser navigation and live TMDB verification remain pending.
+
 This roadmap is architectural first.
 
 ## Phase 0 - Project Constitution
@@ -135,7 +143,7 @@ local filesystem
 -> Play / Pause / Seek / Volume / Mute / Fullscreen
 ```
 
-It serves a catalogue list, selection and the native browser player from the same ASP.NET origin. It does not add transcoding, remuxing, database persistence, metadata providers, authentication, posters, settings or the remaining Phase 5 screens.
+El corte original servía catálogo y reproducción nativa desde el mismo origen. Después se añadieron persistencia, metadatos, pósteres, configuración de metadatos y un fallback experimental a FFmpeg. Siguen pendientes autenticación y las demás pantallas de Phase 5.
 
 Movie Detail / Library UX 0.1 — COMPLETE: a real local library scan, durable SQLite restart with stable `MediaEntityId`, API list, Web card/selection, detail view and native Direct Play were verified manually with the local movie. Poster/backdrop fallback was verified manually because this Work has no persisted enrichment/artwork; provider artwork delivery remains covered by deterministic E2E. The current visual design validates structure and functionality, not HISPANIA's final visual design.
 
@@ -154,7 +162,7 @@ scan and play a local movie through the web client.
 
 Status: Initial Direct Play slice completed; the full phase remains incomplete.
 
-The completed slice plans and executes local MP4/H.264/AAC Direct Play with single HTTP byte ranges. It deliberately excludes client capability negotiation, direct stream alternatives, transcoding, remuxing, subtitles and adaptive streaming.
+El corte Direct Play planifica y ejecuta MP4/H.264/AAC local con byte ranges. Un fallback experimental convierte algunos AVI/MP4 incompatibles a MP4 en caché. Siguen pendientes la negociación de capacidades, alternativas Direct Stream, subtítulos y streaming adaptativo.
 
 Build:
 
@@ -210,6 +218,8 @@ Metadata Providers 0.1 — COMPLETE. This completed bounded slice is the movie m
 
 Effective Metadata 0.1 — COMPLETE. ADR-0018 is implemented as policy `effective-metadata-v0.1`: a pure deterministic, on-demand projection of persisted assertions and artwork references, with targeted reads, SQLite restart coverage, metadata detail, media-list summary, HISPANIA artwork delivery URLs and Web UI consumption. It preserves provenance and does not persist or cache a materialized winner. Provider ranking, locale/region, user preferences, raw/admin metadata API, manual editing, materialized/cache projection, confidence ranking and identifier-lifecycle influence remain explicitly deferred.
 
+TMDB Movies 0.2 — Automatic Enrichment is implementation-complete pending live TMDB verification. After the configured library scan commits, a separate Application workflow parses conservative filename signals, searches TMDB, auto-confirms only one exact title/year candidate, and reuses the existing confirm/fetch/persistence lifecycle. Confirmed successful enrichments are not searched or fetched again on startup. Ambiguous, unmatched and provider-failure cases remain catalogued with local fallback and manual identification available. Deferred: fuzzy scoring, bulk enrichment, scheduler/retry policy, TV shows, TMDB collections, cast, genres, trailers, ratings, token settings UI and durable artwork cache.
+
 Contracts:
 
 - IMetadataProvider
@@ -222,6 +232,10 @@ Initial implementations:
 - one external provider.
 
 ## Phase 10 - 1.0 Product Baseline
+
+Stage B update: normalized rich persistence for Work-scoped genres, tags, studios and credits, reusable provider/person identity, secondary external IDs and SQLite migration `0003_rich_metadata` is implemented and covered by restart, idempotency, changed-payload and multi-provider tests. Settings, locks, manual overrides and editor API/UI are implemented; live verification remains pending.
+
+Movie Metadata Model 0.2 + Metadata Editor 0.1 — ACTIVE pending live verification. Stage B — Rich Metadata Persistence: COMPLETE. Stage C — Metadata Settings, Locks & Manual Overrides: COMPLETE. Stage D — Metadata Editor API: COMPLETE. Stage E — Web Metadata Editor: COMPLETE by automated verification. People & Credits: person profile endpoint, cached provider profile and local filmography are implemented; broader UI/contract verification remains in progress. Live TMDB verification: PENDING. Movie Detail remains the consumption projection and Metadata Editor is the administrative surface; Effective Metadata remains authoritative. Migration IDs: `20260922000100_initial`, `20260922000200_metadata_enrichment`, `20260922000300_rich_metadata`, `20260922000400_metadata_settings`, `20260922000500_person_metadata`.
 
 Required:
 

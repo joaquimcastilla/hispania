@@ -16,6 +16,26 @@ TestResults/
 apps/web/node_modules/
 apps/web/dist/
 
+# Operator-managed local metadata provider secret
+tools/dev-launcher/tmdb-token.txt
+
 # OS files
 Thumbs.db
 .DS_Store
+.artifacts/dev-launcher/
+
+# Local generated build/test output (including project-level artifact folders)
+.artifacts/
+
+# Local operator state and media; never publish runtime state or personal files
+.openclaw-hispania-state/
+.openclaw-hispania-worker.pid
+.openclaw-hispania-stop
+OPENCLAW-SUPERVISOR.log
+movies/
+
+# Local autonomous worker configuration
+SOUL.md
+OPENCLAW-WORKER-PROMPT.md
+run-hispania-continuous.ps1
+ensure-hispania-worker.ps1

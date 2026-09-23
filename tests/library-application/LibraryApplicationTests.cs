@@ -114,11 +114,15 @@ public sealed class ProbedMediaMapperTests
     }
 
     [Fact]
-    public void RejectsUnsupportedCodecs()
+    public void MapsObservedMkvAndAviCodecsWithoutClaimingDirectPlay()
     {
-        var outcome = new ProbedMediaMapper().Map(Candidate(), Success(videoCodec: "hevc"), Identity());
+        var mkv = Assert.IsType<MediaMappingSucceeded>(new ProbedMediaMapper().Map(Candidate("feature.mkv"), Success("hevc", container: "matroska,webm", audioCodec: "opus"), Identity())).Entry;
+        var avi = Assert.IsType<MediaMappingSucceeded>(new ProbedMediaMapper().Map(Candidate("feature.avi"), Success("mpeg4", container: "avi", audioCodec: "mp3"), Identity())).Entry;
 
-        Assert.Equal(MediaMappingFailureKind.UnsupportedMedia, Assert.IsType<MediaMappingRejected>(outcome).Kind);
+        Assert.Equal("matroska", Assert.IsType<VideoTechnicalProfile>(mkv.Media.VideoAsset.TechnicalRepresentations.Single().Profile).Codec.Code is "hevc" ? mkv.Media.VideoAsset.TechnicalRepresentations.Single().SourceBindings.Single().ContainerExposure!.ContainerFormat.Code : "");
+        Assert.Equal("avi", avi.Media.VideoAsset.TechnicalRepresentations.Single().SourceBindings.Single().ContainerExposure!.ContainerFormat.Code);
+        Assert.Equal("opus", Assert.IsType<AudioTechnicalProfile>(mkv.Media.AudioAsset.TechnicalRepresentations.Single().Profile).Codec.Code);
+        Assert.Equal("mp3", Assert.IsType<AudioTechnicalProfile>(avi.Media.AudioAsset.TechnicalRepresentations.Single().Profile).Codec.Code);
     }
 
     [Fact]
@@ -142,10 +146,10 @@ public sealed class ProbedMediaMapperTests
 
     private static ImportedPlayableMovieIdentity Identity() => new ImportedPlayableMovieIdentityFactory().Create();
 
-    private static ProbeSucceeded Success(string videoCodec = "h264", bool durationPresent = true) => new(new ProbeResult("mov,mp4,m4a", durationPresent ? TimeSpan.FromSeconds(123) : null,
+    private static ProbeSucceeded Success(string videoCodec = "h264", bool durationPresent = true, string container = "mov,mp4,m4a", string audioCodec = "aac") => new(new ProbeResult(container, durationPresent ? TimeSpan.FromSeconds(123) : null,
     [
         new VideoStreamObservation(0, videoCodec, 1920, 1080, new ObservedRational(24000, 1001), 8, 4_000_000),
-        new AudioStreamObservation(1, "aac", 48000, 2, null, null)
+        new AudioStreamObservation(1, audioCodec, 48000, 2, null, null)
     ]));
 
     private static void AssertCoverage(Hispania.Media.Domain.Timelines.Timeline timeline, Hispania.Media.Domain.Identity.AssetId assetId)

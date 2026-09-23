@@ -35,7 +35,7 @@ Todo componente importante debe depender de contratos, no de implementaciones co
 
 ## Estado
 
-Pre-alpha / diseño arquitectónico.
+Pre-alpha con vertical local funcional: descubrimiento, catálogo SQLite, metadatos TMDB, editor web y reproducción Direct Play. La compatibilidad mediante FFmpeg está en fase experimental. La revisión de límites modulares y las tareas abiertas están en `docs/MODULARITY_AUDIT_2026-09-23.md` y `TODO.md`.
 
 Ver:
 

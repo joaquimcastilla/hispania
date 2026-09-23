@@ -3,6 +3,7 @@ using Hispania.Media.Domain.Identity;
 using Hispania.Playback.Contracts;
 using Hispania.Media.Domain.Enrichment;
 using Hispania.Metadata.Contracts;
+using Hispania.Media.Domain.TechnicalRepresentations;
 
 namespace Hispania.Server;
 
@@ -35,8 +36,31 @@ public static class DirectPlayEndpoints
                 projection?.Title.Value,
                 projection?.ReleaseDate.Value,
                 projection is null ? null : EffectiveArtworkLocator.From(projection.Poster),
-                projection is null ? null : ArtworkDeliveryUrl.For(projection.Poster, ArtworkDeliveryVariant.PosterCard)));
+                projection is null ? null : ArtworkDeliveryUrl.For(projection.Poster, ArtworkDeliveryVariant.PosterCard)),
+                Technical(entry));
         }));
+    }
+
+    private static MediaTechnicalSummary Technical(MediaCatalogEntry entry)
+    {
+        var video = entry.Media.VideoAsset.TechnicalRepresentations.FirstOrDefault(x => x.Profile is VideoTechnicalProfile);
+        var videoProfile = video?.Profile as VideoTechnicalProfile;
+        var container = video?.SourceBindings.FirstOrDefault(x => x.MediaSourceId == entry.Media.Source.Id)?.ContainerExposure?.ContainerFormat.Code;
+        var audioTracks = entry.Media.AudioAsset.TechnicalRepresentations
+            .Where(x => x.Profile is AudioTechnicalProfile)
+            .Select(x => new { Representation = x, Profile = (AudioTechnicalProfile)x.Profile })
+            .Select(x => new AudioTrackSummary(
+                x.Representation.Id.Value.ToString(),
+                x.Representation.SourceBindings.FirstOrDefault(binding => binding.MediaSourceId == entry.Media.Source.Id)?.ContainerExposure?.StreamLocator.StreamIndex,
+                x.Profile.Codec.Code,
+                x.Profile.ChannelCount,
+                x.Profile.SampleRateHertz))
+            .ToArray();
+        return new MediaTechnicalSummary(
+            entry.Media.Timeline.Duration?.Value.TotalSeconds,
+            container,
+            videoProfile is null ? null : new VideoTrackSummary(videoProfile.Codec.Code, videoProfile.Dimensions.Width, videoProfile.Dimensions.Height, videoProfile.BitDepth),
+            audioTracks);
     }
 
     private static async Task StreamAsync(HttpContext context, string mediaEntityId, IPlaybackPlanner planner, IDirectPlayExecutor executor)
@@ -62,15 +86,23 @@ public static class DirectPlayEndpoints
             return;
         }
 
-        if (planning is DirectPlayUnavailable)
-        {
-            context.Response.StatusCode = StatusCodes.Status415UnsupportedMediaType;
-            return;
-        }
-
         if (parsedRange is HttpRangeParseResult.Unsupported)
         {
             context.Response.StatusCode = StatusCodes.Status416RangeNotSatisfiable;
+            return;
+        }
+
+        if (planning is DirectPlayUnavailable)
+        {
+            var transcoder = context.RequestServices.GetService<ICompatibleMediaTranscoder>();
+            var compatibleFile = transcoder is null ? null : await transcoder.GetMp4FileAsync(id, context.RequestAborted).ConfigureAwait(false);
+            if (compatibleFile is null)
+            {
+                context.Response.StatusCode = StatusCodes.Status415UnsupportedMediaType;
+                return;
+            }
+
+            await Results.File(compatibleFile, "video/mp4", enableRangeProcessing: true).ExecuteAsync(context).ConfigureAwait(false);
             return;
         }
 
@@ -115,8 +147,11 @@ public static class DirectPlayEndpoints
         }
     }
 
-    public sealed record MediaListItem(Guid Id, string DisplayName, EffectiveMediaListSummary Effective);
+    public sealed record MediaListItem(Guid Id, string DisplayName, EffectiveMediaListSummary Effective, MediaTechnicalSummary Technical);
     public sealed record EffectiveMediaListSummary(string? Title, DateOnly? ReleaseDate, EffectiveArtworkLocator? Poster, string? PosterUrl);
+    public sealed record MediaTechnicalSummary(double? DurationSeconds, string? Container, VideoTrackSummary? Video, IReadOnlyCollection<AudioTrackSummary> AudioTracks);
+    public sealed record VideoTrackSummary(string Codec, int Width, int Height, int? BitDepth);
+    public sealed record AudioTrackSummary(string RepresentationId, int? StreamIndex, string Codec, int Channels, int SampleRateHertz);
     public sealed record EffectiveArtworkLocator(string Scheme, string Value)
     {
         internal static EffectiveArtworkLocator? From(EffectiveArtworkSelection selection) => selection.Locator is null ? null : new(selection.Locator.Scheme, selection.Locator.OpaqueValue);

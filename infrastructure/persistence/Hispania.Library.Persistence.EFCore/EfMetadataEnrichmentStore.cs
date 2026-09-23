@@ -3,6 +3,7 @@ using Hispania.Media.Domain.Identity;
 using Hispania.Metadata.Contracts;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
+using Microsoft.Data.Sqlite;
 
 namespace Hispania.Library.Persistence.EFCore;
 
@@ -26,6 +27,60 @@ public sealed class EfMetadataEnrichmentStore(IDbContextFactory<LibraryCatalogDb
         var refresh = (await db.MetadataRefreshStates.AsNoTracking().ToListAsync(cancellationToken)).Select(RehydrateRefresh).ToArray();
         return new MetadataEnrichmentSnapshot(associations, assertions, artwork, refresh);
     }
+
+    public async ValueTask<ExternalIdentifierAssociation?> FindConfirmedAssociationAsync(ExternalIdentifier identifier, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(identifier);
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var record = await db.ExternalIdentifierAssociations.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.ProviderCode == identifier.Provider.Value && x.NamespaceCode == identifier.Namespace.Value &&
+            x.IdentifierValue == identifier.Value && x.CurrentStatusCode == "confirmed", cancellationToken);
+        if (record is null) return null;
+        var lifecycle = await db.ExternalIdentifierLifecycles.AsNoTracking().Where(x => x.AssociationId == record.Id).OrderBy(x => x.Ordinal).ToListAsync(cancellationToken);
+        var relations = await db.ExternalIdentifierRelations.AsNoTracking().Where(x => x.AssociationId == record.Id).ToListAsync(cancellationToken);
+        return RehydrateAssociation(record, lifecycle, relations);
+    }
+
+    public async ValueTask<MovieMetadataConfirmationResult> ConfirmAssociationAsync(ExternalIdentifierAssociation association, DateTimeOffset occurredAt, CancellationToken cancellationToken = default)
+    {
+        var workId = association.Target.WorkId ?? throw new InvalidOperationException("Confirmed movie identifiers require a Work target.");
+        var confirmed = await FindConfirmedAssociationAsync(association.Identifier, cancellationToken);
+        if (confirmed is not null && confirmed.Target.WorkId != workId)
+            return await RejectConflictAsync(association, confirmed, occurredAt, cancellationToken);
+
+        association.TransitionTo(new ExternalIdentifierAssociationLifecycleEntry(ExternalIdentifierAssociationStatus.Confirmed, occurredAt,
+            new MetadataProvenance(MetadataProvenanceOrigin.ExternalProvider, occurredAt, association.Identifier.Provider, association.Identifier)));
+        try
+        {
+            await ApplyAsync(new MetadataEnrichmentWrite([association], [], [], null), cancellationToken);
+            return new(true);
+        }
+        catch (DbUpdateException exception) when (IsConfirmedIdentifierUniqueViolation(exception))
+        {
+            var winner = await FindConfirmedAssociationAsync(association.Identifier, cancellationToken);
+            if (winner is null || winner.Target.WorkId == workId) throw;
+            var candidate = (await LoadAsync(cancellationToken)).Associations.Single(x => x.Id == association.Id);
+            return await RejectConflictAsync(candidate, winner, occurredAt, cancellationToken);
+        }
+    }
+
+    private async ValueTask<MovieMetadataConfirmationResult> RejectConflictAsync(ExternalIdentifierAssociation attempted, ExternalIdentifierAssociation existing, DateTimeOffset occurredAt, CancellationToken cancellationToken)
+    {
+        var existingWorkId = existing.Target.WorkId ?? throw new InvalidOperationException("Confirmed movie identifiers require a Work target.");
+        var attemptedWorkId = attempted.Target.WorkId ?? throw new InvalidOperationException("Movie candidates require a Work target.");
+        var id = attempted.Identifier;
+        var reason = $"external-identifier-conflict|provider={id.Provider.Value}|namespace={id.Namespace.Value}|identifier={id.Value}|existingWorkId={existingWorkId.Value:D}|existingAssociationId={existing.Id.Value:D}|attemptedWorkId={attemptedWorkId.Value:D}|attemptedAssociationId={attempted.Id.Value:D}";
+        attempted.TransitionTo(new ExternalIdentifierAssociationLifecycleEntry(ExternalIdentifierAssociationStatus.Rejected, occurredAt,
+            new MetadataProvenance(MetadataProvenanceOrigin.ExternalProvider, occurredAt, id.Provider, id), reason));
+        await ApplyAsync(new MetadataEnrichmentWrite([attempted], [], [], null), cancellationToken);
+        return new(false, new ExternalIdentifierConflict(id, existingWorkId, existing.Id, attemptedWorkId, attempted.Id));
+    }
+
+    private static bool IsConfirmedIdentifierUniqueViolation(DbUpdateException exception) =>
+        exception.InnerException is SqliteException sqlite && sqlite.SqliteErrorCode == 19 && sqlite.SqliteExtendedErrorCode == 2067 &&
+        sqlite.Message.Contains("external_identifier_associations.provider_code", StringComparison.Ordinal) &&
+        sqlite.Message.Contains("external_identifier_associations.namespace_code", StringComparison.Ordinal) &&
+        sqlite.Message.Contains("external_identifier_associations.identifier_value", StringComparison.Ordinal);
 
     public async ValueTask<MetadataEnrichmentTargetSnapshot> LoadForTargetAsync(EnrichmentTarget target, CancellationToken cancellationToken = default)
     {
@@ -124,7 +179,12 @@ public sealed class EfMetadataEnrichmentStore(IDbContextFactory<LibraryCatalogDb
         var entries = lifecycle.OrderBy(x => x.Ordinal).Select(Lifecycle).ToArray();
         if (entries.Length == 0) throw new InvalidOperationException("Persisted external identifier association lacks lifecycle history.");
         var result = new ExternalIdentifierAssociation(new ExternalIdentifierAssociationId(record.Id), Identifier(record.ProviderCode, record.NamespaceCode, record.IdentifierValue), Target(record.TargetKind, record.TargetId), entries[0]);
-        foreach (var entry in entries.Skip(1)) result.TransitionTo(entry);
+        foreach (var entry in entries.Skip(1))
+        {
+            if (result.CurrentStatus == ExternalIdentifierAssociationStatus.Rejected && entry.Status == ExternalIdentifierAssociationStatus.Candidate)
+                result.ReopenRejectedIdentifierConflict(entry);
+            else result.TransitionTo(entry);
+        }
         if (Code(result.CurrentStatus) != record.CurrentStatusCode) throw new InvalidOperationException("Persisted association current status conflicts with lifecycle history.");
         foreach (var relation in relations) result.AddRelatedAssociation(new ExternalIdentifierAssociationRelation(new ExternalIdentifierAssociationId(relation.RelatedAssociationId), RelationKind(relation.KindCode), Provenance(relation.EvidenceOriginCode, relation.EvidenceProviderCode, relation.EvidenceIdentifierProviderCode, relation.EvidenceIdentifierNamespaceCode, relation.EvidenceIdentifierValue, relation.EvidenceObservedUtcTicks, relation.EvidenceObservedOffsetMinutes, relation.EvidenceConfidence), relation.Reason));
         return result;

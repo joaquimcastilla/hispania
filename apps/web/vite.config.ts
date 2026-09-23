@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         "/api": {
-          target: environment.HISPANIA_API_URL ?? "http://localhost:5000",
+          target: environment.HISPANIA_API_URL ?? "http://127.0.0.1:5070",
           changeOrigin: true
         }
       }

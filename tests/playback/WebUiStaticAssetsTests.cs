@@ -1,6 +1,7 @@
 using Hispania.Server;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace Hispania.Playback.Tests;
@@ -48,6 +49,23 @@ public sealed class WebUiStaticAssetsTests
         {
             Directory.Delete(root, true);
         }
+    }
+
+    [Fact]
+    public void DevelopmentUsesTheCurrentViteBuildInsteadOfAnOlderOutputWebRoot()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "hispania-web-assets", Guid.NewGuid().ToString("N"));
+        var contentRoot = Path.Combine(root, "server");
+        var publishedWebRoot = Path.Combine(contentRoot, "wwwroot");
+        var build = Path.Combine(root, "web", "dist");
+        Directory.CreateDirectory(publishedWebRoot); Directory.CreateDirectory(build);
+        try
+        {
+            var environment = new TestWebHostEnvironment(contentRoot, publishedWebRoot) { EnvironmentName = Environments.Development };
+            WebUiStaticAssets.Configure(environment);
+            Assert.Equal(build, environment.WebRootPath);
+        }
+        finally { Directory.Delete(root, true); }
     }
 
     private sealed class TestWebHostEnvironment(string contentRootPath, string webRootPath) : IWebHostEnvironment

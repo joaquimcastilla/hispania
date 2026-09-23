@@ -25,3 +25,9 @@ Las asociaciones de identificadores externos conservan un lifecycle local audita
 Puede implementar únicamente el incremento de Phase 2 que una tarea autorice, con sus tests y documentación inmediata. No sustituye las decisiones aún abiertas documentadas en `MEDIA_DOMAIN_DESIGN.md`, ni modifica Kernel, runtime, contratos de otros subsistemas o infraestructura sin declararlo y obtener autorización.
 
 Están fuera de Media: Preservation, Distributed Media, P2P, Global Catalog, Global Certification, Global Moderation, Global Asset Registry, Network Normalization, Peer Discovery y Distributed Manifests. Media funciona localmente y nunca depende de esos futuros sistemas.
+### Person y créditos audiovisuales
+
+Las personas acreditadas son entidades navegables de primer nivel, con identidad interna estable (`PersonId`) y external identities separadas por `(provider, externalId)`. Los créditos enlazan `WorkId` y `PersonId`; por eso una persona puede participar en múltiples películas, series u otros `Work`, y puede tener varios roles en el mismo `Work` sin duplicarse. La futura filmografía local debe derivarse de los créditos persistidos mediante la frontera provider-neutral de metadata, no mediante una consulta externa.
+## Metadata milestone status
+
+Stage B — Rich Metadata Persistence: COMPLETE. Stage C — Metadata Settings, Locks & Manual Overrides: COMPLETE. Stage D — Metadata Editor API: PENDING. Stage E — Web Metadata Editor: PENDING. People & Credits 0.1: FUTURE. Live TMDB verification: PENDING. Person external identity is `(ProviderCode, ProviderId)`; legacy migration IDs are normalized by the compatibility bridge without changing ProductVersion or domain data. Locked rich collections preserve only the refreshed provider projection, and identical metadata fingerprints are not reapplied.

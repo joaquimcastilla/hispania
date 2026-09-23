@@ -25,6 +25,7 @@ public static class TmdbServiceCollectionExtensions
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         });
         services.AddSingleton<IMovieMetadataProvider>(provider => provider.GetRequiredService<TmdbMovieMetadataProvider>());
+        services.AddSingleton<IPersonMetadataProvider>(provider => provider.GetRequiredService<TmdbMovieMetadataProvider>());
         return services;
     }
 }

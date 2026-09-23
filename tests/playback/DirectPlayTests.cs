@@ -37,6 +37,7 @@ public sealed class DirectPlayPlannerTests
     [InlineData("hevc", "aac", "mp4")]
     [InlineData("h264", "opus", "mp4")]
     [InlineData("h264", "aac", "mkv")]
+    [InlineData("mpeg4", "mp3", "avi")]
     public void UnsupportedCombinationIsNotPlanned(string videoCodec, string audioCodec, string container)
     {
         var entry = Entry(videoCodec, audioCodec, container);

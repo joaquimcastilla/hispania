@@ -4,10 +4,11 @@ using Hispania.Library.Contracts;
 namespace Hispania.Library.LocalFileSystem;
 
 /// <summary>
-/// Discovers MP4 files beneath configured local roots. Reparse-point files and directories are never followed or emitted.
+/// Discovers supported local video containers beneath configured roots. Reparse-point files and directories are never followed or emitted.
 /// </summary>
 public sealed class LocalFileSystemMediaDiscovery : IMediaDiscovery
 {
+    private static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase) { ".mp4", ".mkv", ".avi" };
     private readonly LocalLibraryRootConfiguration _configuration;
 
     public LocalFileSystemMediaDiscovery(LocalLibraryRootConfiguration configuration)
@@ -58,7 +59,7 @@ public sealed class LocalFileSystemMediaDiscovery : IMediaDiscovery
                         continue;
                     }
 
-                    if (!string.Equals(Path.GetExtension(entry), ".mp4", StringComparison.OrdinalIgnoreCase))
+                    if (!SupportedExtensions.Contains(Path.GetExtension(entry)))
                     {
                         continue;
                     }

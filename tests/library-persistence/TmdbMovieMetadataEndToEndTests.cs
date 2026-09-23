@@ -46,7 +46,7 @@ public sealed class TmdbMovieMetadataEndToEndTests
             var projection = await new EffectiveMetadataProjectionReader(store, new EffectiveMetadataResolver()).ReadAsync(EnrichmentTarget.For(work));
             Assert.Equal("Seduction and Snacks", projection.Title.Value); Assert.Equal("Seduction & Snacks", projection.OriginalTitle.Value); Assert.Equal("Version A", projection.Description.Value); Assert.Equal(new DateOnly(2021, 1, 1), projection.ReleaseDate.Value);
             Assert.Equal("/poster-a.jpg", projection.Poster.Locator!.OpaqueValue); Assert.Equal("/backdrop.jpg", projection.Backdrop.Locator!.OpaqueValue);
-            var refresh = Assert.Single(applied.RefreshStates); Assert.Equal(MetadataRefreshStatus.Succeeded, refresh.Status); Assert.Equal("tmdb-movie-v1", refresh.MappingVersion); Assert.Equal(fingerprint, refresh.PayloadFingerprint); Assert.NotNull(refresh.LastSuccessAt);
+            var refresh = Assert.Single(applied.RefreshStates); Assert.Equal(MetadataRefreshStatus.Succeeded, refresh.Status); Assert.Equal("tmdb-movie-v2", refresh.MappingVersion); Assert.Equal(fingerprint, refresh.PayloadFingerprint); Assert.NotNull(refresh.LastSuccessAt);
             assertionIds = applied.Assertions.Select(x => x.Id.Value).ToArray(); artworkIds = applied.ArtworkReferences.Select(x => x.Id.Value).ToArray();
             await application.FetchAndApplyMovieMetadataAsync(associationId);
             var repeated = await store.LoadAsync(); Assert.Equal(assertionIds.Order(), repeated.Assertions.Select(x => x.Id.Value).Order()); Assert.Equal(artworkIds.Order(), repeated.ArtworkReferences.Select(x => x.Id.Value).Order());

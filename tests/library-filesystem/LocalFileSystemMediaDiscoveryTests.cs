@@ -7,16 +7,22 @@ namespace Hispania.Library.LocalFileSystem.Tests;
 public sealed class LocalFileSystemMediaDiscoveryTests
 {
     [Fact]
-    public async Task DiscoversMp4FilesUnderTheConfiguredRootWithoutExposingAbsolutePaths()
+    public async Task DiscoversSupportedVideoContainersUnderTheConfiguredRootWithoutExposingAbsolutePaths()
     {
         using var directory = TemporaryDirectory.Create();
         directory.WriteFile("movie.mp4", "media");
         directory.WriteFile("nested/feature.MP4", "media");
-        directory.WriteFile("nested/ignore.mkv", "media");
+        directory.WriteFile("nested/feature.mkv", "media");
+        directory.WriteFile("nested/archive.AVI", "media");
+        directory.WriteFile("nested/ignore.txt", "media");
 
         var candidates = await DiscoverAsync(directory.Path);
 
-        Assert.Equal(["movie.mp4", "nested/feature.MP4"], candidates.Select(candidate => candidate.File.RelativePath).Order());
+        Assert.Equal(4, candidates.Count);
+        Assert.Contains(candidates, candidate => candidate.File.RelativePath == "movie.mp4");
+        Assert.Contains(candidates, candidate => candidate.File.RelativePath == "nested/feature.MP4");
+        Assert.Contains(candidates, candidate => candidate.File.RelativePath == "nested/feature.mkv");
+        Assert.Contains(candidates, candidate => candidate.File.RelativePath == "nested/archive.AVI");
         Assert.All(candidates, candidate =>
         {
             Assert.Equal("movies", candidate.File.RootKey);

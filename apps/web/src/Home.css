@@ -1,0 +1,29 @@
+.app-shell:has(.home-page) > .topbar {
+  min-height: 68px;
+  gap: 1.5rem;
+}
+
+@media (max-width: 700px) {
+  .app-shell:has(.home-page) > .topbar {
+    min-height: 62px;
+    gap: .75rem;
+  }
+}
+
+.content-card-poster {
+  flex-basis: clamp(112px, 8.3vw, 138px);
+}
+
+.carousel-poster .carousel-track {
+  gap: clamp(.5rem, .55vw, .65rem);
+}
+
+@media (max-width: 600px) {
+  .content-card-poster {
+    flex-basis: clamp(118px, 38vw, 145px);
+  }
+
+  .carousel-poster .carousel-track {
+    gap: .7rem;
+  }
+}

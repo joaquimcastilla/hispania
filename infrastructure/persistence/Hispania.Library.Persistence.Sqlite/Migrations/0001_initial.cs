@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Hispania.Library.Persistence.Sqlite.Migrations;
 
 [DbContext(typeof(LibraryCatalogDbContext))]
-[Migration("0001_initial")]
+[Migration("20260922000100_initial")]
 public sealed class Initial : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

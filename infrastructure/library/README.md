@@ -1,6 +1,6 @@
 # Hispania.Library.LocalFileSystem
 
-This adapter implements `IMediaDiscovery` for configured local filesystem roots and currently emits only `.mp4` files.
+This adapter implements `IMediaDiscovery` for configured local filesystem roots and emits `.mp4`, `.mkv` and `.avi` files. Discovery does not claim playback compatibility; Direct Play remains a separate capability decision.
 
 ## Security policy
 

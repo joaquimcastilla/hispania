@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Hispania.Library.Persistence.Sqlite.Migrations;
 
 [DbContext(typeof(LibraryCatalogDbContext))]
-[Migration("0002_metadata_enrichment")]
+[Migration("20260922000200_metadata_enrichment")]
 public sealed class MetadataEnrichment : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

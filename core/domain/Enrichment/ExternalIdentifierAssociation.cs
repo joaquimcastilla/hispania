@@ -49,6 +49,18 @@ public sealed class ExternalIdentifierAssociation
         lifecycleEntries.Add(lifecycleEntry);
     }
 
+    public void ReopenRejectedIdentifierConflict(ExternalIdentifierAssociationLifecycleEntry candidateEntry)
+    {
+        ArgumentNullException.ThrowIfNull(candidateEntry);
+        if (CurrentStatus != ExternalIdentifierAssociationStatus.Rejected ||
+            lifecycleEntries[^1].Reason?.StartsWith("external-identifier-conflict|", StringComparison.Ordinal) != true ||
+            candidateEntry.Status != ExternalIdentifierAssociationStatus.Candidate)
+        {
+            throw new DomainValidationException("external-identifier-association.conflict-reopen.invalid", "Only a rejected external identifier conflict can be explicitly reopened as a candidate.");
+        }
+        lifecycleEntries.Add(candidateEntry);
+    }
+
     public void AddRelatedAssociation(ExternalIdentifierAssociationRelation relation)
     {
         ArgumentNullException.ThrowIfNull(relation);
