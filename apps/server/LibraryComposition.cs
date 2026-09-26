@@ -1,7 +1,6 @@
 using Hispania.Library.Application;
 using Hispania.Library.Contracts;
 using Hispania.Library.Persistence.EFCore;
-using Hispania.Library.Persistence.Sqlite;
 using Hispania.Metadata.Application;
 
 namespace Hispania.Server;
@@ -23,9 +22,9 @@ public sealed class LibraryReadiness
     public void MarkReady() => IsReady = true;
 }
 
-public sealed class PersistenceStartupService(SqliteMigrationRunner migrationRunner, EfLibraryCatalogStore store) : IHostedService
+public sealed class PersistenceStartupService(ILibraryPersistenceInitializer initializer, EfLibraryCatalogStore store) : IHostedService
 {
-    public Task StartAsync(CancellationToken cancellationToken) => migrationRunner.MigrateAndLoadAsync(store, cancellationToken);
+    public Task StartAsync(CancellationToken cancellationToken) => initializer.InitializeAsync(store, cancellationToken);
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 

@@ -11,6 +11,22 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hispania
+          POSTGRES_PASSWORD: hispania
+          POSTGRES_DB: hispania_tests
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hispania -d hispania_tests"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      HISPANIA_POSTGRES_TEST_CONNECTION: Host=localhost;Port=5432;Database=hispania_tests;Username=hispania;Password=hispania;Timeout=5
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v4
@@ -21,6 +37,8 @@ jobs:
           node-version: 24.x
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+      - name: Install FFmpeg integration tools
+        run: sudo apt-get update && sudo apt-get install --yes ffmpeg
       - run: npm ci
         working-directory: apps/web
       - run: npm run build
@@ -28,7 +46,33 @@ jobs:
       - run: npm test
         working-directory: apps/web
       - run: dotnet restore Hispania.CrossPlatform.slnf
+      - name: Require PostgreSQL integration configuration
+        run: test -n "$HISPANIA_POSTGRES_TEST_CONNECTION"
       - run: dotnet build Hispania.CrossPlatform.slnf --no-restore
+      - name: Build and package the greeting extension independently
+        shell: pwsh
+        run: |
+          dotnet publish modules/extension-demo/Hispania.ExtensionDemo.csproj --configuration Release --output .artifacts/phase7/greeting-v1
+          ./tools/package-extension.ps1 -PublishDirectory .artifacts/phase7/greeting-v1 -ManifestTemplate extensions/experimental-greeting/manifest.template.json -OutputPath .artifacts/phase7/greeting-1.0.0.hispania
+          dotnet publish modules/extension-demo/Hispania.ExtensionDemo.csproj --configuration Release --output .artifacts/phase7/greeting-v2
+          ./tools/package-extension.ps1 -PublishDirectory .artifacts/phase7/greeting-v2 -ManifestTemplate extensions/experimental-greeting/manifest-v2.template.json -OutputPath .artifacts/phase7/greeting-2.0.0.hispania
+      - name: Build and sign an out-of-process greeting package
+        shell: pwsh
+        run: |
+          dotnet publish modules/extension-demo/Hispania.ExtensionDemo.csproj --configuration Release --output .artifacts/phase8/greeting-oop
+          $rsa = [System.Security.Cryptography.RSA]::Create(2048)
+          $keyPath = Join-Path $env:RUNNER_TEMP 'hispania-ci-publisher.pem'
+          [System.IO.File]::WriteAllText($keyPath, $rsa.ExportPkcs8PrivateKeyPem())
+          try {
+            ./tools/package-extension.ps1 -PublishDirectory .artifacts/phase8/greeting-oop -ManifestTemplate extensions/experimental-greeting/manifest-outofprocess.template.json -OutputPath .artifacts/phase8/greeting-3.0.0.hispania -PublisherId 'hispania.ci.ephemeral' -SigningKeyPath $keyPath
+          } finally {
+            $rsa.Dispose()
+            Remove-Item -LiteralPath $keyPath -Force
+          }
+      - name: Require live PostgreSQL migration and constraint integration
+        run: dotnet test tests/library-persistence/Hispania.Library.Persistence.Sqlite.Tests.csproj --no-build --filter FullyQualifiedName~PostgreSqlMigrationAndConnectionFailureRecoveryUseAnIsolatedSchema --logger "console;verbosity=normal"
+      - name: Require Linux FFmpeg worker process recovery and real media integration
+        run: dotnet test tests/playback/Hispania.Playback.Tests.csproj --no-build --filter "FullyQualifiedName~FfmpegWorkerRecoveryTests|FullyQualifiedName~MkvFallbackIntegrationTests" --logger "console;verbosity=normal"
       - run: dotnet test Hispania.CrossPlatform.slnf --no-build
 
   validate-windows-launcher:
@@ -38,4 +82,13 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      - name: Install FFmpeg integration tools
+        run: choco install ffmpeg --yes --no-progress
+      - run: dotnet restore Hispania.CrossPlatform.slnf
+      - name: Require Windows FFmpeg worker process and media integration
+        run: dotnet test tests/playback/Hispania.Playback.Tests.csproj --no-restore --filter "FullyQualifiedName~FfmpegWorkerRecoveryTests|FullyQualifiedName~MkvFallbackIntegrationTests" --logger "console;verbosity=normal"
+      - name: Require Windows module Job Object attachment and recovery
+        env:
+          HISPANIA_TEST_WINDOWS_JOB_OBJECT: "1"
+        run: dotnet test tests/unit/Hispania.Runtime.Tests.csproj --no-restore --filter FullyQualifiedName~OutOfProcessGreetingRunsThroughPublicContractAndRecoversAfterWorkerCrash --logger "console;verbosity=normal"
       - run: dotnet test tools/dev-launcher-tests/Hispania.DevLauncher.Tests.csproj

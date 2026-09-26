@@ -13,8 +13,9 @@ public static class PersonMetadataEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> GetAsync(Guid personId, IRichMetadataStore store, IMediaCatalogReader catalog, IEffectiveMetadataProjectionReader metadata, IPersonMetadataProvider? provider, CancellationToken cancellationToken)
+    private static async Task<IResult> GetAsync(Guid personId, IRichMetadataStore store, IMediaCatalogReader catalog, IEffectiveMetadataProjectionReader metadata, IServiceProvider services, CancellationToken cancellationToken)
     {
+        var provider = services.GetService<IPersonMetadataProvider>();
         if (personId == Guid.Empty) return Results.NotFound();
         var snapshot = await store.GetPersonAsync(personId, cancellationToken);
         if (snapshot is null) return Results.NotFound();
