@@ -103,7 +103,14 @@ internal sealed class OutOfProcessModule : IModule, IModuleHealthCheck, IModuleC
         deadline.CancelAfter(TimeSpan.FromSeconds(30));
         try
         {
-            await pipe.WaitForConnectionAsync(deadline.Token).ConfigureAwait(false);
+            var connection = pipe.WaitForConnectionAsync(deadline.Token);
+            var exited = process.WaitForExitAsync(deadline.Token);
+            if (await Task.WhenAny(connection, exited).ConfigureAwait(false) == exited)
+            {
+                await exited.ConfigureAwait(false);
+                throw new InvalidOperationException($"Module host exited during startup with code {process.ExitCode}. {hostErrors}");
+            }
+            await connection.ConfigureAwait(false);
             var frame = await ModuleWorkerProtocolV1.ReadFrameAsync<ModuleWorkerFrameV1>(pipe, cancellationToken: deadline.Token).ConfigureAwait(false)
                 ?? throw new EndOfStreamException("Module host closed before authentication.");
             if (frame.Kind != "hello") throw new InvalidDataException("Expected module host hello message.");

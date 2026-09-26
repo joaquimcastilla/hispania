@@ -16,6 +16,8 @@ public sealed record OutOfProcessResourceLimits
     public TimeSpan MaximumRequestDuration { get; init; } = TimeSpan.FromSeconds(30);
     public int MaximumCpuRatePercent { get; init; } = 75;
     public bool RequireOperatingSystemLimits { get; init; } = true;
+    /// <summary>Enables Linux RLIMIT_AS in addition to the managed heap cap. Disabled by default because CoreCLR address-space reservations exceed practical process quotas.</summary>
+    public bool EnforceLinuxAddressSpaceLimit { get; init; }
 
     public void Validate()
     {
@@ -36,7 +38,7 @@ public sealed record OutOfProcessResourceLimits
             var arguments = start.ArgumentList.ToArray();
             start.FileName = "prlimit";
             start.ArgumentList.Clear();
-            start.ArgumentList.Add($"--as={MaximumMemoryBytes}");
+            if (EnforceLinuxAddressSpaceLimit) start.ArgumentList.Add($"--as={MaximumMemoryBytes}");
             start.ArgumentList.Add($"--cpu={MaximumCpuSeconds}");
             start.ArgumentList.Add("--");
             start.ArgumentList.Add(executable);
