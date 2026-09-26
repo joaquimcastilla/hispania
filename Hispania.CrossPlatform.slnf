@@ -1,0 +1,35 @@
+{
+  "solution": {
+    "path": "Hispania.sln",
+    "projects": [
+      "apps\\server\\Hispania.Server.csproj",
+      "apps\\cli\\Hispania.Cli.csproj",
+      "core\\kernel\\Hispania.Kernel.csproj",
+      "core\\runtime\\Hispania.Runtime.csproj",
+      "contracts\\module-system\\Hispania.ModuleSystem.Contracts.csproj",
+      "contracts\\architecture-test\\Hispania.ArchitectureTest.Contracts.csproj",
+      "modules\\architecture-test\\Hispania.ArchitectureTest.Modules.csproj",
+      "tests\\unit\\Hispania.Runtime.Tests.csproj",
+      "core\\domain\\Hispania.Media.Domain.csproj",
+      "tests\\unit\\Hispania.Media.Domain.Tests.csproj",
+      "contracts\\library\\Hispania.Library.Contracts.csproj",
+      "tests\\library-contracts\\Hispania.Library.Contracts.Tests.csproj",
+      "infrastructure\\library\\Hispania.Library.LocalFileSystem.csproj",
+      "tests\\library-filesystem\\Hispania.Library.LocalFileSystem.Tests.csproj",
+      "infrastructure\\ffprobe\\Hispania.Library.FFprobe.csproj",
+      "tests\\ffprobe\\Hispania.Library.FFprobe.Tests.csproj",
+      "application\\library\\Hispania.Library.Application.csproj",
+      "application\\metadata\\Hispania.Metadata.Application.csproj",
+      "tests\\library-application\\Hispania.Library.Application.Tests.csproj",
+      "contracts\\playback\\Hispania.Playback.Contracts.csproj",
+      "application\\playback\\Hispania.Playback.Application.csproj",
+      "tests\\playback\\Hispania.Playback.Tests.csproj",
+      "infrastructure\\persistence\\Hispania.Library.Persistence.EFCore\\Hispania.Library.Persistence.EFCore.csproj",
+      "infrastructure\\persistence\\Hispania.Library.Persistence.Sqlite\\Hispania.Library.Persistence.Sqlite.csproj",
+      "tests\\library-persistence\\Hispania.Library.Persistence.Sqlite.Tests.csproj",
+      "infrastructure\\metadata\\Hispania.Metadata.Tmdb\\Hispania.Metadata.Tmdb.csproj",
+      "contracts\\metadata\\Hispania.Metadata.Contracts.csproj",
+      "tests\\metadata-tmdb\\Hispania.Metadata.Tmdb.Tests.csproj"
+    ]
+  }
+}

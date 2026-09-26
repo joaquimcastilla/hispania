@@ -27,6 +27,15 @@ jobs:
         working-directory: apps/web
       - run: npm test
         working-directory: apps/web
-      - run: dotnet restore Hispania.sln
-      - run: dotnet build Hispania.sln --no-restore
-      - run: dotnet test Hispania.sln --no-build
+      - run: dotnet restore Hispania.CrossPlatform.slnf
+      - run: dotnet build Hispania.CrossPlatform.slnf --no-restore
+      - run: dotnet test Hispania.CrossPlatform.slnf --no-build
+
+  validate-windows-launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet test tools/dev-launcher-tests/Hispania.DevLauncher.Tests.csproj

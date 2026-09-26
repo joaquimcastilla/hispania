@@ -10,6 +10,10 @@ Read:
 - `docs/ARCHITECTURE.md`
 - relevant ADRs.
 
+## Validation
+
+The Linux CI job restores, builds and tests `Hispania.CrossPlatform.slnf`. This filter includes every cross-platform project and excludes the Windows-only development launcher. The Windows CI job runs `tools/dev-launcher-tests/Hispania.DevLauncher.Tests.csproj` with the Windows Desktop runtime. On Windows, `dotnet test Hispania.sln` remains the complete local check.
+
 ## Pull requests
 
 A PR should state:

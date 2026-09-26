@@ -1,5 +1,12 @@
 # PROGRESS-LOG.md
 
+### 2026-09-26 — Corrección de CI Linux/Windows — PASS local
+- Goal: reparar la validación del commit `34681b0` en GitHub Actions.
+- Finding: GitHub descargó ese commit correctamente; el job Ubuntu abortó al ejecutar `Hispania.DevLauncher.Tests` porque `Microsoft.WindowsDesktop.App` sólo está disponible en Windows. La compilación y las demás pruebas publicadas en el log pasaron.
+- Changed: filtro `Hispania.CrossPlatform.slnf` para restore/build/test Linux y job Windows separado para las pruebas del launcher.
+- Verification: comandos del filtro y pruebas Windows ejecutados localmente; resultado final sujeto al nuevo run de GitHub Actions.
+- Next: comprobar ambos jobs del nuevo commit remoto.
+
 ### 2026-09-23 — Auditoría integral y sincronización Git — PASS
 - Goal: revisar la consistencia modular y publicar el estado real del árbol.
 - Changed: auditoría de fronteras en `docs/MODULARITY_AUDIT_2026-09-23.md`, roadmap y backlog actualizados; expectativa web obsoleta corregida; artefactos locales excluidos de Git.
