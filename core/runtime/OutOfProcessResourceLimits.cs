@@ -7,7 +7,9 @@ namespace Hispania.Runtime;
 /// <summary>Operational resource ceilings. These contain faults but do not sandbox module code.</summary>
 public sealed record OutOfProcessResourceLimits
 {
-    public long MaximumMemoryBytes { get; init; } = 512L * 1024 * 1024;
+    // CoreCLR reserves virtual address space at startup; 512 MiB can prevent a
+    // constrained .NET worker from connecting even when its committed heap is small.
+    public long MaximumMemoryBytes { get; init; } = 2L * 1024 * 1024 * 1024;
     public int MaximumCpuSeconds { get; init; } = 120;
     public int MaximumConcurrentRequests { get; init; } = 1;
     public int MaximumWindowsProcessCount { get; init; } = 16;

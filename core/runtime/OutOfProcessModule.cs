@@ -100,7 +100,7 @@ internal sealed class OutOfProcessModule : IModule, IModuleHealthCheck, IModuleC
         process.ErrorDataReceived += (_, eventArgs) => { if (eventArgs.Data is not null) lock (hostErrors) hostErrors.AppendLine(eventArgs.Data); };
         process.BeginErrorReadLine();
         var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(TimeSpan.FromSeconds(15));
+        deadline.CancelAfter(TimeSpan.FromSeconds(30));
         try
         {
             await pipe.WaitForConnectionAsync(deadline.Token).ConfigureAwait(false);
@@ -211,7 +211,9 @@ internal sealed class OutOfProcessModule : IModule, IModuleHealthCheck, IModuleC
         try
         {
             await SendFrameAsync(ModuleWorkerFrameV1.From("health", new ModuleWorkerHealthRequestV1(id)), cancellationToken).ConfigureAwait(false);
-            var frame = await completion.Task.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
+            // CI runners and Windows Job Object constrained processes can be
+            // briefly starved while their runtime initializes or performs GC.
+            var frame = await completion.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false);
             if (frame?.Kind != "health") { healthy = false; return false; }
             var response = frame.Decode<ModuleWorkerHealthResponseV1>();
             healthy = response.CorrelationId == id && response.Healthy;

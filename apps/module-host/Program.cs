@@ -17,7 +17,7 @@ internal static class ModuleHost
         {
             var options = Parse(args);
             await using var pipe = new NamedPipeClientStream(".", options.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-            await pipe.ConnectAsync(15_000);
+            await pipe.ConnectAsync(30_000);
             await ModuleWorkerProtocolV1.WriteFrameAsync(pipe,
                 ModuleWorkerFrameV1.From("hello", new ModuleWorkerHelloV1(options.Manifest.Id, options.Manifest.Version,
                     ModuleWorkerProtocolV1.ProtocolId, ModuleWorkerProtocolV1.Version, ModuleWorkerProtocolV1.Version, options.Token)));
