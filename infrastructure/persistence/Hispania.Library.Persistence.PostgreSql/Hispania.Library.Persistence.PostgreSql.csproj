@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>Hispania.Library.Persistence.PostgreSql</AssemblyName><RootNamespace>Hispania.Library.Persistence.PostgreSql</RootNamespace><NoWarn>$(NoWarn);CA1861</NoWarn></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Hispania.Library.Persistence.EFCore\Hispania.Library.Persistence.EFCore.csproj" />
+    <ProjectReference Include="..\..\..\contracts\library\Hispania.Library.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\contracts\metadata\Hispania.Metadata.Contracts.csproj" />
+  </ItemGroup>
+</Project>

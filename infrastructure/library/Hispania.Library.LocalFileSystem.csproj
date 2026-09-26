@@ -6,5 +6,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\contracts\library\Hispania.Library.Contracts.csproj" />
     <ProjectReference Include="..\..\contracts\playback\Hispania.Playback.Contracts.csproj" />
+    <ProjectReference Include="..\..\core\domain\Hispania.Media.Domain.csproj" />
   </ItemGroup>
 </Project>

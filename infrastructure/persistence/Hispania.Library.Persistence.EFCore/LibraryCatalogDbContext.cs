@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Hispania.Library.Persistence.EFCore;
 
@@ -31,9 +30,6 @@ public sealed class LibraryCatalogDbContext(DbContextOptions<LibraryCatalogDbCon
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        var guid = new ValueConverter<Guid, byte[]>(
-            value => SqliteScalarConversions.ToCanonicalUuidBytes(value),
-            value => SqliteScalarConversions.FromCanonicalUuidBytes(value));
         modelBuilder.Entity<ImportRecord>(entity => { entity.ToTable("library_imports"); entity.HasKey(x => x.Id); entity.HasIndex(x => new { x.RootKey, x.RelativePath }).IsUnique(); });
         modelBuilder.Entity<WorkRecord>(entity => { entity.ToTable("works"); entity.HasKey(x => x.Id); });
         modelBuilder.Entity<MediaEntityRecord>(entity => { entity.ToTable("media_entities"); entity.HasKey(x => x.Id); entity.HasOne<WorkRecord>().WithMany().HasForeignKey(x => x.WorkId); });
@@ -44,7 +40,7 @@ public sealed class LibraryCatalogDbContext(DbContextOptions<LibraryCatalogDbCon
         modelBuilder.Entity<SourceRecord>(entity => { entity.ToTable("media_sources"); entity.HasKey(x => x.Id); });
         modelBuilder.Entity<BindingRecord>(entity => { entity.ToTable("representation_source_bindings"); entity.HasKey(x => new { x.RepresentationId, x.SourceId }); entity.HasOne<RepresentationRecord>().WithMany().HasForeignKey(x => x.RepresentationId); entity.HasOne<SourceRecord>().WithMany().HasForeignKey(x => x.SourceId); });
         modelBuilder.Entity<CoverageRecord>(entity => { entity.ToTable("asset_coverages"); entity.HasKey(x => x.Id); entity.HasIndex(x => new { x.TimelineId, x.AssetId }).IsUnique(); entity.HasOne<TimelineRecord>().WithMany().HasForeignKey(x => x.TimelineId); entity.HasOne<AssetRecord>().WithMany().HasForeignKey(x => x.AssetId); });
-        modelBuilder.Entity<ExternalIdentifierAssociationRecord>(entity => { entity.ToTable("external_identifier_associations"); entity.HasKey(x => x.Id); });
+        modelBuilder.Entity<ExternalIdentifierAssociationRecord>(entity => { entity.ToTable("external_identifier_associations"); entity.HasKey(x => x.Id); entity.HasIndex(x => new { x.ProviderCode, x.NamespaceCode, x.IdentifierValue }).HasDatabaseName("ux_confirmed_external_identifier").HasFilter("current_status_code = 'confirmed'").IsUnique(); });
         modelBuilder.Entity<ExternalIdentifierLifecycleRecord>(entity => { entity.ToTable("external_identifier_lifecycle_entries"); entity.HasKey(x => x.Id); entity.HasIndex(x => new { x.AssociationId, x.Ordinal }).IsUnique(); });
         modelBuilder.Entity<ExternalIdentifierRelationRecord>(entity => { entity.ToTable("external_identifier_association_relations"); entity.HasKey(x => new { x.AssociationId, x.RelatedAssociationId, x.KindCode }); });
         modelBuilder.Entity<MetadataAssertionRecord>(entity => { entity.ToTable("metadata_assertions"); entity.HasKey(x => x.Id); entity.Property(x => x.ProvenanceOriginCode).HasColumnName("provenance_origin"); });
@@ -61,12 +57,8 @@ public sealed class LibraryCatalogDbContext(DbContextOptions<LibraryCatalogDbCon
         {
             foreach (var property in entity.GetProperties())
             {
-                if (entity.ClrType == typeof(MetadataAssertionRecord) && property.Name == nameof(MetadataAssertionRecord.ProvenanceOriginCode))
-                {
-                    continue;
-                }
+                if (entity.ClrType == typeof(MetadataAssertionRecord) && property.Name == nameof(MetadataAssertionRecord.ProvenanceOriginCode)) continue;
                 property.SetColumnName(ToSnakeCase(property.Name));
-                if (property.ClrType == typeof(Guid)) { property.SetValueConverter(guid); property.SetColumnType("BLOB"); }
             }
         }
     }

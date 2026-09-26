@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Hispania.Library.Contracts;
+using Hispania.Media.Domain.Sources;
 
 namespace Hispania.Library.LocalFileSystem;
 
@@ -73,7 +74,8 @@ public sealed class LocalFileSystemMediaDiscovery : IMediaDiscovery
                         candidate = new DiscoveredMediaCandidate(
                             new LibraryFileReference(root.RootKey, relativePath),
                             file.Length,
-                            file.LastWriteTimeUtc);
+                            file.LastWriteTimeUtc,
+                            new MediaSource(Hispania.Media.Domain.Identity.MediaSourceId.New(), LibrarySourceLocator.From(new LibraryFileReference(root.RootKey, relativePath))));
                     }
                     catch (IOException)
                     {
