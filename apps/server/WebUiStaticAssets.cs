@@ -6,10 +6,11 @@ namespace Hispania.Server;
 
 public static class WebUiStaticAssets
 {
-    public static void Configure(IWebHostEnvironment environment)
+    public static void Configure(IWebHostEnvironment environment, string build = "modern")
     {
         ArgumentNullException.ThrowIfNull(environment);
-        var webRootPath = ResolveWebRootPath(environment.ContentRootPath, environment.WebRootPath, environment.IsDevelopment());
+        if (build is not ("modern" or "classic")) throw new ArgumentException("Web build must be 'modern' or 'classic'.", nameof(build));
+        var webRootPath = ResolveWebRootPath(environment.ContentRootPath, environment.WebRootPath, environment.IsDevelopment(), build);
         if (webRootPath is null)
         {
             return;
@@ -19,11 +20,11 @@ public static class WebUiStaticAssets
         environment.WebRootFileProvider = new PhysicalFileProvider(webRootPath);
     }
 
-    private static string? ResolveWebRootPath(string contentRootPath, string? defaultWebRootPath, bool preferDevelopmentBuild)
+    private static string? ResolveWebRootPath(string contentRootPath, string? defaultWebRootPath, bool preferDevelopmentBuild, string build)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(contentRootPath);
 
-        var developmentBuildPath = Path.GetFullPath(Path.Combine(contentRootPath, "..", "web", "dist"));
+        var developmentBuildPath = Path.GetFullPath(Path.Combine(contentRootPath, "..", "web", "dist", build));
         if (preferDevelopmentBuild && Directory.Exists(developmentBuildPath))
         {
             return developmentBuildPath;

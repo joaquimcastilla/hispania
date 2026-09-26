@@ -13,7 +13,7 @@ public sealed class WebUiStaticAssetsTests
     {
         var root = Path.Combine(Path.GetTempPath(), "hispania-web-assets", Guid.NewGuid().ToString("N"));
         var contentRoot = Path.Combine(root, "server");
-        var build = Path.Combine(root, "web", "dist");
+        var build = Path.Combine(root, "web", "dist", "modern");
         Directory.CreateDirectory(contentRoot);
         Directory.CreateDirectory(build);
         File.WriteAllText(Path.Combine(build, "index.html"), "HISPANIA");
@@ -57,7 +57,7 @@ public sealed class WebUiStaticAssetsTests
         var root = Path.Combine(Path.GetTempPath(), "hispania-web-assets", Guid.NewGuid().ToString("N"));
         var contentRoot = Path.Combine(root, "server");
         var publishedWebRoot = Path.Combine(contentRoot, "wwwroot");
-        var build = Path.Combine(root, "web", "dist");
+        var build = Path.Combine(root, "web", "dist", "modern");
         Directory.CreateDirectory(publishedWebRoot); Directory.CreateDirectory(build);
         try
         {
@@ -66,6 +66,35 @@ public sealed class WebUiStaticAssetsTests
             Assert.Equal(build, environment.WebRootPath);
         }
         finally { Directory.Delete(root, true); }
+    }
+
+    [Theory]
+    [InlineData("modern")]
+    [InlineData("classic")]
+    public void SelectsConfiguredIndependentBuild(string buildName)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "hispania-web-assets", Guid.NewGuid().ToString("N"));
+        var contentRoot = Path.Combine(root, "server");
+        var build = Path.Combine(root, "web", "dist", buildName);
+        Directory.CreateDirectory(contentRoot);
+        Directory.CreateDirectory(build);
+        File.WriteAllText(Path.Combine(build, "index.html"), buildName);
+        try
+        {
+            var environment = new TestWebHostEnvironment(contentRoot, null!);
+            WebUiStaticAssets.Configure(environment, buildName);
+            Assert.Equal(build, environment.WebRootPath);
+            using var reader = new StreamReader(environment.WebRootFileProvider.GetFileInfo("index.html").CreateReadStream());
+            Assert.Equal(buildName, reader.ReadToEnd());
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void RejectsUnrecognizedBuildName()
+    {
+        var environment = new TestWebHostEnvironment(Path.GetTempPath(), null!);
+        Assert.Throws<ArgumentException>(() => WebUiStaticAssets.Configure(environment, "../../outside"));
     }
 
     private sealed class TestWebHostEnvironment(string contentRootPath, string webRootPath) : IWebHostEnvironment

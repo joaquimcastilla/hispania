@@ -1,0 +1,4 @@
+/* Modern HISPANIA build: cool slate surfaces and blue interaction accents. */
+.web-variant-modern { --hispania-accent: #72b9ff; --hispania-panel: #111827; }
+.web-variant-modern .topbar { border-color: #293a56; }
+.web-variant-modern .nav-button.active, .web-variant-modern .content-card:focus-visible { border-color: var(--hispania-accent); }

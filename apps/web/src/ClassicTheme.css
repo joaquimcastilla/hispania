@@ -1,0 +1,4 @@
+/* Classic HISPANIA build: warm archival palette with a restrained header. */
+.web-variant-classic { --hispania-accent: #e8b86c; --hispania-panel: #171717; }
+.web-variant-classic .topbar { background: #111; border-color: #4c3c26; }
+.web-variant-classic .nav-button.active, .web-variant-classic .content-card:focus-visible { border-color: var(--hispania-accent); }
