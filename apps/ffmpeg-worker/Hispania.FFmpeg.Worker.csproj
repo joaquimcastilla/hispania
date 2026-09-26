@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>Hispania.FFmpeg.Worker</AssemblyName><RootNamespace>Hispania.FFmpeg.Worker</RootNamespace></PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\..\contracts\transcoding-worker\Hispania.Transcoding.Worker.Contracts.csproj" /></ItemGroup>
+</Project>

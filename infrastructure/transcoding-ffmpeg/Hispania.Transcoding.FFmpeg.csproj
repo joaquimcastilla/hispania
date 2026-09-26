@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>Hispania.Transcoding.FFmpeg</AssemblyName><RootNamespace>Hispania.Transcoding.FFmpeg</RootNamespace></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\contracts\playback\Hispania.Playback.Contracts.csproj" />
+    <ProjectReference Include="..\..\contracts\library\Hispania.Library.Contracts.csproj" />
+    <ProjectReference Include="..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />
+    <ProjectReference Include="..\..\contracts\transcoding-worker\Hispania.Transcoding.Worker.Contracts.csproj" />
+  </ItemGroup>
+</Project>
