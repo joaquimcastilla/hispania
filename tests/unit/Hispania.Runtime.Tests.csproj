@@ -5,6 +5,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\apps\module-host\Hispania.ModuleHost.csproj" ReferenceOutputAssembly="false" />
     <Compile Remove="MediaDomainTests.cs;TimelineAndCoverageTests.cs;TechnicalRepresentationAndSourceTests.cs;PublicationAndCreatorTests.cs;EnrichmentTests.cs" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
@@ -18,6 +19,15 @@
     <ProjectReference Include="..\..\contracts\architecture-test\Hispania.ArchitectureTest.Contracts.csproj" />
     <ProjectReference Include="..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />
     <ProjectReference Include="..\..\core\runtime\Hispania.Runtime.csproj" />
+    <ProjectReference Include="..\..\modules\extension-demo\Hispania.ExtensionDemo.csproj" />
     <ProjectReference Include="..\..\modules\architecture-test\Hispania.ArchitectureTest.Modules.csproj" />
+    <ProjectReference Include="..\..\application\playback\Hispania.Playback.Application.csproj" />
+    <ProjectReference Include="..\..\application\library\Hispania.Library.Application.csproj" />
+    <ProjectReference Include="..\..\application\metadata\Hispania.Metadata.Application.csproj" />
+    <ProjectReference Include="..\..\infrastructure\metadata\Hispania.Metadata.Tmdb\Hispania.Metadata.Tmdb.csproj" />
+    <ProjectReference Include="..\..\infrastructure\library\Hispania.Library.LocalFileSystem.csproj" />
+    <ProjectReference Include="..\..\infrastructure\ffprobe\Hispania.Library.FFprobe.csproj" />
+    <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.EFCore\Hispania.Library.Persistence.EFCore.csproj" />
+    <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.Sqlite\Hispania.Library.Persistence.Sqlite.csproj" />
   </ItemGroup>
 </Project>

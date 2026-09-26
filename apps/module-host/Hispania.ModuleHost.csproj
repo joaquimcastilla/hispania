@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Hispania.ModuleHost</AssemblyName>
+    <RootNamespace>Hispania.ModuleHost</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />
+  </ItemGroup>
+</Project>

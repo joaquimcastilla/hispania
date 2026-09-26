@@ -1,0 +1,14 @@
+{
+  "id": "hispania.extension-demo.greeting",
+  "name": "Independent greeting extension",
+  "version": "1.0.0",
+  "implements": ["hispania.extension-demo.greeting@1.0"],
+  "provides": ["hispania.extension-demo.greeting@1.0"],
+  "requires": [],
+  "dependencies": [],
+  "optionalDependencies": [],
+  "permissions": [],
+  "minimumHostVersion": "1.0.0",
+  "runtime": "dotnet-inprocess-trusted",
+  "restartRequiredForUpdate": true
+}
