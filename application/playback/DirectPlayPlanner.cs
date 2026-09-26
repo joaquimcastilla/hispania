@@ -3,14 +3,27 @@ using Hispania.Media.Domain.Assets;
 using Hispania.Media.Domain.Identity;
 using Hispania.Media.Domain.TechnicalRepresentations;
 using Hispania.Playback.Contracts;
+using Hispania.ModuleSystem.Contracts;
 
 namespace Hispania.Playback.Application;
 
-public sealed class DirectPlayPlanner : IPlaybackPlanner
+public sealed class DirectPlayPlanner : IPlaybackPlanner, IModule, IModuleHealthCheck
 {
     private readonly IMediaCatalogReader _catalog;
 
     public DirectPlayPlanner(IMediaCatalogReader catalog) => _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+
+    public ModuleDescriptor Descriptor { get; } = new(
+        "hispania.playback.direct-planner",
+        "HISPANIA Direct Play Planner",
+        new Version(1, 0, 0),
+        [new ModuleCapability("hispania.playback.planner", new Version(1, 0), dynamicallyReplaceable: true)]);
+
+    public ValueTask<bool> IsHealthyAsync(CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
+
+    public ValueTask StartAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+    public ValueTask StopAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
 
     public PlaybackPlanningResult Plan(MediaEntityId mediaEntityId)
     {
