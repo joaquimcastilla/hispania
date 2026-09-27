@@ -101,6 +101,18 @@ Eventos (futuro): hechos de estado; solicitudes síncronas conservan request/res
 
 El ciclo de vida de módulos nativos registrados está ligado al proceso. El runtime no descarga assemblies, no cambia DI después del arranque, y no implementa activar/desactivar en caliente. La selección manual tiene efecto al iniciar/reiniciar el host. Separar un módulo a proceso requiere un adaptador IPC del mismo contrato.
 
+### Fase 11 — trabajo y transcoding distribuidos
+
+El coordinador único expone rutas HTTPS/mTLS separadas del IPC local. Las identidades de nodo y allowlists de capacidad se provisionan por la API administrativa autenticada; el certificado cliente se autoriza por fingerprint SHA-256. El agente genérico negocia la versión, anuncia capacidades y ejecuta extensiones mediante el catálogo/host OutOfProcess. La persistencia SQLite usa transacciones y lock exclusivo de instancia. Tras reiniciar se invalida la conexión, se recuperan generaciones, se reintenta sólo trabajo retry-safe sin efectos externos y se marca incierto el resto.
+
+Playback conserva `ICompatibleMediaTranscoderV1` y handles opacos. Con `DistributedWorkers:Transcoding:Mode=RemotePreferred`, el transcoder busca capacidad FFmpeg exacta y publica la solicitud genérica; el handler del agente reutiliza `Hispania.FFmpeg.Worker`. Un broker separado por job limita el acceso a fuente mediante bloques seekable y publica el resultado sólo tras límite de tamaño e integridad SHA-256. Playback valida el MP4 y lo importa a su cache opaca usual. `Local` es el default; `RemotePreferred` cae a local cuando el trabajador falla o no toma el lease en 10 segundos; `RemoteOnly` responde no disponible si no consigue resultado remoto. La cancelación invalida el lease y se propaga en el heartbeat siguiente; las generaciones obsoletas no pueden completar/publicar.
+
+La prueba local levanta el agente como proceso independiente, hace el transcoding real vía el endpoint Playback, valida con ffprobe, cancela otro trabajo real de FFmpeg durante una subida bloqueada de resultado y mata el agente durante una lectura de medios bloqueada para comprobar fallback local y fencing. No equivale a una prueba en segundo equipo físico. Linux Actions y una red real quedan por verificar. No se promete exactly-once. Ver ADR-0029.
+
+Las pruebas deterministas del broker cancelan una subida, comprueban que no quedan archivos `.partial`, rechazan una lease obsoleta justo antes del rename de publicación y eliminan un artefacto si SQLite rechaza la finalización. La recuperación de SQLite conserva los estados `Pending` y `Uncertain` según la política y rechaza una segunda instancia. Al iniciar, el coordinator obtiene primero el lock SQLite y sólo entonces limpia parciales abandonados; el agente obtiene un lock exclusivo de su caché antes de retirar temporales dejados por un proceso anterior. Si el coordinator se cae después del rename atómico pero antes de guardar `Completed`, puede quedar un archivo sin referencia hasta su caducidad de 24 horas; Playback no recibe su handle y el job recuperado usa una nueva generación.
+
+No se ha terminado una prueba de matar el worker específicamente durante encoding. La prueba de subida cancela el trabajo mientras el agente remoto está enviando el resultado y comprueba limpieza; el test de lectura fuente mata el proceso agente. El aislamiento de proceso y los límites FFmpeg contienen fallos accidentales y recursos configurados; no son una sandbox para código hostil. TLS/mTLS y fingerprints autentican extremos provisionados, pero no aportan exactly-once ni protegen contra el compromiso de una máquina autorizada.
+
 ### Ownership actual de datos
 
 - **Library** posee imports, Work/MediaEntity/Timeline/Asset/Representation/MediaSource y la reconciliación del catálogo.
@@ -274,6 +286,12 @@ Todos los módulos deben tener:
 - module id.
 
 OpenTelemetry será la abstracción preferida.
+
+### Fase 11: trabajadores distribuidos
+
+El coordinador único del servidor ofrece HTTPS con certificado de cliente y rutas separadas `/internal/worker/v1`; el agente no recibe acceso a rutas administrativas ni al IPC local. La identidad del nodo se autoriza fuera de banda mediante SHA-256 del certificado, con allowlist explícita de capacidades. El coordinador persiste trabajadores y trabajos en SQLite transaccional, y un lock exclusivo impide que dos procesos compartan el estado. Tras reiniciar, invalida los leases en curso; solo reencola trabajos declarados repetibles y sin efectos externos, y los demás quedan `Uncertain`. Las generaciones conservadas rechazan resultados antiguos.
+
+El agente genérico ejecuta capacidades mediante el catálogo de extensiones y el host OutOfProcess existente. Su composición opcional incluye el handler versionado FFmpeg, que llama al mismo `Hispania.FFmpeg.Worker` local instalado en el nodo. El worker recibe bloques autorizados por el broker, aplica límites de procesos/CPU/memoria/tiempo, sube un resultado con SHA-256 y responde bajo fencing. Playback obtiene el resultado por su contrato existente y cachea bajo un handle opaco; consumidores no conocen el host remoto. La integración comprobada ejecuta un agente independiente en un segundo proceso del mismo equipo y verifica la salida con ffprobe, además de fallback local tras cortar al agente durante la transferencia. La prueba de un segundo equipo físico sigue pendiente. Ver ADR-0029.
 
 ## 13. Error Policy
 
