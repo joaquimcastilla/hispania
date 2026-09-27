@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Hispania.ExtensionDemo.Contracts;
+using Hispania.ModuleSystem.Contracts;
 using Hispania.Runtime;
 using Hispania.Server;
 using Microsoft.AspNetCore.Builder;
@@ -37,6 +38,8 @@ public sealed class ExtensionAdminHttpIntegrationTests
             builder.WebHost.UseTestServer();
             builder.Configuration["Modules:AdminToken"] = Token;
             builder.Services.AddModuleRuntime();
+            builder.Services.AddSingleton<DistributedWorkCoordinator>();
+            builder.Services.AddSingleton<IDistributedWorkCoordinatorV1>(services => services.GetRequiredService<DistributedWorkCoordinator>());
             builder.Services.AddSingleton(serviceProvider => new ModuleExtensionCatalog(root, new Version(1, 0, 0),
                 serviceProvider.GetRequiredService<IModuleRuntime>(), serviceProvider.GetRequiredService<IModuleRegistry>(),
                 new Dictionary<string, Func<Hispania.ModuleSystem.Contracts.IModule>>(), [ModuleId]));
@@ -44,6 +47,9 @@ public sealed class ExtensionAdminHttpIntegrationTests
             app.MapModuleAdminEndpoints();
             await app.StartAsync();
             using var client = app.GetTestClient();
+
+            using (var deniedWorkers = await client.GetAsync("/internal/admin/modules/remote-workers"))
+                Assert.Equal(System.Net.HttpStatusCode.Unauthorized, deniedWorkers.StatusCode);
 
             using (var denied = await client.PostAsync("/internal/admin/modules/extensions/packages", new ByteArrayContent(v1.ToArray())))
                 Assert.Equal(System.Net.HttpStatusCode.Unauthorized, denied.StatusCode);
@@ -64,6 +70,26 @@ public sealed class ExtensionAdminHttpIntegrationTests
                 return await client.SendAsync(request);
             }
 
+            using (var authorizedWorker = await client.PostAsync("/internal/admin/modules/remote-workers/worker-http/authorize",
+                System.Net.Http.Json.JsonContent.Create(new { certificateThumbprint = new string('2', 64), allowedCapabilities = new[] { new { contractId = "hispania.test.echo", contractVersion = "1.0" } } })))
+                Assert.Equal(System.Net.HttpStatusCode.Unauthorized, authorizedWorker.StatusCode);
+            using (var request = new HttpRequestMessage(HttpMethod.Post, "/internal/admin/modules/remote-workers/worker-http/authorize")
+            {
+                Content = System.Net.Http.Json.JsonContent.Create(new { certificateThumbprint = new string('2', 64), allowedCapabilities = new[] { new { contractId = "hispania.test.echo", contractVersion = "1.0" } } })
+            })
+            {
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Token);
+                using var authorizedWorker = await client.SendAsync(request);
+                Assert.Equal(System.Net.HttpStatusCode.OK, authorizedWorker.StatusCode);
+            }
+            using (var workers = await AdminGetAsync("/internal/admin/modules/remote-workers"))
+            {
+                Assert.Equal(System.Net.HttpStatusCode.OK, workers.StatusCode);
+                Assert.Contains("worker-http", await workers.Content.ReadAsStringAsync());
+            }
+            using (var revokedWorker = await AdminDeleteAsync("/internal/admin/modules/remote-workers/worker-http"))
+                Assert.Equal(System.Net.HttpStatusCode.OK, revokedWorker.StatusCode);
+
             using (var installed = await AdminPostAsync("/internal/admin/modules/extensions/packages", v1.ToArray()))
                 Assert.Equal(System.Net.HttpStatusCode.Created, installed.StatusCode);
             using (var activated = await AdminPostAsync($"/internal/admin/modules/extensions/{ModuleId}/activate"))
@@ -72,6 +98,13 @@ public sealed class ExtensionAdminHttpIntegrationTests
             {
                 Assert.Equal(System.Net.HttpStatusCode.OK, message.StatusCode);
                 Assert.Contains("Hello from an independently implemented extension.", await message.Content.ReadAsStringAsync());
+            }
+
+            async Task<HttpResponseMessage> AdminDeleteAsync(string path)
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Delete, path);
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Token);
+                return await client.SendAsync(request);
             }
 
             using (var installed = await AdminPostAsync("/internal/admin/modules/extensions/packages", v2.ToArray()))

@@ -6,6 +6,8 @@ using Hispania.Playback.Contracts;
 using Hispania.Playback.Application;
 using Hispania.Server;
 using Hispania.Transcoding.FFmpeg;
+using Hispania.ModuleSystem.Contracts;
+using Hispania.Runtime;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -65,7 +67,17 @@ public sealed class MkvFallbackIntegrationTests
             Assert.IsType<CompatibleTranscodeUnavailable>(await brokenTranscoder.CreateCompatibleRepresentationAsync(entry.Id));
             Assert.Empty(Directory.EnumerateFiles(cacheDirectory, "*.mp4"));
             Assert.False(File.Exists(abandonedPartial));
-            var transcoder = new FfmpegCompatibleMediaTranscoder(catalog, accessor, "ffmpeg", cacheDirectory);
+            using var transferRegistry = new DistributedMediaTransferRegistry(Path.Combine(directory, "distributed-transfer-cache"));
+            var remoteOnlyCache = Path.Combine(directory, "remote-only-cache");
+            using var remoteOnlyTranscoder = new FfmpegCompatibleMediaTranscoder(catalog, accessor, "ffmpeg", remoteOnlyCache,
+                distributedCoordinator: new DistributedWorkCoordinator(), mediaTransfers: transferRegistry,
+                distributedMode: DistributedTranscodingMode.RemoteOnly);
+            Assert.IsType<CompatibleTranscodeUnavailable>(await remoteOnlyTranscoder.CreateCompatibleRepresentationAsync(entry.Id));
+            Assert.Empty(Directory.EnumerateFiles(remoteOnlyCache, "*.mp4", SearchOption.AllDirectories));
+
+            var transcoder = new FfmpegCompatibleMediaTranscoder(catalog, accessor, "ffmpeg", cacheDirectory,
+                distributedCoordinator: new DistributedWorkCoordinator(), mediaTransfers: transferRegistry,
+                distributedMode: DistributedTranscodingMode.RemotePreferred);
 
             var outputResult = await transcoder.CreateCompatibleRepresentationAsync(entry.Id);
             var output = Assert.IsType<CompatibleTranscodeReady>(outputResult);

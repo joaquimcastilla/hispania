@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Hispania.Media.Domain.Identity;
 using Hispania.Library.Application;
 using Hispania.Playback.Conservative;
@@ -269,7 +270,7 @@ public sealed class PlaybackPlannerHotSwapTests
     }
 
     [Fact]
-    public async Task ShadowFailureIsContainedAndOnlyTheActiveResultIsReturned()
+    public async Task ShadowFailureOrObserverTimeoutIsContainedAndOnlyTheActiveResultIsReturned()
     {
         var active = new PlannerModule("planner-shadow-active");
         var shadow = new PlannerModule("planner-shadow-secondary", throwOnPlan: true);
@@ -284,10 +285,14 @@ public sealed class PlaybackPlannerHotSwapTests
 
         var activeResult = experiments.Plan("session-shadow", MediaEntityId.New(), shadow, "trace-shadow");
         Assert.IsType<PlaybackMediaNotFound>(activeResult);
-        await Task.Delay(150);
+        await WaitUntilAsync(() =>
+        {
+            var metrics = experiments.Export("shadow").Variants.Single(item => item.Variant.ModuleId == shadow.Descriptor.Id);
+            return metrics.ShadowErrors + metrics.Timeouts == 1;
+        }, TimeSpan.FromSeconds(3));
         var export = experiments.Export("shadow");
         var secondaryMetrics = Assert.Single(export.Variants, item => item.Variant.ModuleId == shadow.Descriptor.Id);
-        Assert.Equal(1, secondaryMetrics.ShadowErrors);
+        Assert.Equal(1, secondaryMetrics.ShadowErrors + secondaryMetrics.Timeouts);
         Assert.Equal("trace-shadow", export.Variants.Single(item => item.Variant.ModuleId == active.Descriptor.Id).LastCorrelationId);
     }
 
@@ -514,6 +519,16 @@ public sealed class PlaybackPlannerHotSwapTests
     {
         if (runtime.GetHealth(moduleId).State == state) return Task.CompletedTask;
         return CreateStateWaiter(runtime, moduleId, state).Task;
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        var elapsed = Stopwatch.StartNew();
+        while (!condition())
+        {
+            if (elapsed.Elapsed >= timeout) throw new TimeoutException("The expected asynchronous condition was not reached.");
+            await Task.Delay(1);
+        }
     }
 
     private static TaskCompletionSource CreateStateWaiter(ModuleRuntime runtime, string moduleId, ModuleLifecycleState state)

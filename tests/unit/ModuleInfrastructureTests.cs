@@ -279,6 +279,13 @@ public sealed class ModuleInfrastructureTests
                 Assert.Equal("Hello from an independently implemented extension.", inProcess.Value.GetMessage());
             await catalog.UpdateAsync(moduleId, "3.0.0"); // Swap the same public capability to OutOfProcess.
 
+            var distributedExecutor = new ModuleExtensionCapabilityExecutor(catalog, contractName =>
+                contractName == typeof(IExtensionDemoV1).FullName ? typeof(IExtensionDemoV1) : null);
+            var distributedRequest = new DistributedJobRequestV1("generic-oop-greeting", "hispania.extension-demo.greeting", "1.0", "GetMessage",
+                JsonSerializer.SerializeToElement(new { }));
+            var distributedResult = await distributedExecutor.ExecuteAsync(distributedRequest, CancellationToken.None);
+            Assert.Equal("Hello from a separately hosted greeting extension.", distributedResult.GetString());
+
             var selected = new CapabilityResolver(registry).Resolve<IExtensionDemoV1>("hispania.extension-demo.greeting", new Version(1, 0), moduleId);
             Assert.Equal("Hello from a separately hosted greeting extension.", selected.GetMessage());
             using (var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50)))
