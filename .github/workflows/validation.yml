@@ -96,6 +96,16 @@ jobs:
           foreach ($pattern in @('*AdminConfiguredPersistentExperimentRecoversWhenTestServerHostRestarts*', '*PersistentExperimentRestoresStableAssignmentsAndRealPlannerTrafficAfterRestart*', '*PersistentRecoveryFallsBackForMissingVariantsButRejectsChangedContracts*', '*RealPlannerModulesReceiveConfiguredTrafficAndStableCohortsSurviveWeightUpdates*', '*InternalAdminModuleApiRequiresConfiguredBearerAuthentication*', '*ConfigurationChangeKeepsAnActivePlanOnItsOriginalVariant*')) {
             if (@($results | Where-Object { $_.testName -like $pattern }).Count -eq 0) { throw "Required Playback Planner experiment test '$pattern' did not pass or was not discovered." }
           }
+      - name: Require distributed worker process transport and coordinator restart fencing
+        shell: pwsh
+        run: |
+          dotnet test tests/playback/Hispania.Playback.Tests.csproj --no-build --filter "FullyQualifiedName~DistributedWorkerProcessIntegrationTests|FullyQualifiedName~DistributedCoordinatorPersistenceTests|FullyQualifiedName~DistributedMediaTransferTests" --logger "trx;LogFileName=required-distributed-workers.trx"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $trx = [xml](Get-Content -Raw (Get-ChildItem tests/playback/TestResults/required-distributed-workers.trx -ErrorAction Stop).FullName)
+          $results = @($trx.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'Passed' })
+          foreach ($pattern in @('*DistributedWorkerProcessIntegrationTests*', '*DistributedCoordinatorPersistenceTests*', '*DistributedMediaTransferTests*')) {
+            if (@($results | Where-Object { $_.testName -like $pattern }).Count -eq 0) { throw "Required distributed worker test '$pattern' did not pass or was not discovered." }
+          }
       - run: dotnet test Hispania.CrossPlatform.slnf --no-build
 
   validate-windows-launcher:
@@ -137,6 +147,16 @@ jobs:
           $results = @($trx.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'Passed' })
           foreach ($pattern in @('*AdminConfiguredPersistentExperimentRecoversWhenTestServerHostRestarts*', '*PersistentExperimentRestoresStableAssignmentsAndRealPlannerTrafficAfterRestart*', '*PersistentRecoveryFallsBackForMissingVariantsButRejectsChangedContracts*', '*RealPlannerModulesReceiveConfiguredTrafficAndStableCohortsSurviveWeightUpdates*', '*InternalAdminModuleApiRequiresConfiguredBearerAuthentication*', '*ConfigurationChangeKeepsAnActivePlanOnItsOriginalVariant*')) {
             if (@($results | Where-Object { $_.testName -like $pattern }).Count -eq 0) { throw "Required Playback Planner experiment test '$pattern' did not pass or was not discovered." }
+          }
+      - name: Require Windows distributed worker process transport and coordinator restart fencing
+        shell: pwsh
+        run: |
+          dotnet test tests/playback/Hispania.Playback.Tests.csproj --no-build --filter "FullyQualifiedName~DistributedWorkerProcessIntegrationTests|FullyQualifiedName~DistributedCoordinatorPersistenceTests|FullyQualifiedName~DistributedMediaTransferTests" --logger "trx;LogFileName=required-windows-distributed-workers.trx"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $trx = [xml](Get-Content -Raw (Get-ChildItem tests/playback/TestResults/required-windows-distributed-workers.trx -ErrorAction Stop).FullName)
+          $results = @($trx.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'Passed' })
+          foreach ($pattern in @('*DistributedWorkerProcessIntegrationTests*', '*DistributedCoordinatorPersistenceTests*', '*DistributedMediaTransferTests*')) {
+            if (@($results | Where-Object { $_.testName -like $pattern }).Count -eq 0) { throw "Required distributed worker test '$pattern' did not pass or was not discovered." }
           }
       - run: dotnet test Hispania.CrossPlatform.slnf --no-build
       - run: dotnet test tools/dev-launcher-tests/Hispania.DevLauncher.Tests.csproj
