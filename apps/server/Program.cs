@@ -7,6 +7,7 @@ using Hispania.Library.FFprobe;
 using Hispania.Library.LocalFileSystem;
 using Hispania.Library.Persistence.Sqlite;
 using Hispania.Library.Persistence.PostgreSql;
+using Hispania.DistributedWork.Persistence.Sqlite;
 using Hispania.Playback.Application;
 using Hispania.Playback.Conservative;
 using Hispania.Playback.Contracts;
@@ -17,13 +18,39 @@ using Hispania.Metadata.Tmdb;
 using Hispania.ModuleSystem.Contracts;
 using Hispania.Media.Domain.Sources;
 using Hispania.Transcoding.FFmpeg;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https =>
+{
+    // The remote-worker endpoint authenticates against an operator-pinned SHA-256 fingerprint.
+    // Chain trust alone is not the authorization decision for these private node certificates.
+    https.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
+    https.ClientCertificateValidation = static (_, _, _) => true;
+}));
 var webBuild = builder.Configuration["Web:Build"] ?? "modern";
 WebUiStaticAssets.Configure(builder.Environment, webBuild);
 
 builder.Services.AddArchitectureTestModules();
 builder.Services.AddModuleRuntime();
+var distributedStatePath = builder.Configuration["DistributedWorkers:StatePath"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "distributed-coordinator.sqlite");
+builder.Services.AddSingleton<IDistributedWorkStateStoreV1>(_ => new SqliteDistributedWorkStateStore(distributedStatePath));
+var distributedTransferPath = builder.Configuration["DistributedWorkers:TransferPath"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "distributed-transfers");
+var distributedTransferStorageBytes = builder.Configuration.GetValue("DistributedWorkers:TransferStorageBytes", 40L * 1024 * 1024 * 1024);
+builder.Services.AddSingleton<DistributedMediaTransferRegistry>(services =>
+{
+    // Acquire the single-coordinator SQLite lock before the transfer registry performs startup
+    // cleanup of abandoned partial files. A second coordinator must fail before touching them.
+    _ = services.GetRequiredService<IDistributedWorkStateStoreV1>();
+    return new DistributedMediaTransferRegistry(distributedTransferPath, distributedTransferStorageBytes);
+});
+builder.Services.AddSingleton<IDistributedMediaTransferBrokerV1>(services => services.GetRequiredService<DistributedMediaTransferRegistry>());
+builder.Services.AddHostedService<DistributedMediaTransferCleanupService>();
+builder.Services.AddSingleton<DistributedWorkCoordinator>(services => new DistributedWorkCoordinator(services.GetRequiredService<IDistributedWorkStateStoreV1>()));
+builder.Services.AddSingleton<Hispania.ModuleSystem.Contracts.IDistributedWorkCoordinatorV1>(services => services.GetRequiredService<DistributedWorkCoordinator>());
+builder.Services.AddHostedService(services => new DistributedWorkLeaseMonitor(
+    services.GetRequiredService<Hispania.ModuleSystem.Contracts.IDistributedWorkCoordinatorV1>(),
+    TimeSpan.FromSeconds(builder.Configuration.GetValue("DistributedWorkers:LeaseMonitorSeconds", 1))));
 builder.Services.AddSingleton<ModuleExtensionCatalog>(services => new ModuleExtensionCatalog(
     builder.Configuration["Modules:ExtensionsPath"] ?? Path.Combine(AppContext.BaseDirectory, "extensions"),
     new Version(1, 0, 0),
@@ -61,6 +88,9 @@ if (string.IsNullOrWhiteSpace(transcodeCachePath)) transcodeCachePath = Path.Com
 var workerPolicy = builder.Configuration.GetSection("Playback:Worker").Get<FfmpegWorkerPolicy>() ?? new FfmpegWorkerPolicy();
 workerPolicy.Validate();
 builder.Services.AddSingleton(workerPolicy);
+var distributedTranscodingModeText = builder.Configuration["DistributedWorkers:Transcoding:Mode"] ?? "Local";
+if (!Enum.TryParse<DistributedTranscodingMode>(distributedTranscodingModeText, ignoreCase: true, out var distributedTranscodingMode))
+    throw new InvalidOperationException("DistributedWorkers:Transcoding:Mode must be Local, RemotePreferred, or RemoteOnly.");
 
 builder.Services.AddSingleton(roots);
 var persistenceProvider = builder.Configuration["Persistence:Provider"] ?? "sqlite";
@@ -142,7 +172,10 @@ builder.Services.AddSingleton<FfmpegCompatibleMediaTranscoder>(services => new F
     transcodeCachePath,
     builder.Configuration["Ffmpeg:WorkerAssemblyPath"],
     workerPolicy,
-    services.GetRequiredService<FfmpegTranscodingCapabilityHealth>()));
+    services.GetRequiredService<FfmpegTranscodingCapabilityHealth>(),
+    services.GetRequiredService<IDistributedWorkCoordinatorV1>(),
+    services.GetRequiredService<IDistributedMediaTransferBrokerV1>(),
+    distributedTranscodingMode));
 builder.Services.AddSingleton<ITranscodedContentStore>(services => services.GetRequiredService<FfmpegCompatibleMediaTranscoder>());
 builder.Services.AddSingleton<ICompatibleMediaTranscoderV1>(services => services.GetRequiredService<ICapabilityResolver>()
     .Resolve<ICompatibleMediaTranscoderV1>("hispania.playback.compatible-transcoder", new Version(1, 0), "hispania.transcoding.ffmpeg"));
@@ -177,6 +210,7 @@ app.MapGet("/internal/metadata-enrichment", (IServiceProvider services) =>
 app.MapGet("/internal/module-test", (IArchitectureDemonstrationService service) => Results.Ok(service.GetResponse()));
 app.MapGet("/internal/modules/health", (IModuleRuntime runtime) => Results.Ok(runtime.ListHealth()));
 app.MapModuleAdminEndpoints();
+app.MapDistributedWorkerEndpoints();
 app.MapGet("/internal/capabilities/transcoding/health", (ITranscodingCapabilityHealthV1 health) => Results.Ok(health.GetSnapshot()));
 app.MapDirectPlayEndpoints();
 app.MapEffectiveMetadataEndpoints();

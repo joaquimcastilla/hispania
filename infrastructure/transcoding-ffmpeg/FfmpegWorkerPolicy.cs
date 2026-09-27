@@ -4,6 +4,8 @@ using Microsoft.Win32.SafeHandles;
 
 namespace Hispania.Transcoding.FFmpeg;
 
+public enum DistributedTranscodingMode { Local, RemotePreferred, RemoteOnly }
+
 /// <summary>Operational limits for process-per-job transcoding. Values are ceilings, not security guarantees.</summary>
 public sealed record FfmpegWorkerPolicy
 {

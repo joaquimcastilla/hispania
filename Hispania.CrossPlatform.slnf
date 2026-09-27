@@ -3,6 +3,7 @@
     "path": "Hispania.sln",
     "projects": [
       "apps\\server\\Hispania.Server.csproj",
+      "apps\\worker-agent\\Hispania.WorkerAgent.csproj",
       "apps\\module-host\\Hispania.ModuleHost.csproj",
       "apps\\cli\\Hispania.Cli.csproj",
       "core\\kernel\\Hispania.Kernel.csproj",
@@ -31,6 +32,7 @@
       "tests\\playback\\Hispania.Playback.Tests.csproj",
       "infrastructure\\persistence\\Hispania.Library.Persistence.EFCore\\Hispania.Library.Persistence.EFCore.csproj",
       "infrastructure\\persistence\\Hispania.Library.Persistence.Sqlite\\Hispania.Library.Persistence.Sqlite.csproj",
+      "infrastructure\\persistence\\distributed-work\\Hispania.DistributedWork.Persistence.Sqlite.csproj",
       "tests\\library-persistence\\Hispania.Library.Persistence.Sqlite.Tests.csproj",
       "infrastructure\\metadata\\Hispania.Metadata.Tmdb\\Hispania.Metadata.Tmdb.csproj",
       "contracts\\metadata\\Hispania.Metadata.Contracts.csproj",

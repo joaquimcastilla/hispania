@@ -5,5 +5,6 @@
     <ProjectReference Include="..\..\contracts\library\Hispania.Library.Contracts.csproj" />
     <ProjectReference Include="..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />
     <ProjectReference Include="..\..\contracts\transcoding-worker\Hispania.Transcoding.Worker.Contracts.csproj" />
+    <ProjectReference Include="..\..\core\runtime\Hispania.Runtime.csproj" />
   </ItemGroup>
 </Project>

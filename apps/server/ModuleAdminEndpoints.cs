@@ -3,6 +3,7 @@ using System.Text;
 using Hispania.Playback.Application;
 using Hispania.Runtime;
 using Hispania.ExtensionDemo.Contracts;
+using Hispania.ModuleSystem.Contracts;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 
@@ -60,6 +61,29 @@ public static class ModuleAdminEndpoints
             Modules = runtime.ListHealth(),
             Extensions = catalog.Discover()
         }));
+        group.MapGet("/remote-workers", ([FromServices] IDistributedWorkCoordinatorV1 coordinator) => Results.Ok(coordinator.ListWorkers()));
+        group.MapPost("/remote-workers/{nodeId}/authorize", (string nodeId, AuthorizeWorkerRequest request, [FromServices] IDistributedWorkCoordinatorV1 coordinator) =>
+        {
+            try { coordinator.AuthorizeWorker(nodeId, request.AllowedCapabilities, request.CertificateThumbprint); return Results.Ok(new { nodeId, authorized = true }); }
+            catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
+        });
+        group.MapPut("/remote-workers/{nodeId}/certificate", (string nodeId, RotateWorkerCertificateRequest request, [FromServices] IDistributedWorkCoordinatorV1 coordinator) =>
+        {
+            try { coordinator.RotateWorkerCertificate(nodeId, request.CertificateThumbprint); return Results.Ok(new { nodeId, rotated = true }); }
+            catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+        });
+        group.MapDelete("/remote-workers/{nodeId}", (string nodeId, [FromServices] IDistributedWorkCoordinatorV1 coordinator) =>
+        {
+            try { coordinator.RevokeWorker(nodeId); return Results.Ok(new { nodeId, revoked = true }); }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+        });
+        group.MapPost("/remote-workers/{nodeId}/enabled", (string nodeId, SetWorkerEnabledRequest request, [FromServices] IDistributedWorkCoordinatorV1 coordinator) =>
+        {
+            try { coordinator.SetWorkerEnabled(nodeId, request.Enabled); return Results.Ok(new { nodeId, request.Enabled }); }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+        });
+        group.MapGet("/distributed-jobs", ([FromServices] IDistributedWorkCoordinatorV1 coordinator) => Results.Ok(coordinator.ListJobs()));
         group.MapGet("/extensions", ([FromServices] ModuleExtensionCatalog catalog) => Results.Ok(catalog.Discover()));
         group.MapGet("/publishers", ([FromServices] ModuleExtensionCatalog catalog, IConfiguration configuration) => Results.Ok(new
         {
@@ -213,3 +237,6 @@ public static class ModuleAdminEndpoints
 }
 
 public sealed record AuthorizePublisherRequest(string PublicKeyPem);
+public sealed record AuthorizeWorkerRequest(IReadOnlyList<DistributedCapabilityV1> AllowedCapabilities, string CertificateThumbprint);
+public sealed record RotateWorkerCertificateRequest(string CertificateThumbprint);
+public sealed record SetWorkerEnabledRequest(bool Enabled);

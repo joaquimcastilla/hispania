@@ -1,3 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><AssemblyName>Hispania.Transcoding.Worker.Contracts</AssemblyName><RootNamespace>Hispania.Transcoding.Worker.Contracts</RootNamespace></PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\module-system\Hispania.ModuleSystem.Contracts.csproj" /></ItemGroup>
 </Project>

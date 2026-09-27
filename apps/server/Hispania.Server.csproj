@@ -29,6 +29,7 @@
     <ProjectReference Include="..\..\core\domain\Hispania.Media.Domain.csproj" />
     <ProjectReference Include="..\..\application\metadata\Hispania.Metadata.Application.csproj" />
     <ProjectReference Include="..\..\infrastructure\metadata\Hispania.Metadata.Tmdb\Hispania.Metadata.Tmdb.csproj" />
+    <ProjectReference Include="..\..\infrastructure\persistence\distributed-work\Hispania.DistributedWork.Persistence.Sqlite.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\extensions\**\module.json" Link="extensions\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

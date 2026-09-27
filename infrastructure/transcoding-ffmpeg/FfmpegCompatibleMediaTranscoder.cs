@@ -36,8 +36,11 @@ public sealed class FfmpegCompatibleMediaTranscoder : ICompatibleMediaTranscoder
     private readonly SemaphoreSlim workerSlots;
     private readonly FfmpegTranscodingCapabilityHealth health;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> gates = new(StringComparer.Ordinal);
+    private readonly IDistributedWorkCoordinatorV1? distributedCoordinator;
+    private readonly IDistributedMediaTransferBrokerV1? mediaTransfers;
+    private readonly DistributedTranscodingMode distributedMode;
 
-    public FfmpegCompatibleMediaTranscoder(IMediaCatalogReader catalog, ISourceContentAccessor sourceAccessor, string ffmpegPath, string cacheDirectory, string? workerAssemblyPath = null, FfmpegWorkerPolicy? policy = null, FfmpegTranscodingCapabilityHealth? health = null)
+    public FfmpegCompatibleMediaTranscoder(IMediaCatalogReader catalog, ISourceContentAccessor sourceAccessor, string ffmpegPath, string cacheDirectory, string? workerAssemblyPath = null, FfmpegWorkerPolicy? policy = null, FfmpegTranscodingCapabilityHealth? health = null, IDistributedWorkCoordinatorV1? distributedCoordinator = null, IDistributedMediaTransferBrokerV1? mediaTransfers = null, DistributedTranscodingMode distributedMode = DistributedTranscodingMode.Local)
     {
         this.catalog = catalog;
         this.sourceAccessor = sourceAccessor;
@@ -48,6 +51,9 @@ public sealed class FfmpegCompatibleMediaTranscoder : ICompatibleMediaTranscoder
         this.policy.Validate();
         workerSlots = new SemaphoreSlim(this.policy.MaximumConcurrentJobs, this.policy.MaximumConcurrentJobs);
         this.health = health ?? new FfmpegTranscodingCapabilityHealth();
+        this.distributedCoordinator = distributedCoordinator;
+        this.mediaTransfers = mediaTransfers;
+        this.distributedMode = distributedMode;
     }
 
     public ModuleDescriptor Descriptor { get; } = new("hispania.transcoding.ffmpeg", "FFmpeg compatible media transcoder", new Version(1, 0, 0), [new ModuleCapability("hispania.playback.compatible-transcoder", new Version(1, 0))]);
@@ -121,6 +127,9 @@ public sealed class FfmpegCompatibleMediaTranscoder : ICompatibleMediaTranscoder
             try
             {
             if (TryReady(cacheKey, outputPath) is { } cached) return cached;
+            var remoteReady = await TryRemoteTranscodeAsync(entry, cacheKey, correlationId, outputPath, cancellationToken).ConfigureAwait(false);
+            if (remoteReady is not null) return remoteReady;
+            if (distributedMode == DistributedTranscodingMode.RemoteOnly) return new CompatibleTranscodeUnavailable();
             if (File.Exists(outputPath))
             {
                 try { if (new FileInfo(outputPath).Length == 0) File.Delete(outputPath); }
@@ -162,6 +171,102 @@ public sealed class FfmpegCompatibleMediaTranscoder : ICompatibleMediaTranscoder
             finally { workerSlots.Release(); }
         }
         finally { gate.Release(); }
+    }
+
+    private async ValueTask<CompatibleTranscodeReady?> TryRemoteTranscodeAsync(MediaCatalogEntry entry, string cacheKey, string correlationId, string outputPath, CancellationToken cancellationToken)
+    {
+        if (distributedMode == DistributedTranscodingMode.Local || distributedCoordinator is null || mediaTransfers is null) return null;
+        var codec = entry.Media.VideoAsset.TechnicalRepresentations.FirstOrDefault()?.Profile is VideoTechnicalProfile video && video.Codec.Code == "h264" ? "copy" : "libx264";
+        var compatible = distributedCoordinator.ListWorkers().Any(worker => worker.Authorized && worker.Enabled && worker.Connected &&
+            worker.Inventory?.Capabilities.Contains(new DistributedCapabilityV1(DistributedFfmpegJobV1.ContractId, DistributedFfmpegJobV1.ContractVersion)) == true);
+        if (!compatible) return null;
+        var perJobTemporaryBytes = policy.MaximumTemporaryStorageBytes / policy.MaximumConcurrentJobs;
+        if (entry.Snapshot.ByteLength!.Value > perJobTemporaryBytes / 2) return null;
+        var grantLifetime = policy.MaximumJobDuration >= TimeSpan.FromHours(5) ? TimeSpan.FromHours(6) : policy.MaximumJobDuration + TimeSpan.FromMinutes(5);
+        var jobId = "ffmpeg-" + Guid.NewGuid().ToString("N");
+        var grant = mediaTransfers.RegisterSource(jobId, entry.Snapshot.ByteLength.Value, perJobTemporaryBytes / 2,
+            async token =>
+            {
+                var opened = await sourceAccessor.OpenReadAsync(entry.Media.Source, token).ConfigureAwait(false);
+                if (opened is not SourceContentOpened source || source.Content.Length != entry.Snapshot.ByteLength ||
+                    (source.Content.Facts.LastModifiedUtc is { } modified && modified.ToUniversalTime() != entry.Snapshot.LastModifiedUtc!.Value.ToUniversalTime()))
+                    throw new IOException("The source media is no longer available with the expected snapshot.");
+                return source.Content.Stream;
+            }, grantLifetime);
+        var payload = new DistributedFfmpegJobV1(cacheKey, codec, grant.SourceLength, grant.TransferId,
+            grant.MaximumResultBytes, correlationId);
+        var request = new DistributedJobRequestV1(jobId, DistributedFfmpegJobV1.ContractId, DistributedFfmpegJobV1.ContractVersion,
+            "Transcode", JsonSerializer.SerializeToElement(payload), RetrySafe: true, CorrelationId: correlationId);
+        var dispatchedAt = Stopwatch.StartNew();
+        try
+        {
+            distributedCoordinator.Queue(request, allowRemote: true);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(policy.MaximumJobDuration);
+            while (true)
+            {
+                timeout.Token.ThrowIfCancellationRequested();
+                var job = distributedCoordinator.ListJobs().SingleOrDefault(item => item.Request.JobId == jobId);
+                if (job?.State == DistributedJobStateV1.Completed && job.Result is { } result)
+                {
+                    var handle = result.GetProperty("handle").GetString();
+                    var declaredLength = result.GetProperty("length").GetInt64();
+                    var expectedHash = result.GetProperty("sha256").GetString();
+                    if (handle is null || expectedHash is null || declaredLength <= 0 || declaredLength > grant.MaximumResultBytes) return null;
+                    await using var published = await mediaTransfers.OpenPublishedResultAsync(handle, timeout.Token).ConfigureAwait(false);
+                    if (published is null) return null;
+                    var partial = outputPath + "." + Guid.NewGuid().ToString("N") + ".partial.mp4";
+                    try
+                    {
+                        await using var output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+                        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                        var buffer = new byte[64 * 1024]; long total = 0;
+                        while (true)
+                        {
+                            var read = await published.ReadAsync(buffer, timeout.Token).ConfigureAwait(false);
+                            if (read == 0) break;
+                            total += read;
+                            if (total > declaredLength || total > grant.MaximumResultBytes) throw new InvalidDataException("Remote result exceeded its authorized length.");
+                            hash.AppendData(buffer, 0, read); await output.WriteAsync(buffer.AsMemory(0, read), timeout.Token).ConfigureAwait(false);
+                        }
+                        await output.FlushAsync(timeout.Token).ConfigureAwait(false);
+                        if (total != declaredLength || !CryptographicOperations.FixedTimeEquals(hash.GetHashAndReset(), Convert.FromHexString(expectedHash))) throw new InvalidDataException("Remote result integrity check failed.");
+                        await using (var verify = new FileStream(partial, FileMode.Open, FileAccess.Read, FileShare.Read, 16, FileOptions.Asynchronous))
+                        {
+                            var header = new byte[8]; if (await verify.ReadAsync(header, timeout.Token).ConfigureAwait(false) != header.Length || System.Text.Encoding.ASCII.GetString(header, 4, 4) != "ftyp") throw new InvalidDataException("Remote output is not a valid MP4 container.");
+                        }
+                        File.Move(partial, outputPath);
+                        PruneCache(outputPath);
+                        return TryReady(cacheKey, outputPath);
+                    }
+                    finally { try { File.Delete(partial); } catch (IOException) { } }
+                }
+                if (job is null || job.State is DistributedJobStateV1.Failed or DistributedJobStateV1.Cancelled or DistributedJobStateV1.Uncertain) return null;
+                if (job.State == DistributedJobStateV1.Pending && dispatchedAt.Elapsed >= TimeSpan.FromSeconds(10))
+                {
+                    distributedCoordinator.CancelJob(jobId);
+                    return null;
+                }
+                await Task.Delay(TimeSpan.FromMilliseconds(250), timeout.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            distributedCoordinator.CancelJob(jobId);
+            mediaTransfers.Revoke(jobId);
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            distributedCoordinator.CancelJob(jobId);
+            return null;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or InvalidOperationException or HttpRequestException)
+        {
+            distributedCoordinator.CancelJob(jobId);
+            return null;
+        }
+        finally { mediaTransfers.Revoke(jobId); }
     }
 
     public ValueTask<ReadableMediaContent?> OpenReadAsync(TranscodedContentHandle content, CancellationToken cancellationToken = default)
