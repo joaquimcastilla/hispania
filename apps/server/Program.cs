@@ -111,7 +111,22 @@ var playbackPlannerId = builder.Configuration["Modules:PlaybackPlanner"] ?? "his
 builder.Services.AddSingleton<HotSwappablePlaybackPlanner>(services => new HotSwappablePlaybackPlanner(
     playbackPlannerId,
     services.GetRequiredService<ICapabilityResolver>().Resolve<IPlaybackPlanner>("hispania.playback.planner", new Version(1, 0), playbackPlannerId)));
-builder.Services.AddSingleton<IPlaybackPlanner>(services => services.GetRequiredService<HotSwappablePlaybackPlanner>());
+var experimentStatePath = builder.Configuration["PlaybackExperiments:StatePath"];
+var experimentAssignmentSalt = builder.Configuration["PlaybackExperiments:AssignmentSalt"];
+IPlaybackExperimentStore experimentStore = string.IsNullOrWhiteSpace(experimentStatePath)
+    ? new InMemoryPlaybackExperimentStore()
+    : new JsonPlaybackExperimentStore(experimentStatePath);
+builder.Services.AddSingleton<IPlaybackExperimentStore>(experimentStore);
+builder.Services.AddSingleton<IVariantAssignmentStore>(experimentStore);
+builder.Services.AddSingleton<VariantExperimentRouter<IPlaybackPlanner>>(services =>
+    new VariantExperimentRouter<IPlaybackPlanner>(services.GetRequiredService<IVariantAssignmentStore>(), experimentAssignmentSalt));
+builder.Services.AddSingleton<PlaybackExperimentService>(services => new PlaybackExperimentService(
+    services.GetRequiredService<IModuleRegistry>(), services.GetRequiredService<ModuleRuntime>(),
+    services.GetRequiredService<VariantExperimentRouter<IPlaybackPlanner>>(), experimentStore, experimentAssignmentSalt,
+    services.GetRequiredService<ModuleExtensionCatalog>()));
+builder.Services.AddHostedService(services => services.GetRequiredService<PlaybackExperimentService>());
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<IPlaybackPlanner, ExperimentRoutedPlaybackPlanner>();
 builder.Services.AddSingleton<PlaybackPlannerHotSwapService>();
 builder.Services.AddSingleton<LocalFileSystemSourceContentAccessor>();
 builder.Services.AddSingleton<ISourceContentAccessor>(provider => provider.GetRequiredService<LocalFileSystemSourceContentAccessor>());

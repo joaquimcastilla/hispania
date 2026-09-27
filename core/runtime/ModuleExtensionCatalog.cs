@@ -147,6 +147,22 @@ public sealed class ModuleExtensionCatalog : IDisposable
         lock (publisherTrustGate) return revokedPublisherIds.Order(StringComparer.Ordinal).ToArray();
     }
 
+    /// <summary>Checks current package authorization for a loaded extension; statically composed host modules are host-authorized.</summary>
+    public bool IsModuleAuthorized(string moduleId, Version moduleVersion)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(moduleId);
+        ArgumentNullException.ThrowIfNull(moduleVersion);
+        _ = Discover();
+        lock (syncRoot)
+        {
+            if (!discovered.TryGetValue(moduleId, out var extension)) return true;
+            if (!allowlist.Contains(moduleId) || !extension.Compatible || !Version.TryParse(extension.Manifest.Version, out var declared) || declared != moduleVersion)
+                return false;
+            try { ValidatePublisherTrust(extension.Manifest); return true; }
+            catch (InvalidOperationException) { return false; }
+        }
+    }
+
     public void AuthorizePublisher(string publisherId, string publicKeyPem)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(publisherId);

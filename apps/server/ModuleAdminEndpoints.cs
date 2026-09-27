@@ -152,6 +152,62 @@ public static class ModuleAdminEndpoints
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return Results.StatusCode(499); }
             catch (InvalidOperationException exception) { return Results.Conflict(new { error = exception.Message }); }
         });
+        group.MapGet("/playback-experiments", ([FromServices] PlaybackExperimentService experiments) => Results.Ok(new
+        { experiment = experiments.Describe(), recovery = experiments.RecoveryStatus }));
+        group.MapPost("/playback-experiments", async Task<IResult> (PlaybackExperimentConfigurationRequest request, [FromServices] PlaybackExperimentService experiments, CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                var snapshot = await experiments.ConfigureAsync(request, cancellationToken).ConfigureAwait(false);
+                return Results.Ok(new PlaybackExperimentStatus(snapshot.ExperimentId, snapshot.Revision, snapshot.Mode.ToString(), snapshot.CapabilityId,
+                    snapshot.ContractVersion.ToString(), snapshot.Weights, snapshot.ManualVariant, snapshot.ShadowVariant, snapshot.FallbackPolicy.ToString()));
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return Results.StatusCode(499); }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
+            catch (InvalidOperationException exception) { return Results.Conflict(new { error = exception.Message }); }
+        });
+        group.MapPost("/playback-experiments/{experimentId}/suspend", async Task<IResult> (string experimentId, [FromServices] PlaybackExperimentService experiments, CancellationToken cancellationToken) =>
+        {
+            try { var snapshot = await experiments.SuspendAsync(experimentId, cancellationToken).ConfigureAwait(false); return Results.Ok(experiments.Describe()); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return Results.StatusCode(499); }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (InvalidOperationException exception) { return Results.Conflict(new { error = exception.Message }); }
+        });
+        group.MapPost("/playback-experiments/{experimentId}/variants/{moduleId}/suspend", async Task<IResult> (string experimentId, string moduleId, [FromServices] PlaybackExperimentService experiments, CancellationToken cancellationToken) =>
+        {
+            try { _ = await experiments.SuspendVariantAsync(experimentId, moduleId, cancellationToken).ConfigureAwait(false); return Results.Ok(experiments.Describe()); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return Results.StatusCode(499); }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (InvalidOperationException exception) { return Results.Conflict(new { error = exception.Message }); }
+        });
+        group.MapPost("/playback-experiments/{experimentId}/variants/{moduleId}/retire", async Task<IResult> (string experimentId, string moduleId, [FromServices] PlaybackExperimentService experiments, CancellationToken cancellationToken) =>
+        {
+            try { _ = await experiments.RetireVariantAsync(experimentId, moduleId, cancellationToken).ConfigureAwait(false); return Results.Ok(experiments.Describe()); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return Results.StatusCode(499); }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (InvalidOperationException exception) { return Results.Conflict(new { error = exception.Message }); }
+        });
+        group.MapPost("/playback-experiments/{experimentId}/rollback", async Task<IResult> (string experimentId, [FromServices] PlaybackExperimentService experiments, CancellationToken cancellationToken) =>
+        {
+            try { _ = await experiments.RollbackAsync(experimentId, cancellationToken).ConfigureAwait(false); return Results.Ok(experiments.Describe()); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return Results.StatusCode(499); }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (InvalidOperationException exception) { return Results.Conflict(new { error = exception.Message }); }
+        });
+        group.MapPost("/playback-experiments/{experimentId}/finish", async Task<IResult> (string experimentId, [FromServices] PlaybackExperimentService experiments, CancellationToken cancellationToken) =>
+        {
+            try { await experiments.FinishAsync(experimentId, cancellationToken).ConfigureAwait(false); return Results.NoContent(); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return Results.StatusCode(499); }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (InvalidOperationException exception) { return Results.Conflict(new { error = exception.Message }); }
+        });
+        group.MapGet("/playback-experiments/{experimentId}/metrics", (string experimentId, [FromServices] PlaybackExperimentService experiments) =>
+        {
+            try { return Results.Ok(experiments.Export(experimentId)); }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (InvalidOperationException exception) { return Results.Conflict(new { error = exception.Message }); }
+        });
         return endpoints;
     }
 }

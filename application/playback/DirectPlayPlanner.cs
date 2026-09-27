@@ -7,7 +7,7 @@ using Hispania.ModuleSystem.Contracts;
 
 namespace Hispania.Playback.Application;
 
-public sealed class DirectPlayPlanner : IPlaybackPlanner, IModule, IModuleHealthCheck
+public sealed class DirectPlayPlanner : IPlaybackPlanner, IModule, IModuleHealthCheck, IModuleExperimentDeclaration
 {
     private readonly IMediaCatalogReader _catalog;
 
@@ -18,6 +18,9 @@ public sealed class DirectPlayPlanner : IPlaybackPlanner, IModule, IModuleHealth
         "HISPANIA Direct Play Planner",
         new Version(1, 0, 0),
         [new ModuleCapability("hispania.playback.planner", new Version(1, 0), dynamicallyReplaceable: true)]);
+
+    public IReadOnlyCollection<ModuleExperimentCapability> ExperimentCapabilities { get; } =
+    [new("hispania.playback.planner", new Version(1, 0), [ModuleExperimentMode.Manual, ModuleExperimentMode.Shadow, ModuleExperimentMode.TrafficSplit], "Hispania.Library.Contracts.IMediaCatalogReader@1.0")];
 
     public ValueTask<bool> IsHealthyAsync(CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
 

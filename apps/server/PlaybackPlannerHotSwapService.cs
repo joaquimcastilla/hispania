@@ -19,21 +19,25 @@ public sealed class PlaybackPlannerHotSwapService : IDisposable
     private readonly IModuleRegistry registry;
     private readonly IModuleRuntime runtime;
     private readonly HotSwappablePlaybackPlanner router;
+    private readonly PlaybackExperimentService? experiments;
     private readonly SemaphoreSlim lifecycleGate = new(1, 1);
     private PlannerGeneration? rollbackGeneration;
     private string? rollbackModuleId;
 
-    public PlaybackPlannerHotSwapService(IModuleRegistry registry, IModuleRuntime runtime, HotSwappablePlaybackPlanner router)
+    public PlaybackPlannerHotSwapService(IModuleRegistry registry, IModuleRuntime runtime, HotSwappablePlaybackPlanner router, PlaybackExperimentService? experiments = null)
     {
         this.registry = registry;
         this.runtime = runtime;
         this.router = router;
+        this.experiments = experiments;
         router.OperationFailed += OnOperationFailed;
     }
 
     public async Task<PlaybackPlannerSwapResult> ReplaceAsync(string targetModuleId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetModuleId);
+        if (experiments?.Snapshot is not null)
+            throw new InvalidOperationException("Finish the active Playback Planner experiment before using supervised single-variant hot swap.");
         await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
