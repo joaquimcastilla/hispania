@@ -79,6 +79,7 @@ public sealed class DistributedWorkerProcessIntegrationTests
         app.MapDistributedWorkerEndpoints();
         await app.StartAsync();
         Process? worker = null;
+        WebApplication? playbackApp = null;
         var workerOutput = new StringBuilder();
         try
         {
@@ -148,7 +149,7 @@ public sealed class DistributedWorkerProcessIntegrationTests
             playbackBuilder.Services.AddSingleton<IDirectPlayExecutor>(new DirectPlayExecutor(catalog, sourceAccessor));
             playbackBuilder.Services.AddSingleton<ICompatibleMediaTranscoderV1>(transcoder);
             playbackBuilder.Services.AddSingleton<ITranscodedContentStore>(transcoder);
-            await using var playbackApp = playbackBuilder.Build();
+            playbackApp = playbackBuilder.Build();
             playbackApp.MapDirectPlayEndpoints();
             await playbackApp.StartAsync();
             using var playbackClient = playbackApp.GetTestClient();
@@ -180,7 +181,7 @@ public sealed class DistributedWorkerProcessIntegrationTests
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => uploadJob);
             var uploadInterrupted = coordinator.ListJobs().Single(job => job.Request.ContractId == ffmpegCapability.ContractId && job.State == DistributedJobStateV1.Cancelled);
             Assert.DoesNotContain(uploadInterrupted.Request.JobId, jobIdsBeforeUpload);
-            Assert.Empty(Directory.EnumerateFiles(Path.Combine(root, "coordinator-transfers"), "*.partial"));
+            await WaitForNoFilesAsync(Path.Combine(root, "coordinator-transfers"), "*.partial", TimeSpan.FromSeconds(5));
             Assert.Empty(Directory.EnumerateFiles(uploadCancelCache, "*.mp4"));
 
             var interruptedSourcePath = Path.Combine(root, "coordinator-library", "sample-source-retry.mp4");
@@ -237,8 +238,31 @@ public sealed class DistributedWorkerProcessIntegrationTests
                 await worker.WaitForExitAsync();
             }
             worker?.Dispose();
+            if (playbackApp is not null) await playbackApp.StopAsync();
             await app.StopAsync();
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            await DeleteDirectoryWithRetryAsync(root);
+        }
+    }
+
+    private static async Task WaitForNoFilesAsync(string directory, string pattern, TimeSpan timeout)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (Directory.EnumerateFiles(directory, pattern).Any())
+        {
+            if (DateTimeOffset.UtcNow >= deadline)
+                Assert.Empty(Directory.EnumerateFiles(directory, pattern));
+            await Task.Delay(25);
+        }
+    }
+
+    private static async Task DeleteDirectoryWithRetryAsync(string path)
+    {
+        if (!Directory.Exists(path)) return;
+        for (var attempt = 0; ; attempt++)
+        {
+            try { Directory.Delete(path, recursive: true); return; }
+            catch (IOException) when (attempt < 20) { await Task.Delay(250); }
+            catch (UnauthorizedAccessException) when (attempt < 20) { await Task.Delay(250); }
         }
     }
 
