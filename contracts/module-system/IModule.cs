@@ -8,3 +8,9 @@ public interface IModule
 
     ValueTask StopAsync(CancellationToken cancellationToken);
 }
+
+/// <summary>Exposes typed public-contract proxies for a module whose implementation is remote.</summary>
+public interface IModuleCapabilityProxyFactory
+{
+    object CreateCapabilityProxy(Type contractType);
+}

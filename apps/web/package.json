@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run build:modern && npm run build:classic",
+    "build:modern": "tsc -b && vite build --mode modern",
+    "build:classic": "tsc -b && vite build --mode classic",
     "test": "vitest run"
   },
   "dependencies": {

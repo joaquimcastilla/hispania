@@ -9,19 +9,41 @@
     <Content Include="$(WebDistPath)**\*" Link="wwwroot\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\module-host\Hispania.ModuleHost.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\contracts\architecture-test\Hispania.ArchitectureTest.Contracts.csproj" />
     <ProjectReference Include="..\..\core\runtime\Hispania.Runtime.csproj" />
     <ProjectReference Include="..\..\modules\architecture-test\Hispania.ArchitectureTest.Modules.csproj" />
+    <ProjectReference Include="..\..\contracts\extension-demo\Hispania.ExtensionDemo.Contracts.csproj" />
     <ProjectReference Include="..\..\application\library\Hispania.Library.Application.csproj" />
     <ProjectReference Include="..\..\application\playback\Hispania.Playback.Application.csproj" />
+    <ProjectReference Include="..\..\modules\playback-conservative\Hispania.Playback.Conservative.csproj" />
     <ProjectReference Include="..\..\infrastructure\library\Hispania.Library.LocalFileSystem.csproj" />
     <ProjectReference Include="..\..\infrastructure\ffprobe\Hispania.Library.FFprobe.csproj" />
+    <ProjectReference Include="..\..\infrastructure\transcoding-ffmpeg\Hispania.Transcoding.FFmpeg.csproj" />
+    <ProjectReference Include="..\ffmpeg-worker\Hispania.FFmpeg.Worker.csproj" />
     <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.Sqlite\Hispania.Library.Persistence.Sqlite.csproj" />
     <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.EFCore\Hispania.Library.Persistence.EFCore.csproj" />
+    <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.PostgreSql\Hispania.Library.Persistence.PostgreSql.csproj" />
     <ProjectReference Include="..\..\contracts\library\Hispania.Library.Contracts.csproj" />
     <ProjectReference Include="..\..\contracts\playback\Hispania.Playback.Contracts.csproj" />
     <ProjectReference Include="..\..\core\domain\Hispania.Media.Domain.csproj" />
     <ProjectReference Include="..\..\application\metadata\Hispania.Metadata.Application.csproj" />
     <ProjectReference Include="..\..\infrastructure\metadata\Hispania.Metadata.Tmdb\Hispania.Metadata.Tmdb.csproj" />
+    <ProjectReference Include="..\..\infrastructure\persistence\distributed-work\Hispania.DistributedWork.Persistence.Sqlite.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\extensions\**\module.json" Link="extensions\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="CopyGenericModuleHostAfterBuild" AfterTargets="Build">
+    <ItemGroup>
+      <GenericModuleHostFiles Include="$(MSBuildProjectDirectory)\..\module-host\bin\$(Configuration)\net10.0\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(GenericModuleHostFiles)" DestinationFiles="@(GenericModuleHostFiles->'$(OutDir)module-host\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'@(GenericModuleHostFiles)' != ''" />
+  </Target>
+  <Target Name="CopyGenericModuleHostAfterPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <GenericModuleHostPublishFiles Include="$(MSBuildProjectDirectory)\..\module-host\bin\$(Configuration)\net10.0\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(GenericModuleHostPublishFiles)" DestinationFiles="@(GenericModuleHostPublishFiles->'$(PublishDir)module-host\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'@(GenericModuleHostPublishFiles)' != ''" />
+  </Target>
 </Project>

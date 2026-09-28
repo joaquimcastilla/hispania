@@ -3,11 +3,10 @@ using Hispania.Media.Domain.Identity;
 using Hispania.Metadata.Contracts;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
-using Microsoft.Data.Sqlite;
 
 namespace Hispania.Library.Persistence.EFCore;
 
-public sealed class EfMetadataEnrichmentStore(IDbContextFactory<LibraryCatalogDbContext> contextFactory) : IMetadataEnrichmentStore
+public sealed class EfMetadataEnrichmentStore(IDbContextFactory<LibraryCatalogDbContext> contextFactory, IUniqueConstraintViolationClassifier uniqueConstraintClassifier) : IMetadataEnrichmentStore
 {
     public async ValueTask<bool> WorkExistsAsync(WorkId workId, CancellationToken cancellationToken = default)
     {
@@ -55,7 +54,7 @@ public sealed class EfMetadataEnrichmentStore(IDbContextFactory<LibraryCatalogDb
             await ApplyAsync(new MetadataEnrichmentWrite([association], [], [], null), cancellationToken);
             return new(true);
         }
-        catch (DbUpdateException exception) when (IsConfirmedIdentifierUniqueViolation(exception))
+        catch (DbUpdateException exception) when (uniqueConstraintClassifier.IsConfirmedExternalIdentifierConflict(exception))
         {
             var winner = await FindConfirmedAssociationAsync(association.Identifier, cancellationToken);
             if (winner is null || winner.Target.WorkId == workId) throw;
@@ -75,12 +74,6 @@ public sealed class EfMetadataEnrichmentStore(IDbContextFactory<LibraryCatalogDb
         await ApplyAsync(new MetadataEnrichmentWrite([attempted], [], [], null), cancellationToken);
         return new(false, new ExternalIdentifierConflict(id, existingWorkId, existing.Id, attemptedWorkId, attempted.Id));
     }
-
-    private static bool IsConfirmedIdentifierUniqueViolation(DbUpdateException exception) =>
-        exception.InnerException is SqliteException sqlite && sqlite.SqliteErrorCode == 19 && sqlite.SqliteExtendedErrorCode == 2067 &&
-        sqlite.Message.Contains("external_identifier_associations.provider_code", StringComparison.Ordinal) &&
-        sqlite.Message.Contains("external_identifier_associations.namespace_code", StringComparison.Ordinal) &&
-        sqlite.Message.Contains("external_identifier_associations.identifier_value", StringComparison.Ordinal);
 
     public async ValueTask<MetadataEnrichmentTargetSnapshot> LoadForTargetAsync(EnrichmentTarget target, CancellationToken cancellationToken = default)
     {

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Hispania.WorkerAgent</AssemblyName>
+    <RootNamespace>Hispania.WorkerAgent</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\core\runtime\Hispania.Runtime.csproj" />
+    <ProjectReference Include="..\..\contracts\extension-demo\Hispania.ExtensionDemo.Contracts.csproj" />
+    <ProjectReference Include="..\..\infrastructure\transcoding-ffmpeg\Hispania.Transcoding.FFmpeg.csproj" />
+    <ProjectReference Include="..\ffmpeg-worker\Hispania.FFmpeg.Worker.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <Target Name="CopyFfmpegWorkerAfterBuild" AfterTargets="Build">
+    <ItemGroup><FfmpegWorkerFiles Include="$(MSBuildProjectDirectory)\..\ffmpeg-worker\bin\$(Configuration)\net10.0\**\*" /></ItemGroup>
+    <Copy SourceFiles="@(FfmpegWorkerFiles)" DestinationFiles="@(FfmpegWorkerFiles->'$(OutDir)ffmpeg-worker\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'@(FfmpegWorkerFiles)' != ''" />
+  </Target>
+</Project>

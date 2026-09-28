@@ -83,7 +83,7 @@ function PersonPage({ person, metadata, profileLoading, onBack, onOpenMovie, med
   </section>;
 }
 
-export function App() {
+export function App({ variant = "modern" }: { variant?: "modern" | "classic" }) {
   const [section, setSection] = useState<LibrarySection>("movies");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [media, setMedia] = useState<MediaListItem[]>([]);
@@ -238,7 +238,7 @@ export function App() {
   }
 
   const drawerSection = (nextSection: LibrarySection) => { window.history.pushState({}, "", "/"); setSection(nextSection); setSelectedMedia(null); setPerson(null); setDrawerOpen(false); };
-  return <main className="app-shell">
+  return <main className={`app-shell web-variant-${variant}`}>
     <header className="topbar"><button type="button" className="menu-button" aria-label="Abrir menú" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>☰</button><button className="brand" type="button" onClick={() => selectSection("home")} aria-label="HISPANIA, ir a Inicio"><span className="brand-mark" aria-hidden="true">H</span><span>HISPANIA</span></button><nav className="main-navigation" aria-label="Navegación principal"><button type="button" className="nav-item" aria-current={section === "home" ? "page" : undefined} onClick={() => selectSection("home")}>Inicio</button>{navigation.map(item => <button key={item.id} type="button" className="nav-item" aria-current={section === item.id ? "page" : undefined} onClick={() => selectSection(item.id)}>{item.label}</button>)}</nav></header>
     {drawerOpen && <div className="drawer-layer" role="presentation" onClick={() => setDrawerOpen(false)}><aside className="app-drawer" role="dialog" aria-modal="true" aria-label="Menú HISPANIA" onClick={event => event.stopPropagation()}><div className="drawer-heading"><strong>HISPANIA</strong><button type="button" aria-label="Cerrar menú" onClick={() => setDrawerOpen(false)}>×</button></div><button type="button" className={section === "home" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("home")}>Inicio</button><p className="drawer-label">MEDIOS</p>{navigation.map(item => <button key={item.id} type="button" className={section === item.id ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection(item.id)}>{item.label}</button>)}<p className="drawer-label">ADMINISTRACIÓN</p><button type="button" className={section === "dashboard" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("dashboard")}>Panel de control</button>{["Bibliotecas", "Ajustes"].map(item => <button key={item} type="button" className="drawer-link" disabled aria-disabled="true">{item}</button>)}</aside></div>}
     {section === "home" && <Home onNavigate={selectSection} movies={media} onOpenMovie={openMovie} />}

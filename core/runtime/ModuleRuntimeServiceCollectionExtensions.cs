@@ -23,6 +23,7 @@ public static class ModuleRuntimeServiceCollectionExtensions
         services.AddSingleton<ModuleRuntime>();
         services.AddSingleton<IModuleRuntime>(serviceProvider => serviceProvider.GetRequiredService<ModuleRuntime>());
         services.AddSingleton<IModuleResolver, ModuleResolver>();
+        services.AddSingleton<ICapabilityResolver, CapabilityResolver>();
         services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<ModuleRuntime>());
 
         return services;

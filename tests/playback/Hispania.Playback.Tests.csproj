@@ -12,10 +12,18 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\application\playback\Hispania.Playback.Application.csproj" />
+    <ProjectReference Include="..\..\modules\playback-conservative\Hispania.Playback.Conservative.csproj" />
     <ProjectReference Include="..\..\application\library\Hispania.Library.Application.csproj" />
     <ProjectReference Include="..\..\infrastructure\library\Hispania.Library.LocalFileSystem.csproj" />
     <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.EFCore\Hispania.Library.Persistence.EFCore.csproj" />
     <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.Sqlite\Hispania.Library.Persistence.Sqlite.csproj" />
     <ProjectReference Include="..\..\apps\server\Hispania.Server.csproj" />
+    <ProjectReference Include="..\..\apps\worker-agent\Hispania.WorkerAgent.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\modules\extension-demo\Hispania.ExtensionDemo.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\contracts\extension-demo\Hispania.ExtensionDemo.Contracts.csproj" />
+    <ProjectReference Include="..\..\infrastructure\transcoding-ffmpeg\Hispania.Transcoding.FFmpeg.csproj" />
+    <ProjectReference Include="..\..\apps\ffmpeg-worker\Hispania.FFmpeg.Worker.csproj" />
+    <ProjectReference Include="..\fakes\Hispania.FFmpeg.Worker.Fake\Hispania.FFmpeg.Worker.Fake.csproj" />
+    <ProjectReference Include="..\..\infrastructure\persistence\distributed-work\Hispania.DistributedWork.Persistence.Sqlite.csproj" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>Hispania.Playback.Conservative</AssemblyName><RootNamespace>Hispania.Playback.Conservative</RootNamespace></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\core\domain\Hispania.Media.Domain.csproj" />
+    <ProjectReference Include="..\..\contracts\library\Hispania.Library.Contracts.csproj" />
+    <ProjectReference Include="..\..\contracts\playback\Hispania.Playback.Contracts.csproj" />
+    <ProjectReference Include="..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />
+  </ItemGroup>
+</Project>

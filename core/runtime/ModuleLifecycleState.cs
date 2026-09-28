@@ -5,6 +5,8 @@ public enum ModuleLifecycleState
     Registered,
     Starting,
     Running,
+    Degraded,
+    Draining,
     Stopping,
     Stopped,
     Failed

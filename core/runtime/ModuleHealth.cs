@@ -6,4 +6,6 @@ public sealed record ModuleHealth(
     ModuleDescriptor Descriptor,
     ModuleLifecycleState State,
     bool IsHealthy,
-    string? Detail);
+    string? Detail,
+    DateTimeOffset UpdatedAtUtc = default,
+    long Revision = 0);

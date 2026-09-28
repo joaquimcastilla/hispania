@@ -94,15 +94,27 @@ public static class DirectPlayEndpoints
 
         if (planning is DirectPlayUnavailable)
         {
-            var transcoder = context.RequestServices.GetService<ICompatibleMediaTranscoder>();
-            var compatibleFile = transcoder is null ? null : await transcoder.GetMp4FileAsync(id, context.RequestAborted).ConfigureAwait(false);
-            if (compatibleFile is null)
+            var transcoder = context.RequestServices.GetService<ICompatibleMediaTranscoderV1>();
+            var outcome = transcoder is null ? new CompatibleTranscodeUnavailable() : await transcoder.CreateCompatibleRepresentationAsync(id, context.RequestAborted).ConfigureAwait(false);
+            if (outcome is not CompatibleTranscodeReady compatibleFile)
             {
                 context.Response.StatusCode = StatusCodes.Status415UnsupportedMediaType;
                 return;
             }
 
-            await Results.File(compatibleFile, "video/mp4", enableRangeProcessing: true).ExecuteAsync(context).ConfigureAwait(false);
+            var contentStore = context.RequestServices.GetService<ITranscodedContentStore>();
+            var generated = contentStore is null ? null : await contentStore.OpenReadAsync(compatibleFile.Content, context.RequestAborted).ConfigureAwait(false);
+            if (generated is null)
+            {
+                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                return;
+            }
+
+            await using (generated.ConfigureAwait(false))
+            {
+                context.Response.Headers.AcceptRanges = "bytes";
+                await Results.File(generated.Stream, compatibleFile.ContentType, enableRangeProcessing: true).ExecuteAsync(context).ConfigureAwait(false);
+            }
             return;
         }
 

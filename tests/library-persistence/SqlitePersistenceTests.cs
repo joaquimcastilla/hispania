@@ -54,8 +54,25 @@ public sealed class SqlitePersistenceTests
                 Assert.Equal(2, await db.Works.CountAsync());
                 Assert.Equal(2, await db.MediaEntities.CountAsync());
                 Assert.Equal(2, await db.Sources.CountAsync());
+                Assert.Equal(
+                    ["Seduction and Snacks (2021)/Seduction and Snacks (2021).mp4", "The Weather Man (2005)/The Weather Man (2005).mkv"],
+                    await db.Imports.OrderBy(x => x.RelativePath).Select(x => x.RelativePath).ToArrayAsync());
+                Assert.All(visible, x =>
+                {
+                    Assert.Equal($"movies/{x.File.RelativePath}", x.Media.Source.Locator.OpaqueValue);
+                    Assert.Single(x.Media.VideoAsset.TechnicalRepresentations.Single().SourceBindings);
+                    Assert.Single(x.Media.AudioAsset.TechnicalRepresentations.Single().SourceBindings);
+                });
                 Assert.Equal(0, await db.ExternalIdentifierAssociations.CountAsync());
                 Assert.Equal(0, await db.ArtworkReferences.CountAsync());
+
+                // Scanning must preserve an existing TMDB identification without creating another association.
+                db.ExternalIdentifierAssociations.Add(new ExternalIdentifierAssociationRecord
+                {
+                    Id = Guid.NewGuid(), ProviderCode = "tmdb", NamespaceCode = "movie", IdentifierValue = "fixture-42",
+                    CurrentStatusCode = "confirmed", TargetKind = "work", TargetId = firstWorkIds[0]
+                });
+                await db.SaveChangesAsync();
 
                 var rescan = await scanner.ScanAsync();
                 Assert.Equal(new LibraryScanResult(2, 2, 0, 0), rescan);
@@ -63,7 +80,7 @@ public sealed class SqlitePersistenceTests
                 Assert.Equal(firstWorkIds, store.GetAll().Select(x => x.Media.Work.Id.Value).Order().ToArray());
                 Assert.Equal(2, await db.Imports.CountAsync());
                 Assert.Equal(2, await db.Works.CountAsync());
-                Assert.Equal(0, await db.ExternalIdentifierAssociations.CountAsync());
+                Assert.Equal(1, await db.ExternalIdentifierAssociations.CountAsync());
             }
 
             await using (var restarted = new ServiceCollection().AddSqliteLibraryPersistence(database).BuildServiceProvider())
@@ -80,7 +97,7 @@ public sealed class SqlitePersistenceTests
                 Assert.Equal(2, await db.Works.CountAsync());
                 Assert.Equal(2, await db.MediaEntities.CountAsync());
                 Assert.Equal(2, await db.Sources.CountAsync());
-                Assert.Equal(0, await db.ExternalIdentifierAssociations.CountAsync());
+                Assert.Equal(1, await db.ExternalIdentifierAssociations.CountAsync());
                 Assert.Equal(0, await db.ArtworkReferences.CountAsync());
             }
         }
