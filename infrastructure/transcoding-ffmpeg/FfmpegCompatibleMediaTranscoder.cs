@@ -212,32 +212,44 @@ public sealed class FfmpegCompatibleMediaTranscoder : ICompatibleMediaTranscoder
                     var handle = result.GetProperty("handle").GetString();
                     var declaredLength = result.GetProperty("length").GetInt64();
                     var expectedHash = result.GetProperty("sha256").GetString();
-                    if (handle is null || expectedHash is null || declaredLength <= 0 || declaredLength > grant.MaximumResultBytes) return null;
+                    if (handle is null || expectedHash is null || declaredLength <= 0 || declaredLength > grant.MaximumResultBytes)
+                    {
+                        return null;
+                    }
                     await using var published = await mediaTransfers.OpenPublishedResultAsync(handle, timeout.Token).ConfigureAwait(false);
-                    if (published is null) return null;
+                    if (published is null)
+                    {
+                        return null;
+                    }
                     var partial = outputPath + "." + Guid.NewGuid().ToString("N") + ".partial.mp4";
                     try
                     {
-                        await using var output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
-                        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-                        var buffer = new byte[64 * 1024]; long total = 0;
-                        while (true)
+                        long total = 0;
+                        byte[] actualHash;
+                        await using (var output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
                         {
-                            var read = await published.ReadAsync(buffer, timeout.Token).ConfigureAwait(false);
-                            if (read == 0) break;
-                            total += read;
-                            if (total > declaredLength || total > grant.MaximumResultBytes) throw new InvalidDataException("Remote result exceeded its authorized length.");
-                            hash.AppendData(buffer, 0, read); await output.WriteAsync(buffer.AsMemory(0, read), timeout.Token).ConfigureAwait(false);
+                            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                            var buffer = new byte[64 * 1024];
+                            while (true)
+                            {
+                                var read = await published.ReadAsync(buffer, timeout.Token).ConfigureAwait(false);
+                                if (read == 0) break;
+                                total += read;
+                                if (total > declaredLength || total > grant.MaximumResultBytes) throw new InvalidDataException("Remote result exceeded its authorized length.");
+                                hash.AppendData(buffer, 0, read); await output.WriteAsync(buffer.AsMemory(0, read), timeout.Token).ConfigureAwait(false);
+                            }
+                            await output.FlushAsync(timeout.Token).ConfigureAwait(false);
+                            actualHash = hash.GetHashAndReset();
                         }
-                        await output.FlushAsync(timeout.Token).ConfigureAwait(false);
-                        if (total != declaredLength || !CryptographicOperations.FixedTimeEquals(hash.GetHashAndReset(), Convert.FromHexString(expectedHash))) throw new InvalidDataException("Remote result integrity check failed.");
+                        if (total != declaredLength || !CryptographicOperations.FixedTimeEquals(actualHash, Convert.FromHexString(expectedHash))) throw new InvalidDataException("Remote result integrity check failed.");
                         await using (var verify = new FileStream(partial, FileMode.Open, FileAccess.Read, FileShare.Read, 16, FileOptions.Asynchronous))
                         {
                             var header = new byte[8]; if (await verify.ReadAsync(header, timeout.Token).ConfigureAwait(false) != header.Length || System.Text.Encoding.ASCII.GetString(header, 4, 4) != "ftyp") throw new InvalidDataException("Remote output is not a valid MP4 container.");
                         }
                         File.Move(partial, outputPath);
                         PruneCache(outputPath);
-                        return TryReady(cacheKey, outputPath);
+                        var ready = TryReady(cacheKey, outputPath);
+                        return ready;
                     }
                     finally { try { File.Delete(partial); } catch (IOException) { } }
                 }

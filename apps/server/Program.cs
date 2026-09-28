@@ -23,10 +23,9 @@ using Microsoft.AspNetCore.Server.Kestrel.Https;
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https =>
 {
-    // The remote-worker endpoint authenticates against an operator-pinned SHA-256 fingerprint.
-    // Chain trust alone is not the authorization decision for these private node certificates.
+    // Workers may present their client certificate; Kestrel still validates its chain using
+    // the coordinator host's configured trust store before endpoint-level pin authorization.
     https.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
-    https.ClientCertificateValidation = static (_, _, _) => true;
 }));
 var webBuild = builder.Configuration["Web:Build"] ?? "modern";
 WebUiStaticAssets.Configure(builder.Environment, webBuild);

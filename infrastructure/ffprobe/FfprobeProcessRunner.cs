@@ -34,7 +34,22 @@ internal sealed class FfprobeProcessRunner : IFfprobeProcessRunner
     }
 
     private static ProcessStartInfo CreateStartInfo(string executable) { var info = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true }; info.ArgumentList.Add("-v"); info.ArgumentList.Add("error"); info.ArgumentList.Add("-show_format"); info.ArgumentList.Add("-show_streams"); info.ArgumentList.Add("-of"); info.ArgumentList.Add("json"); info.ArgumentList.Add("pipe:0"); return info; }
-    private static async Task FeedInputAsync(Stream input, Process process, CancellationToken cancellationToken) { await input.CopyToAsync(process.StandardInput.BaseStream, cancellationToken).ConfigureAwait(false); await process.StandardInput.BaseStream.FlushAsync(cancellationToken).ConfigureAwait(false); process.StandardInput.Close(); }
+    private static async Task FeedInputAsync(Stream input, Process process, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await input.CopyToAsync(process.StandardInput.BaseStream, cancellationToken).ConfigureAwait(false);
+            await process.StandardInput.BaseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            process.StandardInput.Close();
+        }
+        catch (IOException)
+        {
+            // ffprobe can stop reading as soon as it has parsed a fast-start MP4's
+            // header. The closed pipe is harmless when ffprobe completed successfully.
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            if (process.ExitCode != 0) throw;
+        }
+    }
     private static async Task<(string Text, bool Exceeded)> ReadBoundedAsync(StreamReader reader, int maximumBytes) { var buffer = new char[4096]; var builder = new StringBuilder(); var bytes = 0; var exceeded = false; int read; while ((read = await reader.ReadAsync(buffer).ConfigureAwait(false)) != 0) { for (var index = 0; index < read; index++) { var charBytes = Encoding.UTF8.GetByteCount(buffer, index, 1); if (bytes + charBytes > maximumBytes) { exceeded = true; continue; } builder.Append(buffer[index]); bytes += charBytes; } } return (builder.ToString(), exceeded); }
     private static void Kill(Process process) { try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } }
 }

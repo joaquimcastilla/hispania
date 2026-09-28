@@ -65,7 +65,7 @@ public sealed class DistributedWorkerAgent : IAsyncDisposable
     {
         try
         {
-            await ConnectAsync(cancellationToken).ConfigureAwait(false);
+            await ConnectWithRetryAsync(cancellationToken).ConfigureAwait(false);
             lastHeartbeatUtc = DateTimeOffset.UtcNow;
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -88,8 +88,7 @@ public sealed class DistributedWorkerAgent : IAsyncDisposable
                 }
                 catch (HttpRequestException) when (!cancellationToken.IsCancellationRequested)
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
-                    await ConnectAsync(cancellationToken).ConfigureAwait(false);
+                    await ConnectWithRetryAsync(cancellationToken).ConfigureAwait(false);
                 }
             }
         }
@@ -100,6 +99,22 @@ public sealed class DistributedWorkerAgent : IAsyncDisposable
             catch (Exception exception) when (exception is OperationCanceledException or TimeoutException or HttpRequestException) { }
             try { using var _ = await client.PostAsync(NodePath("disconnect"), content: null, CancellationToken.None).ConfigureAwait(false); }
             catch (HttpRequestException) { }
+        }
+    }
+
+    private async Task ConnectWithRetryAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            try
+            {
+                await ConnectAsync(cancellationToken).ConfigureAwait(false);
+                return;
+            }
+            catch (HttpRequestException) when (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
+            }
         }
     }
 
