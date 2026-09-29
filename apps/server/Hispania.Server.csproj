@@ -30,9 +30,15 @@
     <ProjectReference Include="..\..\application\metadata\Hispania.Metadata.Application.csproj" />
     <ProjectReference Include="..\..\infrastructure\metadata\Hispania.Metadata.Tmdb\Hispania.Metadata.Tmdb.csproj" />
     <ProjectReference Include="..\..\infrastructure\persistence\distributed-work\Hispania.DistributedWork.Persistence.Sqlite.csproj" />
+    <ProjectReference Include="..\..\application\inventory\Hispania.Inventory.Application.csproj" />
+    <ProjectReference Include="..\..\infrastructure\persistence\inventory-sqlite\Hispania.Inventory.Persistence.Sqlite.csproj" />
+    <ProjectReference Include="..\..\contracts\inventory\Hispania.Inventory.Contracts.csproj" />
+    <ProjectReference Include="..\..\contracts\platform\Hispania.Platform.Contracts.csproj" />
+    <ProjectReference Include="..\..\infrastructure\platform\persistence-sqlite\Hispania.Platform.Persistence.Sqlite.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\extensions\**\module.json" Link="extensions\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="demo-assets\**\*" Link="demo-assets\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <Target Name="CopyGenericModuleHostAfterBuild" AfterTargets="Build">
     <ItemGroup>

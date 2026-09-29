@@ -12,6 +12,13 @@ using Hispania.Playback.Application;
 using Hispania.Playback.Conservative;
 using Hispania.Playback.Contracts;
 using Hispania.Server;
+using Hispania.Inventory.Application;
+using Hispania.Inventory.Contracts;
+using Hispania.Inventory.Persistence.Sqlite;
+using Hispania.Platform.Contracts.Assets;
+using Hispania.Platform.Contracts.Audit;
+using Hispania.Platform.Contracts.Events;
+using Hispania.Platform.Persistence.Sqlite;
 using Hispania.Metadata.Application;
 using Hispania.Metadata.Contracts;
 using Hispania.Metadata.Tmdb;
@@ -32,6 +39,16 @@ WebUiStaticAssets.Configure(builder.Environment, webBuild);
 
 builder.Services.AddArchitectureTestModules();
 builder.Services.AddModuleRuntime();
+builder.Services.AddSingleton<LocalPlatformEventBus>();
+builder.Services.AddSingleton<IPlatformEventPublisher>(services => services.GetRequiredService<LocalPlatformEventBus>());
+var platformDataPath = builder.Configuration["Platform:DataPath"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "platform");
+builder.Services.AddPlatformSqlitePersistence(
+    builder.Configuration["Platform:Assets:MetadataPath"] ?? Path.Combine(platformDataPath, "assets.sqlite"),
+    builder.Configuration["Platform:Assets:ContentPath"] ?? Path.Combine(platformDataPath, "assets"),
+    builder.Configuration["Platform:Audit:Path"] ?? Path.Combine(platformDataPath, "audit.sqlite"),
+    builder.Configuration.GetValue("Platform:Assets:MaximumBytes", 100L * 1024 * 1024));
+var inventoryDatabasePath = builder.Configuration["Inventory:Sqlite:Path"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "inventory.sqlite");
+builder.Services.AddInventorySqlite(inventoryDatabasePath);
 var distributedStatePath = builder.Configuration["DistributedWorkers:StatePath"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "distributed-coordinator.sqlite");
 builder.Services.AddSingleton<IDistributedWorkStateStoreV1>(_ => new SqliteDistributedWorkStateStore(distributedStatePath));
 var distributedTransferPath = builder.Configuration["DistributedWorkers:TransferPath"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "distributed-transfers");
@@ -195,6 +212,7 @@ builder.Services.AddSingleton<IArchitectureDemonstrationService>(serviceProvider
         .Resolve<IArchitectureDemonstrationService>(selectedModuleId));
 
 var app = builder.Build();
+await SeedInventoryDemoAsync(app.Services);
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -218,6 +236,47 @@ app.MapPersonMetadataEndpoints();
 app.MapTmdbMovieMetadataEndpoints();
 app.MapMetadataEnrichmentControlEndpoints();
 app.MapArtworkDeliveryEndpoints();
+app.MapInventoryEndpoints();
+app.MapPlatformAssetEndpoints();
+app.MapPlatformAuditEndpoints();
+app.MapInventoryMediaAssetEndpoints();
+var testShutdownToken = builder.Configuration["Testing:ShutdownToken"];
+if (!string.IsNullOrWhiteSpace(testShutdownToken))
+{
+    app.MapPost("/_test/shutdown", (HttpContext http, IHostApplicationLifetime lifetime) =>
+    {
+        if (!string.Equals(http.Request.Headers.Authorization.ToString(), $"Bearer {testShutdownToken}", StringComparison.Ordinal)) return Results.Unauthorized();
+        lifetime.StopApplication();
+        return Results.Accepted();
+    });
+}
 app.MapFallbackToFile("index.html");
 
 app.Run();
+
+static async Task SeedInventoryDemoAsync(IServiceProvider services)
+{
+    await using var scope = services.CreateAsyncScope();
+    var query = scope.ServiceProvider.GetRequiredService<IInventoryQueryV1>();
+    if ((await query.GetItemsAsync()).Count != 0) return;
+    var command = scope.ServiceProvider.GetRequiredService<IInventoryCommandV1>();
+    var assets = scope.ServiceProvider.GetRequiredService<IPlatformAssetStore>();
+    var item = await command.CreateItemAsync("BP48", "Battery Pack 48V");
+    var warehouse = await command.CreateWarehouseAsync("MAD", "Madrid Warehouse");
+    var location = await command.CreateLocationAsync(warehouse.Id, "A-01", "Shelf A-01");
+    await command.ReceiveAsync(item.Id, location.Id, 12);
+    var scopeRef = new AssetScope("erp.inventory", item.Id.Value.ToString("D"));
+    var policy = new AssetAccessPolicy("inventory-demo-public-read", PublicRead: true);
+    var samples = new (AssetType Type, string Mime, string Label, byte[] Bytes)[]
+    {
+        (AssetType.Image, "image/svg+xml", "Product image", System.Text.Encoding.UTF8.GetBytes("<svg xmlns='http://www.w3.org/2000/svg' width='640' height='360'><rect width='100%' height='100%' fill='#253a56'/><text x='50%' y='52%' fill='white' text-anchor='middle' font-size='28'>Battery Pack 48V</text></svg>")),
+        (AssetType.Document, "application/pdf", "Datasheet PDF", await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "demo-assets", "bp48-datasheet.pdf"))),
+        (AssetType.Video, "video/mp4", "Product video", await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "demo-assets", "bp48-demo.mp4")))
+    };
+    foreach (var sample in samples)
+    {
+        await using var content = new MemoryStream(sample.Bytes);
+        var stored = await assets.StoreAsync(sample.Type, sample.Mime, content, scopeRef, policy, new Dictionary<string, string> { ["label"] = sample.Label });
+        await command.AssociateAssetAsync(item.Id, new AssetReference(stored.Id));
+    }
+}
