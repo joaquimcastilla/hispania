@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { MetadataEditor } from "./MetadataEditor";
 import { ContentCarousel, ContentCarouselItem } from "./ContentCarousel";
 import { AdminPanel } from "./AdminPanel";
+import { InventoryPage } from "./InventoryPage";
+import { moduleNavigation, routeForPath, shellRoutes } from "./webModules";
 import { metadataClient, MetadataEditModel, PersonMetadata } from "./metadataClient";
 import "./MovieExperience.css";
 
@@ -9,11 +11,12 @@ type MediaListItem = { id: string; displayName: string; effective?: { title?: st
 type MetadataField = { value?: string | number | null; provider?: string | null };
 type MetadataArtwork = { deliveryUrl?: string | null };
 type MetadataDetail = { title: MetadataField; originalTitle: MetadataField; description: MetadataField; releaseDate: MetadataField; artwork: { poster: MetadataArtwork; backdrop: MetadataArtwork } };
-type LibrarySection = "home" | "movies" | "series" | "collections" | "music" | "dashboard";
+type LibrarySection = "home" | "movies" | "series" | "collections" | "music" | "dashboard" | "inventory";
 type LocalPerson = NonNullable<MetadataEditModel["people"]>[number];
 
 const catalogUrl = "/api/v1/media";
-const navigation: ReadonlyArray<{ id: LibrarySection; label: string }> = [{ id: "movies", label: "Películas" }, { id: "series", label: "Series" }, { id: "collections", label: "Colecciones" }, { id: "music", label: "Música" }];
+const navigation: ReadonlyArray<{ id: LibrarySection; label: string }> = moduleNavigation.map(route => ({ id: route.section, label: route.label }));
+const routeForSection = (section: LibrarySection) => shellRoutes.find(route => route.section === section);
 const presentationTitle = (item: MediaListItem) => item.effective?.title || item.displayName;
 const releaseYear = (date?: string | null) => date ? date.slice(0, 4) : null;
 export function streamUrl(mediaId: string): string { return `/api/v1/media/${encodeURIComponent(mediaId)}/stream`; }
@@ -84,7 +87,7 @@ function PersonPage({ person, metadata, profileLoading, onBack, onOpenMovie, med
 }
 
 export function App({ variant = "modern" }: { variant?: "modern" | "classic" }) {
-  const [section, setSection] = useState<LibrarySection>("movies");
+  const [section, setSection] = useState<LibrarySection>(routeForPath(window.location.pathname)?.section ?? "movies");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [media, setMedia] = useState<MediaListItem[]>([]);
   const initialMovieId = window.location.pathname.match(/^\/movies\/([^/]+)$/)?.[1] ? decodeURIComponent(window.location.pathname.match(/^\/movies\/([^/]+)$/)![1]) : null;
@@ -163,6 +166,7 @@ export function App({ variant = "modern" }: { variant?: "modern" | "classic" }) 
       const editId = window.location.pathname.match(/^\/media\/([^/]+)\/metadata\/edit$/)?.[1] ?? null;
       const movieId = window.location.pathname.match(/^\/movies\/([^/]+)$/)?.[1];
       const personId = window.location.pathname.match(/^\/people\/([^/]+)$/)?.[1];
+      if (window.location.pathname === "/erp/inventory") { setSection("inventory"); setSelectedMedia(null); setPerson(null); return; }
       setEditingMediaId(editId);
       if (movieId) { const id = decodeURIComponent(movieId); setSelectedMedia(media.find(item => item.id === id) ?? null); setSection("movies"); setPerson(null); }
       else if (personId) { const id = decodeURIComponent(personId); const found = Object.values(peopleByMovie).flat().find(p => p.internalPersonId === id); if (found) { setPerson(found); setSection("movies"); } }
@@ -228,7 +232,7 @@ export function App({ variant = "modern" }: { variant?: "modern" | "classic" }) 
     return () => { document.removeEventListener("keydown", onKeyDown); videoRef.current?.pause(); if (document.fullscreenElement) void Promise.resolve(document.exitFullscreen?.()).catch(() => undefined); };
   }, [playing]);
 
-  const selectSection = (nextSection: LibrarySection) => { window.history.pushState({}, "", "/"); setSection(nextSection); setSelectedMedia(null); if (nextSection !== "movies") setPlaying(false); setPerson(null); };
+  const selectSection = (nextSection: LibrarySection) => { window.history.pushState({}, "", routeForSection(nextSection)?.path ?? "/"); setSection(nextSection); setSelectedMedia(null); if (nextSection !== "movies") setPlaying(false); setPerson(null); };
   const handleMetadataUpdated = () => { setMetadataByMovie({}); setCreditsByMovie({}); setPeopleByMovie({}); setReload(value => value + 1); };
   const detailTitle = String(detail?.title?.value || (selectedMedia ? presentationTitle(selectedMedia) : ""));
 
@@ -237,12 +241,13 @@ export function App({ variant = "modern" }: { variant?: "modern" | "classic" }) 
     return <MetadataEditor mediaId={editingMediaId} title={selected ? presentationTitle(selected) : "Película"} posterUrl={selected?.effective?.posterUrl} onBack={closeEditor} />;
   }
 
-  const drawerSection = (nextSection: LibrarySection) => { window.history.pushState({}, "", "/"); setSection(nextSection); setSelectedMedia(null); setPerson(null); setDrawerOpen(false); };
+  const drawerSection = (nextSection: LibrarySection) => { window.history.pushState({}, "", routeForSection(nextSection)?.path ?? "/"); setSection(nextSection); setSelectedMedia(null); setPerson(null); setDrawerOpen(false); };
   return <main className={`app-shell web-variant-${variant}`}>
-    <header className="topbar"><button type="button" className="menu-button" aria-label="Abrir menú" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>☰</button><button className="brand" type="button" onClick={() => selectSection("home")} aria-label="HISPANIA, ir a Inicio"><span className="brand-mark" aria-hidden="true">H</span><span>HISPANIA</span></button><nav className="main-navigation" aria-label="Navegación principal"><button type="button" className="nav-item" aria-current={section === "home" ? "page" : undefined} onClick={() => selectSection("home")}>Inicio</button>{navigation.map(item => <button key={item.id} type="button" className="nav-item" aria-current={section === item.id ? "page" : undefined} onClick={() => selectSection(item.id)}>{item.label}</button>)}</nav></header>
-    {drawerOpen && <div className="drawer-layer" role="presentation" onClick={() => setDrawerOpen(false)}><aside className="app-drawer" role="dialog" aria-modal="true" aria-label="Menú HISPANIA" onClick={event => event.stopPropagation()}><div className="drawer-heading"><strong>HISPANIA</strong><button type="button" aria-label="Cerrar menú" onClick={() => setDrawerOpen(false)}>×</button></div><button type="button" className={section === "home" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("home")}>Inicio</button><p className="drawer-label">MEDIOS</p>{navigation.map(item => <button key={item.id} type="button" className={section === item.id ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection(item.id)}>{item.label}</button>)}<p className="drawer-label">ADMINISTRACIÓN</p><button type="button" className={section === "dashboard" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("dashboard")}>Panel de control</button>{["Bibliotecas", "Ajustes"].map(item => <button key={item} type="button" className="drawer-link" disabled aria-disabled="true">{item}</button>)}</aside></div>}
+    <header className="topbar"><button type="button" className="menu-button" aria-label="Abrir menú" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>☰</button><button className="brand" type="button" onClick={() => selectSection("home")} aria-label="HISPANIA, ir a Inicio"><span className="brand-mark" aria-hidden="true">H</span><span>HISPANIA</span></button><nav className="main-navigation" aria-label="Navegación principal"><button type="button" className="nav-item" aria-current={section === "home" ? "page" : undefined} onClick={() => selectSection("home")}>Inicio</button>{navigation.map(item => <button key={item.id} type="button" className="nav-item" aria-current={section === item.id ? "page" : undefined} onClick={() => selectSection(item.id)}>{item.label}</button>)}<button type="button" className="nav-item" aria-current={section === "inventory" ? "page" : undefined} onClick={() => selectSection("inventory")}>Inventario</button></nav></header>
+    {drawerOpen && <div className="drawer-layer" role="presentation" onClick={() => setDrawerOpen(false)}><aside className="app-drawer" role="dialog" aria-modal="true" aria-label="Menú HISPANIA" onClick={event => event.stopPropagation()}><div className="drawer-heading"><strong>HISPANIA</strong><button type="button" aria-label="Cerrar menú" onClick={() => setDrawerOpen(false)}>×</button></div><button type="button" className={section === "home" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("home")}>Inicio</button><p className="drawer-label">MEDIOS</p>{navigation.map(item => <button key={item.id} type="button" className={section === item.id ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection(item.id)}>{item.label}</button>)}<p className="drawer-label">ERP</p><button type="button" className={section === "inventory" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("inventory")}>Inventario</button><p className="drawer-label">ADMINISTRACIÓN</p><button type="button" className={section === "dashboard" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("dashboard")}>Panel de control</button>{["Bibliotecas", "Ajustes"].map(item => <button key={item} type="button" className="drawer-link" disabled aria-disabled="true">{item}</button>)}</aside></div>}
     {section === "home" && <Home onNavigate={selectSection} movies={media} onOpenMovie={openMovie} />}
     {section === "dashboard" && <AdminPanel movieCount={media.length} onMetadataUpdated={handleMetadataUpdated} />}
+    {section === "inventory" && <InventoryPage />}
     {section === "movies" && !selectedMedia && !person && !initialPersonId && <section className="movie-library" aria-labelledby="movies-heading"><div className="section-heading"><div><span className="eyebrow">Tu biblioteca</span><h1 id="movies-heading">Películas</h1><p>Historias listas para volver a descubrir.</p></div><span className="catalog-count">{media.length} títulos</span></div>{loading && media.length === 0 && <div className="state-panel" role="status"><span className="state-symbol" aria-hidden="true">◌</span>Cargando películas…</div>}{error && <div className="state-panel state-error" role="status">{error} <button type="button" onClick={() => setReload(value => value + 1)}>Reintentar</button></div>}{!loading && !error && media.length === 0 && <div className="state-panel"><span className="state-symbol" aria-hidden="true">◇</span><strong>El catálogo está vacío.</strong><span>Aquí aparecerán las películas cuando estén disponibles en tu biblioteca.</span></div>}{media.length > 0 && <ul className="movie-grid">{media.map(item => <li key={item.id}><button type="button" className="movie-card" onClick={() => openMovie(item)}><Artwork key={item.effective?.posterUrl} src={item.effective?.posterUrl} alt={presentationTitle(item)} className="card-artwork" placeholderTestId="grid-artwork-placeholder" /><span className="movie-card-copy"><span className="movie-title">{presentationTitle(item)}</span>{releaseYear(item.effective?.releaseDate) && <span className="movie-year">{releaseYear(item.effective?.releaseDate)}</span>}</span></button></li>)}</ul>}</section>}
     {section === "movies" && initialPersonId && !person && <div className={`state-panel${initialPersonLoadFailed ? " state-error" : ""}`} role={initialPersonLoadFailed ? "alert" : "status"}>{initialPersonLoadFailed ? "No se pudo cargar la ficha de esta persona. Comprueba la conexión con HISPANIA e inténtalo de nuevo." : "Cargando ficha de la persona…"}</div>}
     {section === "series" && <UnavailableSection title="Series" />}{section === "collections" && <UnavailableSection title="Colecciones" />}{section === "music" && <UnavailableSection title="Música" />}
