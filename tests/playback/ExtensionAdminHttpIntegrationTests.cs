@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Hispania.ExtensionDemo.Contracts;
 using Hispania.ModuleSystem.Contracts;
+using Hispania.Platform.Contracts.Audit;
 using Hispania.Runtime;
 using Hispania.Server;
 using Microsoft.AspNetCore.Builder;
@@ -38,6 +39,7 @@ public sealed class ExtensionAdminHttpIntegrationTests
             builder.WebHost.UseTestServer();
             builder.Configuration["Modules:AdminToken"] = Token;
             builder.Services.AddModuleRuntime();
+            builder.Services.AddSingleton<IPlatformAuditWriter, InMemoryPlatformAuditWriter>();
             builder.Services.AddSingleton<DistributedWorkCoordinator>();
             builder.Services.AddSingleton<IDistributedWorkCoordinatorV1>(services => services.GetRequiredService<DistributedWorkCoordinator>());
             builder.Services.AddSingleton(serviceProvider => new ModuleExtensionCatalog(root, new Version(1, 0, 0),

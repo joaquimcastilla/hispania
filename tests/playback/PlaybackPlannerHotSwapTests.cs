@@ -419,6 +419,7 @@ public sealed class PlaybackPlannerHotSwapTests
         builder.WebHost.UseTestServer();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Modules:AdminToken"] = "test-secret" });
         builder.Services.AddSingleton<IModuleRuntime>(setup.Runtime);
+        builder.Services.AddSingleton<Hispania.Platform.Contracts.Audit.IPlatformAuditWriter, InMemoryPlatformAuditWriter>();
         builder.Services.AddSingleton(setup.Runtime);
         var experimentRouter = new VariantExperimentRouter<IPlaybackPlanner>();
         var experiments = new PlaybackExperimentService(setup.Registry, setup.Runtime, experimentRouter);
@@ -503,6 +504,7 @@ public sealed class PlaybackPlannerHotSwapTests
         builder.WebHost.UseTestServer();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Modules:AdminToken"] = token });
         builder.Services.AddSingleton<IModuleRuntime>(setup.Runtime);
+        builder.Services.AddSingleton<Hispania.Platform.Contracts.Audit.IPlatformAuditWriter, InMemoryPlatformAuditWriter>();
         builder.Services.AddSingleton(setup.Runtime);
         builder.Services.AddSingleton(experiments);
         builder.Services.AddSingleton(setup.Router);

@@ -4,6 +4,7 @@ using Hispania.Playback.Application;
 using Hispania.Runtime;
 using Hispania.ExtensionDemo.Contracts;
 using Hispania.ModuleSystem.Contracts;
+using Hispania.Platform.Contracts.Audit;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 
@@ -46,6 +47,11 @@ public static class ModuleAdminEndpoints
             {
                 var result = await next(context).ConfigureAwait(false);
                 AdminOperationLog(logger, context.HttpContext.Request.Method, context.HttpContext.Request.Path, context.HttpContext.Response.StatusCode, null);
+                await context.HttpContext.RequestServices.GetRequiredService<IPlatformAuditWriter>().WriteAsync(new(
+                    DateTimeOffset.UtcNow, "admin", context.HttpContext.Request.Headers["X-Correlation-ID"].FirstOrDefault() ?? System.Diagnostics.Activity.Current?.TraceId.ToString(),
+                    "platform.modules", context.HttpContext.Request.Method.ToLowerInvariant(), "module-operation",
+                    context.HttpContext.Request.Path.Value ?? "unknown", "completed",
+                    new Dictionary<string, string> { ["method"] = context.HttpContext.Request.Method }), context.HttpContext.RequestAborted).ConfigureAwait(false);
                 return result;
             }
             catch (Exception exception)

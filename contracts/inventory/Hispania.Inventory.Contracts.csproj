@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>Hispania.Inventory.Contracts</AssemblyName><RootNamespace>Hispania.Inventory.Contracts</RootNamespace></PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\platform\Hispania.Platform.Contracts.csproj" /></ItemGroup>
+</Project>

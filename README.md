@@ -1,12 +1,12 @@
 # HISPANIA
 
-**Home International Server Platform for Applications, Networking, Integration & Automation** es una plataforma multimedia modular en .NET. Su primer vertical es una biblioteca local con catálogo, metadatos y Playback; el sistema de módulos permite sustituir implementaciones mediante contratos versionados, instalar extensiones y, para capacidades autorizadas, ejecutar trabajo en otro proceso o en otro equipo.
+**Home International Server Platform for Applications, Networking, Integration & Automation** es una plataforma modular en .NET para alojar suites y dominios independientes. Platform ofrece runtime, módulos, workers, eventos, Assets y Audit; Media es la primera suite y Inventory demuestra un segundo dominio. El sistema permite sustituir implementaciones mediante contratos versionados, instalar extensiones y ejecutar capacidades autorizadas en otros procesos o equipos.
 
 HISPANIA funciona en una sola máquina. El coordinador y los workers remotos son opcionales: una instalación básica no necesita varios servidores ni una infraestructura de microservicios.
 
 ## Estado actual
 
-La rama `feature/phase-11-distributed-workers` contiene la arquitectura descrita aquí. «Implementado» identifica funcionalidad presente; «validado» indica el alcance observado en pruebas o ejecución física. No implica soporte multi-coordinator ni aislamiento de código hostil.
+La rama `feature/phase-12-platform-generalization` extiende la arquitectura con Platform Assets/Audit persistentes e Inventory. «Implementado» identifica funcionalidad presente; «validado» indica el alcance observado en pruebas o ejecución física. No implica soporte multi-coordinator ni aislamiento de código hostil.
 
 | Área | Estado | Alcance y límites actuales |
 |---|---|---|
@@ -25,6 +25,48 @@ La rama `feature/phase-11-distributed-workers` contiene la arquitectura descrita
 | Workers GPU, selección por carga y múltiples coordinadores | Pendiente | Inventario de aceleradores no equivale a scheduling GPU ni a soporte de estas funciones. |
 
 ## Arquitectura general
+
+```text
+HISPANIA PLATFORM
+│
+├── Platform Services
+│   ├── Runtime
+│   ├── Module System
+│   ├── Supervisor
+│   ├── Extensions
+│   ├── Workers
+│   ├── Events
+│   ├── Assets
+│   ├── Audit
+│   └── Persistence abstractions
+│
+├── Media Suite
+│
+├── ERP Foundation
+│   └── Inventory
+│
+└── Web Shell
+    ├── Media UI
+    └── Inventory UI
+```
+
+**HISPANIA Platform proporciona mecanismos. Los módulos de dominio proporcionan lógica de negocio.** Media es una suite de dominio sobre Platform. Inventory demuestra que un dominio no multimedia utiliza la misma infraestructura de runtime, contratos, eventos, Assets, Audit, persistencia y Web Shell. Inventory es una base ERP acotada, no un ERP completo.
+
+La dirección de dependencias es:
+
+```text
+Platform → no depende de dominios
+
+Media → Platform
+Inventory → Platform
+Future ERP → Platform
+Store → Platform
+Automation → Platform
+```
+
+Las implementaciones internas de dominios no dependen directamente unas de otras. El host de composición puede conectar contratos públicos cuando una función lo requiere; por ejemplo, la integración Asset→Media se compone en el host y no crea una dependencia de Platform o Inventory hacia Media.
+
+Hito técnico de Phase 12: Platform compila sin Media y sin Inventory; WorkerAgent es genérico y FFmpeg es un proveedor Media; Inventory posee persistencia propia; Assets son referencias opacas persistentes y Audit es transversal y persistente; Asset→Media se compone en el host; Media conserva su comportamiento de Phase 11; y Web Shell presenta más de un dominio mediante registro compartido. La carga dinámica de módulos de frontend todavía no está implementada.
 
 El servidor es un monolito modular: el host compone servicios y adaptadores; las aplicaciones dependen de contratos y dominio; las implementaciones pueden permanecer en el proceso, ejecutarse en un Module Host local o atender una tarea en un worker remoto.
 
@@ -304,9 +346,9 @@ SQLite coordinador soporta recuperación y fencing de un único proceso servidor
 
 La evidencia de Phase 11 incluye suite .NET completa en Windows y Ubuntu; la suite Linux completa registró 472 aprobadas, 0 fallidas y 1 omitida por no configurar PostgreSQL en esa ejecución. Después, la prueba PostgreSQL omitida se ejecutó explícitamente contra PostgreSQL 16.15 y pasó 1/1, 0 fallos, 0 omisiones. El workflow GitHub `Validation` ejecutó CI Linux con PostgreSQL 16 en [el commit `85b35b2`](https://github.com/joaquimcastilla/hispania/actions/runs/36357738829). La ejecución física Windows 11 ↔ Ubuntu 24.04.5 incluyó registro/autorización mTLS, transcode FFmpeg remoto consumido por Playback, fallo del worker, recuperación, expiración y reasignación de lease, fencing de generación obsoleta y rechazo HTTP 409. Los commits de cierre documentado son `8137963` y `652692c`.
 
-## Roadmap resumido
+## Evolución futura
 
-La siguiente etapa propuesta es Phase 12: ampliar la ejecución distribuida sin cambiar el carácter opcional de los workers.
+Las siguientes capacidades son trabajo futuro; no forman parte de la Phase 12:
 
 - Incorporar varios workers con políticas de scheduling que consideren carga real y prioridades.
 - Seleccionar capacidades por CPU/GPU y compatibilidad efectiva, no solo por etiquetas informativas.

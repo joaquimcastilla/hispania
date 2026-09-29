@@ -1,5 +1,15 @@
 # Module System
 
+## Platform contracts and events
+
+Cross-domain module/runtime mechanisms belong in `Hispania.Platform.Contracts` or `Hispania.ModuleSystem.Contracts`; domain-specific contracts stay with their suite. The platform assembly has no Media project reference. `LocalPlatformEventBus` provides deterministic sequential in-process dispatch over versioned event contracts. Publishers receive per-handler failures, and remaining handlers still run. This transport is not durable and does not retry; a future transport can implement `IPlatformEventPublisher` without changing event consumers.
+
+### Domain suite ownership
+
+Media owns Library, Metadata, Search/catalog, Playback, Streaming, and Transcoding. Inventory owns its Item/Warehouse/Location/Stock/Movement records and its SQLite schema. Inventory code references Platform contracts and its own persistence; it does not reference Media projects or tables. The server is the composition root and may reference both suites' public APIs and adapters. `Hispania.Platform.slnf` builds the Platform projects, generic WorkerAgent, and Platform persistence without Media, Playback, FFmpeg, or Inventory implementation.
+
+Inventory is currently composed into the server directly through DI, not discovered as a dynamically loadable `IModule`. Its mutation routes require the existing admin bearer token; read routes remain public. User identity and domain permission contracts are not wired into the web shell yet. WorkerAgent hosts generic capabilities without an FFmpeg project reference; the Media FFmpeg provider is loaded only when configured by the operator.
+
 ## Goal
 
 Permitir que componentes relevantes puedan ser sustituidos sin modificar consumidores.
@@ -340,3 +350,7 @@ recommendations:
 ```
 
 Esto no es requisito para MVP, pero no debemos cerrar esa puerta.
+
+## Generic distributed worker providers
+
+WorkerAgent hosts generic transport, mTLS identity, leases, health, and capability dispatch. Optional capability providers implement `IDistributedWorkerCapabilityProviderV1` in Runtime and are loaded from operator-configured assembly paths. The FFmpeg provider is implemented by the Media transcoding adapter and is absent from WorkerAgent project references. Keep provider loading explicit and trusted: assemblies run with the worker process privileges. `apps/server` and WorkerAgent are composition roots; they may join generic contracts with selected implementation providers while domain projects remain restricted to their owned contracts.

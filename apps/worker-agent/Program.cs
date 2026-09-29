@@ -4,7 +4,6 @@ using System.Security.Cryptography.X509Certificates;
 using Hispania.ExtensionDemo.Contracts;
 using Hispania.ModuleSystem.Contracts;
 using Hispania.Runtime;
-using Hispania.Transcoding.FFmpeg;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -41,16 +40,17 @@ foreach (var assemblyName in contractAssemblies) _ = Assembly.Load(new AssemblyN
 var extensionExecutor = new ModuleExtensionCapabilityExecutor(catalog, ResolveContractType);
 var capabilityHandlers = new List<IDistributedCapabilityHandlerV1>();
 var maximumConcurrentJobs = Math.Clamp(builder.Configuration.GetValue("DistributedWorker:MaximumConcurrentJobs", 2), 1, 64);
-DistributedFfmpegCapabilityHandler? ffmpegHandler = null;
-if (builder.Configuration.GetValue("DistributedWorker:Ffmpeg:Enabled", false))
+var capabilityProviderAssemblies = builder.Configuration.GetSection("DistributedWorker:CapabilityProviderAssemblies").Get<string[]>() ?? [];
+var providerContext = new DistributedWorkerCapabilityContextV1(new Uri(coordinatorUri), nodeId, clientCertificate, serverPins,
+    builder.Configuration.AsEnumerable().Where(static pair => pair.Value is not null).ToDictionary(static pair => pair.Key, static pair => pair.Value!, StringComparer.OrdinalIgnoreCase));
+foreach (var assemblyPath in capabilityProviderAssemblies)
 {
-    var ffmpegOptions = builder.Configuration.GetSection("DistributedWorker:Ffmpeg:WorkerPolicy").Get<FfmpegWorkerPolicy>() ?? new FfmpegWorkerPolicy();
-    maximumConcurrentJobs = Math.Min(maximumConcurrentJobs, ffmpegOptions.MaximumConcurrentJobs);
-    var workerAssembly = builder.Configuration["DistributedWorker:Ffmpeg:WorkerAssemblyPath"] ?? Path.Combine(AppContext.BaseDirectory, "ffmpeg-worker", "Hispania.FFmpeg.Worker.dll");
-    var localCache = builder.Configuration["DistributedWorker:Ffmpeg:CachePath"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "remote-transcode-cache");
-    var ffmpegPath = builder.Configuration["DistributedWorker:Ffmpeg:ExecutablePath"] ?? "ffmpeg";
-    ffmpegHandler = new DistributedFfmpegCapabilityHandler(new Uri(coordinatorUri), nodeId, clientCertificate, serverPins, workerAssembly, ffmpegPath, localCache, ffmpegOptions);
-    capabilityHandlers.Add(ffmpegHandler);
+    var assembly = Assembly.LoadFrom(Path.GetFullPath(assemblyPath));
+    foreach (var providerType in assembly.GetTypes().Where(static type => !type.IsAbstract && typeof(IDistributedWorkerCapabilityProviderV1).IsAssignableFrom(type)))
+    {
+        var provider = (IDistributedWorkerCapabilityProviderV1)(Activator.CreateInstance(providerType) ?? throw new InvalidOperationException($"Could not create capability provider {providerType.FullName}."));
+        capabilityHandlers.AddRange(provider.CreateHandlers(providerContext));
+    }
 }
 var executor = new CompositeDistributedCapabilityExecutor(extensionExecutor, capabilityHandlers);
 var inventory = new DistributedWorkerInventoryV1(
@@ -69,7 +69,7 @@ Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; stop.Canc
 await using var agent = new DistributedWorkerAgent(options, executor);
 Console.WriteLine($"HISPANIA worker '{nodeId}' starting with {inventory.Capabilities.Count} active capabilities.");
 try { await agent.RunAsync(stop.Token).ConfigureAwait(false); }
-finally { ffmpegHandler?.Dispose(); }
+finally { foreach (var handler in capabilityHandlers.OfType<IDisposable>()) handler.Dispose(); }
 return;
 
 Type? ResolveContractType(string fullName)

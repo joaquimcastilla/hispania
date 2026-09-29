@@ -1,5 +1,17 @@
 # Architecture
 
+## Platform and domain suites (Phase 12)
+
+`Hispania.Platform.Contracts` contains cross-domain mechanisms and public abstractions. It must not reference Media or Inventory. `Hispania.Runtime` implements generic runtime facilities; domain behavior remains in its owning suite. Media is currently expressed through `core/domain`, `contracts/{library,metadata,playback}`, and their application services and adapters. See [ADR-0030](adr/ADR-0030-platform-generalization-and-domain-suites.md) for dependency boundaries and validation.
+
+The first platform contracts cover versioned in-process events, audit records, and opaque asset references. The event bus dispatches sequentially, isolates individual handler failures, propagates caller cancellation, and exposes an injectable metrics hook. It is local and non-durable. Asset interfaces do not reveal physical paths; storage and authorization implementations are still host responsibilities.
+
+Inventory is composed as a second suite: `contracts/inventory` -> `application/inventory` -> Inventory-owned `infrastructure/persistence/inventory-sqlite`. Its SQLite file/tables are separate from Library, and only Inventory tables have relational constraints. Inventory keeps opaque Platform `AssetId` references and publishes versioned events; the server composes queries and Assets for `/erp/inventory`. This is an ERP foundation and second-domain proof, not a complete ERP. `Hispania.Platform.slnf` builds Platform contracts, runtime, generic WorkerAgent, and Platform persistence without Media, Playback, FFmpeg, or Inventory implementation.
+
+The Inventory page is registered alongside Media through the Web Shell route/navigation registry and is reached at `/erp/inventory`. Inventory writes use the configured `Modules:AdminToken` bearer filter; reads are public. User sessions and domain permissions are not yet generalized. The server is the composition root for Inventory; dynamic module registration is future work.
+
+Media remains the suite owning Library, Metadata, Search/catalog, Playback, Streaming, and Transcoding capabilities. The current names are distributed across the existing project tree; this phase formalizes ownership before moving source folders.
+
 ## 1. Architectural Style
 
 Inicialmente se utilizará un **modular monolith**.
@@ -334,3 +346,21 @@ Module manifests select `dotnet-inprocess-trusted` or `dotnet-outofprocess` expl
 Package install remains inert; authorization and activation are separate. Signatures cover canonical manifest data and payload digests, but trust roots/revocation must be protected operator policy. Trust API changes are currently in-memory. OOP process separation provides fault containment and configured resource controls, not a security sandbox: child and server still share the OS identity and corresponding filesystem, environment and network privileges. Current-user IPC authentication protects the launch channel from other local users, not from a malicious module process running as the same user. See ADR-0027 and `MODULE_SYSTEM.md` for supported contract limitations and the validation boundary.
 
 Phase 9 local audit additionally records the active generation's signed manifest, rechecks it during reactivation, and stops that exact generation when its publisher is revoked. Unknown publishers cannot update an allowlisted extension. Windows Job Objects set job-time and active-process flags correctly; Windows Actions attached them for generic OOP recovery, and tested the FFmpeg worker. Ubuntu Actions passed PostgreSQL live integration, Linux FFmpeg recovery/media and the generic module suite. Linux generic OOP uses CPU-time `prlimit` and a managed GC heap cap; `RLIMIT_AS` is opt-in because CoreCLR needs a larger address-space reservation, so an OS memory quota via cgroups/systemd remains pending. Installed versions persist, but extension boot autostart, transaction-journal recovery for interrupted install/uninstall, hard cache-volume quotas, and server-process restart acceptance coverage are not implemented. Neither process mode is a hostile-code sandbox.
+
+## Platform, suites, and ownership
+
+```text
+HISPANIA Platform
+├── Platform contracts, runtime, event bus, generic workers, trust and module host
+├── Media suite (Library, Metadata, Playback, Streaming, Transcoding)
+├── Inventory bounded context (its own contracts, application and SQLite database)
+└── Web Shell (shared layout/navigation with Media UI and Inventory UI)
+```
+
+Inventory stores opaque asset references only. `apps/server` composes Inventory, Platform Assets, and the optional Media video capability. Platform stores asset metadata in its own SQLite database and bytes under a separate content root; Audit has a separate append-only SQLite database. Media library data remains under its existing persistence provider. The solution filter builds Platform contracts/runtime/host, generic WorkerAgent and Platform persistence without Inventory or Media implementations.
+
+```text
+Inventory item → AssetRef → Platform Assets → (if video/mp4 and public) Media asset stream capability
+```
+
+Server and WorkerAgent are composition roots. They assemble public contracts with concrete adapters and providers; domain projects may reference Platform contracts but cannot reference peer-domain implementations. FFmpeg is discovered by WorkerAgent through the generic Runtime provider interface and configured provider assembly list.

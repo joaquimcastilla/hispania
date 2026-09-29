@@ -49,6 +49,10 @@ jobs:
       - name: Require PostgreSQL integration configuration
         run: test -n "$HISPANIA_POSTGRES_TEST_CONNECTION"
       - run: dotnet build Hispania.CrossPlatform.slnf --no-restore
+      - name: Require Platform-only dependency boundary
+        run: dotnet build Hispania.Platform.slnf
+      - name: Require Inventory, persistence, API restart, and architecture coverage
+        run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj
       - name: Build and package the greeting extension independently
         shell: pwsh
         run: |
@@ -119,6 +123,12 @@ jobs:
         run: choco install ffmpeg --yes --no-progress
       - run: dotnet restore Hispania.CrossPlatform.slnf
       - run: dotnet build Hispania.CrossPlatform.slnf --no-restore
+      - name: Build the complete solution on Windows
+        run: dotnet build Hispania.sln
+      - name: Require Platform-only dependency boundary
+        run: dotnet build Hispania.Platform.slnf
+      - name: Require Inventory, persistence, API restart, and architecture coverage
+        run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj
       - name: Require Windows FFmpeg worker process and media integration
         shell: pwsh
         run: |
@@ -158,5 +168,5 @@ jobs:
           foreach ($pattern in @('*DistributedWorkerProcessIntegrationTests*', '*DistributedCoordinatorPersistenceTests*', '*DistributedMediaTransferTests*')) {
             if (@($results | Where-Object { $_.testName -like $pattern }).Count -eq 0) { throw "Required distributed worker test '$pattern' did not pass or was not discovered." }
           }
-      - run: dotnet test Hispania.CrossPlatform.slnf --no-build
-      - run: dotnet test tools/dev-launcher-tests/Hispania.DevLauncher.Tests.csproj
+      - name: Run the complete .NET suite on Windows
+        run: dotnet test Hispania.sln --no-build

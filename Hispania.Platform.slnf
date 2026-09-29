@@ -1,0 +1,17 @@
+{
+  "solution": {
+    "path": "Hispania.sln",
+    "projects": [
+      "contracts/platform/Hispania.Platform.Contracts.csproj",
+      "contracts/module-system/Hispania.ModuleSystem.Contracts.csproj",
+      "core/kernel/Hispania.Kernel.csproj",
+      "core/runtime/Hispania.Runtime.csproj",
+      "infrastructure/platform/persistence-sqlite/Hispania.Platform.Persistence.Sqlite.csproj",
+      "apps/module-host/Hispania.ModuleHost.csproj",
+      "apps/worker-agent/Hispania.WorkerAgent.csproj",
+      "contracts/extension-demo/Hispania.ExtensionDemo.Contracts.csproj",
+      "contracts/architecture-test/Hispania.ArchitectureTest.Contracts.csproj",
+      "modules/architecture-test/Hispania.ArchitectureTest.Modules.csproj"
+    ]
+  }
+}
