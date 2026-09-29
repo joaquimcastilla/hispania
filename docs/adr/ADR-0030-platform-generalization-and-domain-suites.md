@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for incremental implementation in Phase 12.
+Accepted. Phase 12 implementation is closed and validated on Linux and Windows.
 
 ## Context
 
@@ -75,4 +75,15 @@ The generic WorkerAgent now loads providers from configured assembly paths throu
 
 The BP48 seed persists with image, datasheet, and a small valid MP4 sample. `ServerProcessRestartTests` launches independent server processes and verifies API-visible BP48, warehouse/location, stock/movements, assets/content/association, Audit, and Media video streaming across a graceful restart. It then commits a stock issue, kills the server process abruptly, and verifies committed state after another process restart. The web route/navigation registry composes the current Media and Inventory registrations; arbitrary dynamic module loading is future work.
 
-The solution filter and assembly-reference tests enforce the Platform-only dependency boundary. `apps/server` and `apps/worker-agent` are explicit composition roots; the FFmpeg bridge lives in the Media transcoding adapter and implements Runtime's public provider contract. Inventory and Platform metadata/content/Audit each retain separate persistence ownership. CI now includes Platform filter builds and Inventory integration/architecture tests on Linux and Windows. This local change set has not yet been run through GitHub Actions.
+The solution filter and assembly-reference tests enforce the Platform-only dependency boundary. `apps/server` and `apps/worker-agent` are explicit composition roots; the FFmpeg bridge lives in the Media transcoding adapter and implements Runtime's public provider contract. Inventory and Platform metadata/content/Audit each retain separate persistence ownership. CI includes Platform filter builds and Inventory integration/architecture tests on Linux and Windows; final evidence is recorded in the closure section below.
+
+## Phase 12 closure evidence
+
+Phase 12 is **CLOSED — validated on Linux and Windows** at `b789f0fc7486afb3c3567059b8a8958368596c71`. GitHub Actions [Validation #36615080171](https://github.com/joaquimcastilla/hispania/actions/runs/36615080171) completed successfully on that exact SHA.
+
+- Linux: full .NET suite 476 passed, 0 failed, 0 skipped; PostgreSQL-live 1/1; Platform-only build passed; Inventory, Platform persistence, architecture boundaries and real server restart/recovery 6/6; distributed WorkerAgent/mTLS checks 10/10; Playback 92/92; Web 31/31; Modern and Classic builds passed.
+- Windows: full .NET suite 486 passed, 0 failed, 1 skipped (PostgreSQL-live, run and passed 1/1 on Linux); complete solution and Platform-only builds passed with 0 warnings/errors; Inventory, Platform persistence, architecture boundaries and real server restart/recovery 6/6; distributed WorkerAgent/mTLS checks 10/10; Windows media/FFmpeg and Playback recovery passed.
+- Platform Assets and Audit use persistent providers and passed persistence/restart coverage. Inventory persistence is independently owned. Generic WorkerAgent loads its configured provider through Runtime's public contract; FFmpeg remains a Media provider. The server composition root joins opaque Assets to Media streaming. The Web Shell registers Media and Inventory together.
+- Workflow annotations: 0. Informational Vitest/jsdom and ephemeral PostgreSQL initdb notices remain; PostgreSQL negative tests intentionally log missing-migration/constraint errors.
+
+The architectural principle is: **HISPANIA Platform provides mechanisms; domain suites provide business logic.** Platform has no dependency on domains. Media, Inventory and future suites depend on Platform; domain implementations do not depend directly on each other. Host composition may connect their public contracts. Inventory is an ERP foundation only, not a complete ERP. The event bus is local and non-durable; frontend module loading is not dynamic. Current Assets/Audit providers are the first Platform implementations and may gain additional providers later.

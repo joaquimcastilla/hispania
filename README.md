@@ -28,11 +28,45 @@ La rama `feature/phase-12-platform-generalization` extiende la arquitectura con 
 
 ```text
 HISPANIA PLATFORM
-├── Platform Services: Runtime · Modules · Workers · Events · Assets · Audit
+│
+├── Platform Services
+│   ├── Runtime
+│   ├── Module System
+│   ├── Supervisor
+│   ├── Extensions
+│   ├── Workers
+│   ├── Events
+│   ├── Assets
+│   ├── Audit
+│   └── Persistence abstractions
+│
 ├── Media Suite
-├── Inventory / ERP foundation (segundo dominio; todavía no es un ERP completo)
-└── Web Shell: Media UI + Inventory UI
+│
+├── ERP Foundation
+│   └── Inventory
+│
+└── Web Shell
+    ├── Media UI
+    └── Inventory UI
 ```
+
+**HISPANIA Platform proporciona mecanismos. Los módulos de dominio proporcionan lógica de negocio.** Media es una suite de dominio sobre Platform. Inventory demuestra que un dominio no multimedia utiliza la misma infraestructura de runtime, contratos, eventos, Assets, Audit, persistencia y Web Shell. Inventory es una base ERP acotada, no un ERP completo.
+
+La dirección de dependencias es:
+
+```text
+Platform → no depende de dominios
+
+Media → Platform
+Inventory → Platform
+Future ERP → Platform
+Store → Platform
+Automation → Platform
+```
+
+Las implementaciones internas de dominios no dependen directamente unas de otras. El host de composición puede conectar contratos públicos cuando una función lo requiere; por ejemplo, la integración Asset→Media se compone en el host y no crea una dependencia de Platform o Inventory hacia Media.
+
+Hito técnico de Phase 12: Platform compila sin Media y sin Inventory; WorkerAgent es genérico y FFmpeg es un proveedor Media; Inventory posee persistencia propia; Assets son referencias opacas persistentes y Audit es transversal y persistente; Asset→Media se compone en el host; Media conserva su comportamiento de Phase 11; y Web Shell presenta más de un dominio mediante registro compartido. La carga dinámica de módulos de frontend todavía no está implementada.
 
 El servidor es un monolito modular: el host compone servicios y adaptadores; las aplicaciones dependen de contratos y dominio; las implementaciones pueden permanecer en el proceso, ejecutarse en un Module Host local o atender una tarea en un worker remoto.
 
