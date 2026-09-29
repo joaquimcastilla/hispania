@@ -6,7 +6,7 @@ HISPANIA funciona en una sola máquina. El coordinador y los workers remotos son
 
 ## Estado actual
 
-La rama `feature/phase-12-platform-generalization` extiende la arquitectura con Platform Assets/Audit persistentes e Inventory. «Implementado» identifica funcionalidad presente; «validado» indica el alcance observado en pruebas o ejecución física. No implica soporte multi-coordinator ni aislamiento de código hostil.
+Phase 12 está integrada en `main`: generaliza la plataforma con Assets/Audit persistentes e Inventory como segundo dominio. La validación CI cubre Linux y Windows; «implementado» identifica funcionalidad presente y «validado» indica el alcance observado en pruebas o ejecución física. No implica soporte multi-coordinator ni aislamiento de código hostil.
 
 | Área | Estado | Alcance y límites actuales |
 |---|---|---|
@@ -21,7 +21,7 @@ La rama `feature/phase-12-platform-generalization` extiende la arquitectura con 
 | Leases, generaciones y fencing | Implementado y validado físicamente | Expiración, reasignación, rechazo de finalización obsoleta y recuperación transaccional SQLite. No ofrece exactly-once. |
 | Coordinación distribuida | Un coordinador | El estado distribuido persistente usa SQLite con bloqueo exclusivo. PostgreSQL distribuido y multi-master están pendientes. |
 | Cliente web Modern y Classic | Implementado | Dos builds web que consumen la API pública. |
-| Windows y Linux | Validado en los alcances indicados abajo | CI en Linux; pruebas Windows locales y ejecución física Windows 11 ↔ Ubuntu para Phase 11. |
+| Windows y Linux | Validado en los alcances indicados abajo | CI Linux/Windows para Phase 12; además, ejecución física Windows 11 ↔ Ubuntu para Phase 11. |
 | Workers GPU, selección por carga y múltiples coordinadores | Pendiente | Inventario de aceleradores no equivale a scheduling GPU ni a soporte de estas funciones. |
 
 ## Arquitectura general
