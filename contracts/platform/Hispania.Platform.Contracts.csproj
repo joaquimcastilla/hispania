@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Hispania.Platform.Contracts</AssemblyName>
+    <RootNamespace>Hispania.Platform.Contracts</RootNamespace>
+  </PropertyGroup>
+</Project>
