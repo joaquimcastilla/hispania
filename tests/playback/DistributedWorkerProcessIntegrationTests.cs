@@ -114,17 +114,25 @@ public sealed class DistributedWorkerProcessIntegrationTests
             processStart.Environment["Modules__HostPath"] = moduleHostDll;
             processStart.Environment["Modules__RequirePublisherSignature"] = "true";
             processStart.Environment["Modules__TrustedPublisherKeys__hispania.experimental.greetings"] = publisherKey.ExportSubjectPublicKeyInfoPem();
-            processStart.Environment["DistributedWorker__Ffmpeg__Enabled"] = "true";
-            processStart.Environment["DistributedWorker__Ffmpeg__WorkerAssemblyPath"] = Path.Combine(Path.GetDirectoryName(agentDll)!, "ffmpeg-worker", "Hispania.FFmpeg.Worker.dll");
-            processStart.Environment["DistributedWorker__Ffmpeg__ExecutablePath"] = "ffmpeg";
-            processStart.Environment["DistributedWorker__Ffmpeg__CachePath"] = Path.Combine(root, "worker-private-cache");
-
             var first = new DistributedJobRequestV1("greeting-1", CapabilityId, CapabilityVersion, "GetMessage", JsonSerializer.SerializeToElement(new { }), CorrelationId: "http-trace-1");
             coordinator.Queue(first, allowRemote: true);
             worker = StartWorker(processStart, workerOutput);
             var firstCompleted = await WaitForJobAsync(coordinator, first.JobId, job => job.State == DistributedJobStateV1.Completed, TimeSpan.FromSeconds(25), () => { lock (workerOutput) return workerOutput.ToString(); });
             Assert.Equal("Hello from a separately hosted greeting extension.", firstCompleted.Result?.GetString());
             Assert.Equal("http-trace-1", firstCompleted.Request.CorrelationId);
+            var genericWorker = Assert.Single(coordinator.ListWorkers());
+            Assert.DoesNotContain(ffmpegCapability, genericWorker.Inventory!.Capabilities);
+            worker!.Kill(entireProcessTree: true);
+            await worker.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            worker.Dispose(); worker = null;
+            Assert.True(coordinator.DisconnectWorker(NodeId, clientThumbprint));
+            processStart.Environment["DistributedWorker__Ffmpeg__Enabled"] = "true";
+            processStart.Environment["DistributedWorker__CapabilityProviderAssemblies__0"] = typeof(DistributedFfmpegCapabilityHandler).Assembly.Location;
+            processStart.Environment["DistributedWorker__Ffmpeg__WorkerAssemblyPath"] = GetBuiltProjectDll("apps", "ffmpeg-worker", "Hispania.FFmpeg.Worker.dll");
+            processStart.Environment["DistributedWorker__Ffmpeg__ExecutablePath"] = "ffmpeg";
+            processStart.Environment["DistributedWorker__Ffmpeg__CachePath"] = Path.Combine(root, "worker-private-cache");
+            worker = StartWorker(processStart, workerOutput);
+            await WaitForWorkerCapabilityAsync(coordinator, ffmpegCapability, TimeSpan.FromSeconds(15));
 
             var sourcePath = Path.Combine(root, "coordinator-library", "sample-source.mp4");
             Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
@@ -318,6 +326,17 @@ public sealed class DistributedWorkerProcessIntegrationTests
             await Task.Delay(50);
         }
         throw new TimeoutException("Worker agent did not renew its heartbeat after starting a job.");
+    }
+
+    private static async Task WaitForWorkerCapabilityAsync(DistributedWorkCoordinator coordinator, DistributedCapabilityV1 capability, TimeSpan timeout)
+    {
+        var until = Stopwatch.StartNew();
+        while (until.Elapsed < timeout)
+        {
+            if (coordinator.ListWorkers().Any(worker => worker.Connected && worker.Inventory?.Capabilities.Contains(capability) == true)) return;
+            await Task.Delay(50);
+        }
+        throw new TimeoutException($"No connected WorkerAgent advertised capability {capability} after provider loading.");
     }
 
     private static X509Certificate2 CreateCertificate(string subject, bool server)

@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using System.Security.Cryptography.X509Certificates;
 using Hispania.ModuleSystem.Contracts;
 
 namespace Hispania.Runtime;
@@ -17,6 +18,16 @@ public interface IDistributedCapabilityHandlerV1
     IReadOnlyCollection<DistributedCapabilityV1> Capabilities { get; }
     ValueTask<JsonElement> ExecuteAsync(DistributedJobRequestV1 request, long generation, CancellationToken cancellationToken);
 }
+
+/// <summary>Worker capability plug-in boundary. Product-specific providers live outside the generic worker host.</summary>
+public interface IDistributedWorkerCapabilityProviderV1
+{
+    IReadOnlyCollection<IDistributedCapabilityHandlerV1> CreateHandlers(DistributedWorkerCapabilityContextV1 context);
+}
+
+public sealed record DistributedWorkerCapabilityContextV1(Uri CoordinatorUri, string NodeId,
+    X509Certificate2 ClientCertificate, IReadOnlyCollection<string> CoordinatorPins,
+    IReadOnlyDictionary<string, string> Configuration);
 
 /// <summary>Composes specialized versioned handlers with the generic trusted-extension executor.</summary>
 public sealed class CompositeDistributedCapabilityExecutor(IDistributedCapabilityExecutorV1 extensions, IEnumerable<IDistributedCapabilityHandlerV1> handlers) : IDistributedCapabilityExecutorV1
