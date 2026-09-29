@@ -2,6 +2,7 @@ using Hispania.Media.Domain.Enrichment;
 using Hispania.Media.Domain.Identity;
 using Hispania.Metadata.Contracts;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 using System.Globalization;
 
 namespace Hispania.Library.Persistence.EFCore;
@@ -18,12 +19,14 @@ public sealed class EfMetadataEnrichmentStore(IDbContextFactory<LibraryCatalogDb
     public async ValueTask<MetadataEnrichmentSnapshot> LoadAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(ConsistentReadIsolationLevel(db), cancellationToken);
         var lifecycles = await db.ExternalIdentifierLifecycles.AsNoTracking().OrderBy(x => x.AssociationId).ThenBy(x => x.Ordinal).ToListAsync(cancellationToken);
         var relations = await db.ExternalIdentifierRelations.AsNoTracking().ToListAsync(cancellationToken);
         var associations = (await db.ExternalIdentifierAssociations.AsNoTracking().ToListAsync(cancellationToken)).Select(a => RehydrateAssociation(a, lifecycles.Where(x => x.AssociationId == a.Id), relations.Where(x => x.AssociationId == a.Id))).ToArray();
         var assertions = (await db.MetadataAssertions.AsNoTracking().ToListAsync(cancellationToken)).Select(RehydrateAssertion).ToArray();
         var artwork = (await db.ArtworkReferences.AsNoTracking().ToListAsync(cancellationToken)).Select(RehydrateArtwork).ToArray();
         var refresh = (await db.MetadataRefreshStates.AsNoTracking().ToListAsync(cancellationToken)).Select(RehydrateRefresh).ToArray();
+        await transaction.CommitAsync(cancellationToken);
         return new MetadataEnrichmentSnapshot(associations, assertions, artwork, refresh);
     }
 
@@ -31,13 +34,16 @@ public sealed class EfMetadataEnrichmentStore(IDbContextFactory<LibraryCatalogDb
     {
         ArgumentNullException.ThrowIfNull(identifier);
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(ConsistentReadIsolationLevel(db), cancellationToken);
         var record = await db.ExternalIdentifierAssociations.AsNoTracking().SingleOrDefaultAsync(x =>
             x.ProviderCode == identifier.Provider.Value && x.NamespaceCode == identifier.Namespace.Value &&
             x.IdentifierValue == identifier.Value && x.CurrentStatusCode == "confirmed", cancellationToken);
         if (record is null) return null;
         var lifecycle = await db.ExternalIdentifierLifecycles.AsNoTracking().Where(x => x.AssociationId == record.Id).OrderBy(x => x.Ordinal).ToListAsync(cancellationToken);
         var relations = await db.ExternalIdentifierRelations.AsNoTracking().Where(x => x.AssociationId == record.Id).ToListAsync(cancellationToken);
-        return RehydrateAssociation(record, lifecycle, relations);
+        var association = RehydrateAssociation(record, lifecycle, relations);
+        await transaction.CommitAsync(cancellationToken);
+        return association;
     }
 
     public async ValueTask<MovieMetadataConfirmationResult> ConfirmAssociationAsync(ExternalIdentifierAssociation association, DateTimeOffset occurredAt, CancellationToken cancellationToken = default)
@@ -182,6 +188,11 @@ public sealed class EfMetadataEnrichmentStore(IDbContextFactory<LibraryCatalogDb
         foreach (var relation in relations) result.AddRelatedAssociation(new ExternalIdentifierAssociationRelation(new ExternalIdentifierAssociationId(relation.RelatedAssociationId), RelationKind(relation.KindCode), Provenance(relation.EvidenceOriginCode, relation.EvidenceProviderCode, relation.EvidenceIdentifierProviderCode, relation.EvidenceIdentifierNamespaceCode, relation.EvidenceIdentifierValue, relation.EvidenceObservedUtcTicks, relation.EvidenceObservedOffsetMinutes, relation.EvidenceConfidence), relation.Reason));
         return result;
     }
+
+    private static IsolationLevel ConsistentReadIsolationLevel(LibraryCatalogDbContext db) =>
+        string.Equals(db.Database.ProviderName, "Microsoft.EntityFrameworkCore.Sqlite", StringComparison.Ordinal)
+            ? IsolationLevel.Serializable
+            : IsolationLevel.RepeatableRead;
 
     private static MetadataAssertion RehydrateAssertion(MetadataAssertionRecord r) => new(new MetadataAssertionId(r.Id), Target(r.TargetKind, r.TargetId), new MetadataField(r.FieldCode), Value(r), Provenance(r.ProvenanceOriginCode, r.ProvenanceProviderCode, r.ProvenanceIdentifierProviderCode, r.ProvenanceIdentifierNamespaceCode, r.ProvenanceIdentifierValue, r.ProvenanceObservedUtcTicks, r.ProvenanceObservedOffsetMinutes, r.ProvenanceConfidence), AssertionStatus(r.StatusCode), r.SupersededByAssertionId is null ? null : new MetadataAssertionId(r.SupersededByAssertionId.Value));
     private static ArtworkReference RehydrateArtwork(ArtworkReferenceRecord r) => new(new ArtworkReferenceId(r.Id), Target(r.TargetKind, r.TargetId), new ArtworkRole(r.RoleCode), new ArtworkLocator(r.LocatorScheme, r.LocatorValue), Provenance(r.ProvenanceOriginCode, r.ProvenanceProviderCode, r.ProvenanceIdentifierProviderCode, r.ProvenanceIdentifierNamespaceCode, r.ProvenanceIdentifierValue, r.ProvenanceObservedUtcTicks, r.ProvenanceObservedOffsetMinutes, r.ProvenanceConfidence));
