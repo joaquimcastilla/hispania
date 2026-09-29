@@ -1,6 +1,6 @@
 # PROGRESS-LOG.md
 
-### Phase 12 continuation — Inventory proof (in progress)
+### Historical implementation snapshot — Phase 12 Inventory proof (superseded by the closure evidence below)
 - Created public versioned Inventory query/command contracts, Inventory application policy, and an Inventory-only SQLite adapter using a separately configured `inventory.sqlite` file. Owned tables cover Items, Warehouses, Locations, Stock, Movement history, and opaque Asset links; foreign keys stay inside Inventory.
 - Added receipt, issue, and transfer with transactional stock checks, plus item/warehouse/location creation and asset link management. The server seeds `BP48` / Battery Pack 48V with 12 units and image/datasheet/video Asset metadata on an empty Inventory database.
 - Inventory emits ItemCreatedV1, StockChangedV1 (one event for each changed location), and StockMovementRecordedV1. Subscriber failures do not undo committed writes. Successful writes produce Audit records with actor/correlation when available; current Audit and Asset server adapters are volatile in-memory implementations.
@@ -357,3 +357,11 @@ Append only.
 - CI reported **0 GitHub annotations** and **0 compilation warnings**. Informational output remains for Vitest/jsdom worker usage and PostgreSQL's ephemeral `initdb` trust-authentication; expected negative constraint/migration checks also appear in PostgreSQL logs.
 - Phase 12 status: **CLOSED — validated on Linux and Windows**. Scope remains Platform generalization, Media suite preservation, Inventory as an ERP foundation, and the shared Web Shell; no additional domains or full ERP capabilities are claimed. This closure records CI evidence only; the tag/release checkpoint is maintained separately.
 - No PR or merge was created; `main` and the Phase 11 tag were not modified.
+
+## 2026-09-30 — Public overview refresh and post-merge verification
+
+- Updated the public README to describe HISPANIA as a modular application platform, with Platform mechanisms, Media and Inventory domain suites, the shared Web Shell, persistence ownership, security boundaries, current limitations, roadmap directions and validation evidence.
+- The formal Phase 12 tag remains the immutable checkpoint `d0ca0b51a89fb0ba7fc6071f025b91404abf5e38`. The post-Phase-12 concurrency fix was merged separately to `main`; it is not part of that tag.
+- Current `main` validation: SHA `2e16b039d0fb8a3223366f7af478353b68886af1`, GitHub Actions [Validation #36625775324](https://github.com/joaquimcastilla/hispania/actions/runs/36625775324), successful on Linux and Windows. Linux: 476 passed, 0 failed, 0 skipped; Windows: 486 passed, 0 failed, 1 skipped (PostgreSQL-live, passed 1/1 on Linux). Platform-only build passed on both; Inventory/platform persistence/architecture/real server restart 6/6; WorkerAgent/mTLS/distributed workers 10/10; Playback 92/92; Web 31/31; Modern and Classic builds passed; 0 compilation warnings and 0 GitHub annotations.
+- PostgreSQL-live, persistent Assets/Audit, Inventory ownership, generic WorkerAgent with FFmpeg as a Media provider, host-composed Asset-to-Media playback, Media regression and Web Shell coverage passed. Server-process graceful restart and abrupt termination recovery passed.
+- No Phase 13 work is represented as started. This documentation refresh changes no functional code.

@@ -1,380 +1,151 @@
 # HISPANIA
 
-**Home International Server Platform for Applications, Networking, Integration & Automation** es una plataforma modular en .NET para alojar suites y dominios independientes. Platform ofrece runtime, módulos, workers, eventos, Assets y Audit; Media es la primera suite y Inventory demuestra un segundo dominio. El sistema permite sustituir implementaciones mediante contratos versionados, instalar extensiones y ejecutar capacidades autorizadas en otros procesos o equipos.
+**A modular application platform for media, business software and distributed workloads.**
 
-HISPANIA funciona en una sola máquina. El coordinador y los workers remotos son opcionales: una instalación básica no necesita varios servidores ni una infraestructura de microservicios.
+HISPANIA is a .NET modular application platform. Its Platform layer provides runtime mechanisms; domain suites supply business behavior. Media is a domain suite, and Inventory is the first non-media domain proving the same infrastructure can support business software. A single server host composes the suites. Remote workers are optional; a basic installation runs on one machine.
 
-## Estado actual
-
-Phase 12 está integrada en `main`: generaliza la plataforma con Assets/Audit persistentes e Inventory como segundo dominio. La validación CI cubre Linux y Windows; «implementado» identifica funcionalidad presente y «validado» indica el alcance observado en pruebas o ejecución física. No implica soporte multi-coordinator ni aislamiento de código hostil.
-
-| Área | Estado | Alcance y límites actuales |
-|---|---|---|
-| Kernel modular y contratos de módulo | Implementado y probado | Registro, resolución explícita de capacidades, dependencias, lifecycle y salud. |
-| Extensiones `.hispania` | Implementado y probado | Paquetes ZIP inertes, manifiesto, SHA-256, firma de editor opcional y autorización de host separada. |
-| Ejecución InProcess y OutOfProcess | Implementado y probado | La extensión InProcess debe ser de confianza; OutOfProcess usa Module Host y protocolo local versionado. Ninguno es un sandbox. |
-| Lifecycle y hot swap | Implementado para el Playback Planner | La sustitución controlada, draining y rollback automático se limitan a `hispania.playback.planner@1.0`. |
-| Experimentos Manual, A/B y Shadow | Implementado para Playback Planner | Pesos, cohortes estables, métricas, fallback y ciclo administrativo. Shadow solo admite la frontera de lectura declarada. |
-| Catálogo multimedia | Implementado | Adaptadores SQLite y PostgreSQL seleccionables al iniciar; migraciones propias por proveedor. PostgreSQL live validado en Linux. |
-| FFmpeg local y Playback | Implementado y validado | Worker FFmpeg por trabajo, salida MP4 opaca y entrega mediante Playback. |
-| Worker remoto y mTLS | Implementado y validado físicamente | Windows 11 como coordinador y Ubuntu 24.04.5 como worker; autorización explícita por nodo/capacidad. |
-| Leases, generaciones y fencing | Implementado y validado físicamente | Expiración, reasignación, rechazo de finalización obsoleta y recuperación transaccional SQLite. No ofrece exactly-once. |
-| Coordinación distribuida | Un coordinador | El estado distribuido persistente usa SQLite con bloqueo exclusivo. PostgreSQL distribuido y multi-master están pendientes. |
-| Cliente web Modern y Classic | Implementado | Dos builds web que consumen la API pública. |
-| Windows y Linux | Validado en los alcances indicados abajo | CI Linux/Windows para Phase 12; además, ejecución física Windows 11 ↔ Ubuntu para Phase 11. |
-| Workers GPU, selección por carga y múltiples coordinadores | Pendiente | Inventario de aceleradores no equivale a scheduling GPU ni a soporte de estas funciones. |
-
-## Arquitectura general
+## Architecture
 
 ```text
-HISPANIA PLATFORM
-│
-├── Platform Services
-│   ├── Runtime
-│   ├── Module System
-│   ├── Supervisor
-│   ├── Extensions
-│   ├── Workers
-│   ├── Events
-│   ├── Assets
-│   ├── Audit
-│   └── Persistence abstractions
-│
-├── Media Suite
-│
-├── ERP Foundation
-│   └── Inventory
-│
-└── Web Shell
-    ├── Media UI
-    └── Inventory UI
+                 HISPANIA PLATFORM
+┌────────────────────────────────────────────────┐
+│ Runtime · Modules · Supervisor · Extensions    │
+│ Workers · Events · Assets · Audit · Persistence │
+│ Security / Trust · Health / Metrics             │
+└───────────────────────┬────────────────────────┘
+                        │ public, versioned contracts
+               ┌────────┴────────┐
+               │                 │
+        ┌──────▼──────┐   ┌──────▼──────────┐
+        │ MEDIA SUITE │   │ ERP FOUNDATION │
+        │ Library     │   │ Inventory      │
+        │ Metadata    │   │ Item           │
+        │ Search      │   │ Warehouse      │
+        │ Playback    │   │ Location       │
+        │ Streaming   │   │ Stock          │
+        │ Transcoding │   │ StockMovement  │
+        └──────┬──────┘   └──────┬──────────┘
+               └────────┬────────┘
+                        ▼
+                     WEB SHELL
+               Media UI · Inventory UI
+
+        Server host = composition root for suites
 ```
 
-**HISPANIA Platform proporciona mecanismos. Los módulos de dominio proporcionan lógica de negocio.** Media es una suite de dominio sobre Platform. Inventory demuestra que un dominio no multimedia utiliza la misma infraestructura de runtime, contratos, eventos, Assets, Audit, persistencia y Web Shell. Inventory es una base ERP acotada, no un ERP completo.
-
-La dirección de dependencias es:
+**HISPANIA Platform provides mechanisms. Domain modules provide business logic.** Platform does not depend on Media or Inventory. Media and Inventory consume Platform contracts, and their internal implementations do not depend directly on each other. The server host composes public contracts where cross-domain behavior is needed; the Web Shell presents the registered domains.
 
 ```text
-Platform → no depende de dominios
-
-Media → Platform
-Inventory → Platform
-Future ERP → Platform
-Store → Platform
-Automation → Platform
+Platform → no domain dependencies
+Media → Platform     Inventory → Platform
+Future ERP → Platform     Store → Platform     Automation → Platform
 ```
 
-Las implementaciones internas de dominios no dependen directamente unas de otras. El host de composición puede conectar contratos públicos cuando una función lo requiere; por ejemplo, la integración Asset→Media se compone en el host y no crea una dependencia de Platform o Inventory hacia Media.
+Future ERP, Store, Automation and Analytics are possible directions, not implemented suites.
 
-Hito técnico de Phase 12: Platform compila sin Media y sin Inventory; WorkerAgent es genérico y FFmpeg es un proveedor Media; Inventory posee persistencia propia; Assets son referencias opacas persistentes y Audit es transversal y persistente; Asset→Media se compone en el host; Media conserva su comportamiento de Phase 11; y Web Shell presenta más de un dominio mediante registro compartido. La carga dinámica de módulos de frontend todavía no está implementada.
+## Platform
 
-El servidor es un monolito modular: el host compone servicios y adaptadores; las aplicaciones dependen de contratos y dominio; las implementaciones pueden permanecer en el proceso, ejecutarse en un Module Host local o atender una tarea en un worker remoto.
+Implemented and demonstrated Platform mechanisms include versioned capabilities, module lifecycle and supervision, health checks, extensions, verified packages and host trust configuration, InProcess and OutOfProcess execution, generic WorkerAgent hosting, distributed workers, mTLS, leases, generations, fencing and recovery, Event Bus V1, opaque Assets, persistent Audit, persistence abstractions, metrics/hooks, and the Playback Planner's A/B/Shadow infrastructure where applicable.
+
+The `Hispania.Platform.slnf` filter builds Platform contracts, runtime, generic WorkerAgent and Platform persistence without Media or Inventory implementations. This is a dependency-boundary build, not a claim that every domain service is independently deployable.
+
+### Workers and distributed execution
 
 ```text
-┌──────────────────────────── HISPANIA ────────────────────────────┐
-│                                                                  │
-│  Clientes                                                        │
-│  ├── Web Modern / Classic                                        │
-│  └── otros clientes                                              │
-│          │ API pública                                           │
-│          ▼                                                       │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │ Server / composition root                                  │  │
-│  │ Kernel runtime · contratos · health · lifecycle            │  │
-│  │ Library · Metadata · Playback · administración             │  │
-│  └──────────────────────────┬─────────────────────────────────┘  │
-│                             │                                    │
-│         ┌───────────────────┼─────────────────────┐              │
-│         ▼                   ▼                     ▼              │
-│   InProcess             OutOfProcess       Coordinador único     │
-│   confiable             Module Host         SQLite + leases      │
-│                              │                     │              │
-│                      IPC local versionado          │ HTTPS + mTLS │
-└────────────────────────────────────────────────────┼─────────────┘
-                                                     ▼
-                                        Worker Agent autorizado
-                                                     │
-                                           Capability / FFmpeg
+Platform WorkerAgent
+    ├── capability hosting
+    ├── transport and mTLS authentication
+    ├── authorized nodes and capabilities
+    ├── leases, health and generation fencing
+    └── retry and recovery
+
+Media provider
+    └── FFmpeg
 ```
 
-El Kernel no contiene el dominio multimedia ni ejecuta SQL o FFmpeg. Mantiene el catálogo de módulos, resuelve contratos, valida dependencias y supervisa lifecycle y health. Las aplicaciones multimedia y los adaptadores de persistencia implementan capacidades fuera del Kernel.
+WorkerAgent is generic; FFmpeg is a Media provider loaded through the provider contract. Execution can be local or remote. The current coordinator is single-instance, using SQLite coordination state. Windows Job Objects and Linux `prlimit` apply configured process limits where supported. These controls do not create a sandbox. `AssemblyLoadContext` is not a sandbox; OutOfProcess is not hostile-code isolation; mTLS authenticates peers but cannot make a compromised worker safe. InProcess code inherits server privileges. Package signatures can be optional depending on host configuration.
 
-## Kernel, módulos y lifecycle
+## Media Suite
 
-El runtime separa tres responsabilidades: `IModuleRegistry` registra y describe módulos; `ICapabilityResolver` elige un proveedor para un contrato y una versión exacta; `IModuleRuntime` inicia, detiene y observa salud. El host es el composition root que ensambla esas piezas con las aplicaciones y adaptadores.
+Media is a domain suite over Platform, containing library/catalog, metadata, search, playback, streaming and FFmpeg transcoding. Transcoding supports local and remote worker execution. The Playback Planner currently contains the Manual, A/B and Shadow experiments; A/B is not a universal domain capability. Platform has no dependency on Media.
 
-- Los descriptores declaran identidad, versión, contratos proporcionados y requeridos, dependencias y compatibilidad.
-- La resolución compara exactamente `(contractId, contractVersion)`. Si hay varios proveedores, el consumidor o la configuración debe identificar uno; no se escoge silenciosamente por orden de registro.
-- El runtime ordena el inicio según dependencias, valida que los proveedores requeridos estén activos y consulta health checks.
-- Los módulos no deben referenciar directamente clases o assemblies de otros módulos. Se comunican mediante contratos públicos versionados.
-- El Kernel no es un bus remoto, un motor de negocio multimedia, un gestor de bases de datos ni una frontera de seguridad para código nativo confiable.
+## ERP Foundation: Inventory
 
-Estados observables del módulo:
+Inventory is the first non-Media domain. It includes Item, Warehouse, Location, Stock and StockMovement, its own SQLite persistence, API and Web Shell view. Inventory stores opaque Asset references. The server composition root can connect an Asset to Media playback through public contracts; Inventory itself does not depend on Media.
+
+**Inventory is not yet a complete ERP.** Purchasing, Sales, Manufacturing, Accounting and CRM are not implemented.
+
+## Web Shell
+
+The Web Shell has declarative route and navigation registration for Media and Inventory, with Modern and Classic builds. The server composes the domains. Frontend module loading is not dynamic yet. There is no general user/session and per-domain permission system; current administrative writes use a configured bearer token, while some read routes are public.
+
+## Persistence and ownership
 
 ```text
-Registered ──► Starting ──► Running ──► Draining ──► Stopping ──► Stopped
-                   │            │             │            │
-                   └────────────┴─────────────┴────────────┴──► Failed
-                                │
-                                └──► Degraded ──► Running (si recupera salud)
+Platform
+├── Asset metadata             → SQLite
+├── Asset content              → filesystem
+├── Audit                      → append-only SQLite
+└── Distributed coordination  → SQLite (single coordinator)
+
+Inventory
+└── Inventory data             → dedicated SQLite store
+
+Media
+├── SQLite
+└── PostgreSQL (optional; live CI validated)
 ```
 
-`Failed` puede resultar de un inicio, parada o recuperación fallidos. `Draining` marca una implementación en retirada; el router de Playback Planner deja de enviarle solicitudes nuevas y espera a que terminen las operaciones que ya capturaron esa generación.
+Each domain owns its data. Cross-store foreign keys are not used; domains exchange opaque references and public contracts. PostgreSQL support for Media does not mean distributed coordination supports PostgreSQL or multi-master operation. Assets and Audit currently have initial Platform providers that may later gain alternatives.
 
-## Contratos y capacidades
+## Security and trust boundaries
 
-Una capacidad es una interfaz pública identificada por contrato y versión. El consumidor conoce ese contrato, no la clase concreta ni dónde se ejecuta:
+The project implements package integrity checks, optional digital signatures and publisher trust, host authorization, worker node/capability authorization, mTLS, process separation and configured resource limits. These are controls with specific boundaries, not a general sandbox. InProcess modules inherit server privileges; an authorized remote worker can still be compromised. The current admin bearer token is not a complete Identity/RBAC system. Resource limits do not isolate hostile code.
 
-```text
-Consumer
-   │ contrato público versionado
-   ▼
-Capability Resolver
-   ├── Implementation A
-   ├── Implementation B
-   └── Remote implementation (cuando se habilita)
-```
+## Validation on `main`
 
-El proveedor puede ser un módulo, una extensión o un proxy hacia trabajo distribuido. El consumidor no necesita conocer su clase, assembly, proceso, servidor o sistema operativo. En ejecución remota, el adaptador de Playback conserva su contrato y el coordinador traduce la operación elegible al protocolo de trabajo distribuido.
+Validated SHA: [`2e16b039d0fb8a3223366f7af478353b68886af1`](https://github.com/joaquimcastilla/hispania/commit/2e16b039d0fb8a3223366f7af478353b68886af1) · GitHub Actions [Validation #36625775324](https://github.com/joaquimcastilla/hispania/actions/runs/36625775324).
 
-## Modelos de ejecución
-
-### InProcess
-
-```text
-HISPANIA Server
-      │ extensión autorizada y confiable
-      ▼
-Collectible AssemblyLoadContext
-      │ AssemblyDependencyResolver
-      ▼
-Extensión .NET + contratos compartidos del host
-```
-
-`AssemblyLoadContext` separa la resolución de dependencias de la extensión y comparte las assemblies de contrato con el host. El contexto es collectible y puede descargarse después de detener la extensión y liberar sus referencias. Esto facilita reemplazo y aislamiento de dependencias, pero **no** limita permisos: código InProcess hereda los privilegios del servidor y no está aislado de forma segura.
-
-### OutOfProcess local
-
-```text
-HISPANIA Server ── IPC local versionado ──► Module Host
-                                               │
-                                               ▼
-                                       Extensión/worker local
-```
-
-El proceso separado contiene algunos fallos y permite terminar o reiniciar el host. El protocolo de módulo usa framing local (Named Pipes en .NET); no se expone como listener de red. Los límites de recursos aplican `Job Objects` en Windows y `prlimit` en Linux donde se configura el worker. Son límites operativos, no un sandbox. Las políticas de recuperación limitan los reintentos y no vuelven a ejecutar automáticamente toda operación.
-
-### Worker remoto
-
-```text
-Windows 11 / HISPANIA Server                 Ubuntu / Worker
-┌─────────────────────────┐                 ┌────────────────────────┐
-│ Playback + coordinador  │── HTTPS + mTLS ─►│ Worker Agent           │
-│ leases + broker de media│                 │ capacidad autorizada   │
-└─────────────────────────┘                 │ Module/FFmpeg Worker   │
-                                            └───────────┬────────────┘
-                                                        ▼
-                                                     FFmpeg
-```
-
-El Worker Agent es genérico y puede ejecutarse en otro ordenador físico. Anuncia inventario y capacidades, reclama tareas autorizadas, renueva leases y ejecuta el handler configurado. La validación física de Phase 11 usó Windows 11 como coordinador y Ubuntu 24.04.5 como worker. La conexión remota es opcional; sin worker, el modo `Local` sigue siendo la opción predeterminada.
-
-## Extensiones instalables
-
-Un archivo `.hispania` es un ZIP de formato versionado con `module.json` en la raíz y los archivos publicados del paquete. El manifiesto registra identidad y versión, contratos, runtime, assembly de entrada, dependencias, mapa de SHA-256 y, cuando se firma, editor, algoritmo y firma.
-
-```text
-extension.hispania (ZIP)
-├── module.json                  # manifiesto, mapa de hashes y firma opcional
-├── Hispania.Extension.dll       # assembly de entrada/publicación
-├── *.dll                        # contratos y dependencias del paquete
-└── ...                          # restantes archivos publicados
-```
-
-El instalador valida límites, rutas, compatibilidad, declaración de contratos y hashes; guarda bytes inertes y no ejecuta el paquete. El firmador usa RSA-PSS con SHA-256. La identidad de publisher debe ser confiable para considerar confiable la firma. La autorización de ID de módulo por el host es otra decisión:
-
-```text
-Installed ≠ Trusted ≠ Active
-```
-
-Instalar no implica confiar ni activar. Activar requiere autorización del host y contratos compatibles. Desactivar detiene el módulo; una actualización se instala en una carpeta de versión aparte y la sustitución deja activa la versión anterior hasta que la candidata inicia y supera health. Rollback y retirada dependen del ciclo soportado por el módulo; no existe una consola universal para todas las extensiones.
-
-## Hot swap y generaciones
-
-El hot swap supervisado implementado se limita al Playback Planner reemplazable. La generación nueva se inicia y valida antes de recibir tráfico; las peticiones ya iniciadas conservan la generación que capturaron.
-
-```text
-Generation A recibe solicitudes nuevas
-             │
-             ├── Iniciar y verificar Generation B
-             │
-Nuevas solicitudes ─────────────────────────► B
-Solicitudes en vuelo ───────────────────────► A
-             │
-A entra en Draining ──► espera 0 solicitudes ──► Stop / retire
-```
-
-Si la candidata falla antes de activarse, A permanece activa. Si la activación o el draining no pueden completarse, el servicio restaura A cuando es posible. Un fallo de operación de la generación activa también intenta el rollback a la generación saludable anterior. Este mecanismo específico no equivale a hot swap universal de cualquier servicio o dependencia.
-
-## Experimentos A/B y Shadow
-
-El router de variantes es reutilizable, pero hoy lo emplea Playback Planner y solo acepta capacidades que declaran expresamente compatibilidad con el modo elegido. Admite selección manual, `TrafficSplit` y `Shadow`:
-
-```text
-                    ┌── Variant A ──► peso configurado
-Request ─► Router ──┤
-                    └── Variant B ──► peso configurado
-```
-
-Las asignaciones pueden mantenerse estables mediante una clave seudonimizada y una sal administrada; las ponderaciones usan puntos básicos y deben sumar 10 000. Estado y métricas permiten observar resultados, suspender o retirar variantes y aplicar fallback o rollback. La persistencia del experimento es optativa y de un único host; por defecto el estado está en memoria.
-
-```text
-Clave de usuario/sesión ─► asignación estable ─► Router ─► misma variante
-```
-
-En Shadow, la variante secundaria solo compara su planificación con la respuesta activa; el cliente recibe siempre el resultado activo. La capacidad debe declarar la frontera read-only `IMediaCatalogReader`. No se ejecutan sombras de transcodificación ni operaciones de escritura compartida: declarar una interfaz de lectura restringe las dependencias inyectadas, pero no sandboxea código nativo confiable.
-
-## Phase 11 — trabajo distribuido
-
-El coordinador único mantiene autorización de nodos, estado de trabajos, leases, generaciones y publicación de resultados. Los workers no se inscriben por sí solos: un operador autoriza el ID, el fingerprint SHA-256 del certificado cliente y la lista exacta de capacidades permitidas.
-
-```text
-┌──────────────────────── HISPANIA Main ────────────────────────┐
-│ Playback │ Coordinador único │ Scheduler │ Lease Manager      │
-│          │ SQLite transaccional │ Media Transfer Broker       │
-└───────────────────────────┬───────────────────────────────────┘
-                            │ HTTPS + mTLS
-                            ▼
-┌──────────────────── Worker autorizado ───────────────────────┐
-│ Worker Agent │ Capability handler │ FFmpeg Worker │ FFmpeg    │
-│ Concurrencia y límites de recursos configurados               │
-└───────────────────────────────────────────────────────────────┘
-```
-
-El transporte remoto HTTPS/mTLS es distinto del protocolo IPC local. El coordinador valida certificado y autorización, y cada trabajo se asigna a un nodo que anuncia la versión exacta de la capacidad. El inventario puede incluir CPU, arquitectura o etiquetas de acelerador, pero las etiquetas de hardware son informativas: el scheduler actual selecciona por autorización, capacidad exacta, salud/heartbeat, concurrencia y reglas deterministas; no ofrece planificación por carga ni compatibilidad GPU automática.
-
-### Transcoding remoto desde Playback
-
-```text
-Cliente
-  │
-  ▼
-Playback ─► ICompatibleMediaTranscoderV1 ─► Scheduler
-                                             ├── Local ─► FFmpeg Worker
-                                             └── Remote
-                                                   │ lease activa
-                                                   ▼
-                                             Worker autorizado
-                                             ├── solicita bloques de fuente
-                                             ├── FFmpeg / libx264
-                                             └── sube resultado limitado
-                                                   │ hash verificado
-                                                   ▼
-                                      handle opaco ─► Playback ─► Cliente
-```
-
-Los modos configurables son:
-
-| Modo | Comportamiento |
+| Area | Result |
 |---|---|
-| `Local` | Predeterminado; ejecuta transcoding local sin asignar trabajo remoto. |
-| `RemotePreferred` | Intenta usar una capacidad remota elegible; si no hay resultado remoto, cae al transcoding local. |
-| `RemoteOnly` | No ejecuta FFmpeg local; si no consigue resultado remoto, Playback informa que no está disponible. |
+| Linux .NET suite | 476 passed, 0 failed, 0 skipped |
+| Windows .NET suite | 486 passed, 0 failed, 1 skipped (PostgreSQL-live, run on Linux) |
+| PostgreSQL-live | 1/1 passed on Linux |
+| Platform-only build | Passed on Linux and Windows |
+| Persistent Platform Assets and Audit | Passed persistence and restart coverage |
+| Inventory, persistence, architecture and real server restart/recovery | 6/6 |
+| Distributed WorkerAgent / mTLS | 10/10 |
+| Playback regression | 92/92 |
+| Web tests | 31/31 |
+| Modern / Classic builds | Passed |
+| Compilation warnings / GitHub annotations | 0 / 0 |
 
-El worker no necesita montar ni indexar la biblioteca multimedia. No recibe una ruta general al catálogo: el broker emite una concesión vinculada a job/lease, limita el acceso al medio autorizado y sirve bloques de bytes. El resultado se publica con longitud y SHA-256 validados y se devuelve como handle opaco, no como ruta del worker.
+The restart test launches real server processes, verifies persisted state after graceful restart, terminates a server abruptly, and checks committed state after recovery. The CI workflow also validates the complete build and suite on Linux and Windows.
 
-### Leases, generaciones y fencing
+## Milestones
 
-Cada asignación tiene propietario, caducidad y generación monotónica. El heartbeat renueva la lease vigente. Una reasignación incrementa la generación, de modo que el trabajador anterior no puede completar ni publicar un resultado válido:
+- **Phase 11 — Distributed Workers:** distributed execution, mTLS, leases, fencing, remote FFmpeg and recovery. See the [Phase 11 tag](https://github.com/joaquimcastilla/hispania/tree/phase-11-complete).
+- **Phase 12 — Platform Generalization:** Media-independent Platform boundaries, persistent Assets and Audit, Event Bus V1, generic WorkerAgent, Inventory, Web Shell and Platform-only build. See the [Phase 12 release](https://github.com/joaquimcastilla/hispania/releases/tag/phase-12-complete).
 
-```text
-Job #42 · Generation 7 · Worker A
-                 │ Worker A deja de renovar
-                 ▼
-             Lease expira
-                 │ reasignación
-                 ▼
-Job #42 · Generation 8 · Worker B
-                 │
-Worker A vuelve e intenta publicar generación 7
-                 ▼
-              RECHAZADO
-```
+The `phase-12-complete` tag is an immutable historical checkpoint at `d0ca0b51a89fb0ba7fc6071f025b91404abf5e38`. `main` also contains a post-checkpoint concurrency correction validated at the SHA above; the tag was not moved to include it.
 
-El coordinador valida propietario y generación al actualizar y publicar el resultado. Tras reinicio, invalida las leases activas: reintenta únicamente trabajo declarado retry-safe y sin efectos externos; el trabajo de seguridad incierta pasa a `Uncertain`. Esto impide aceptar finalizaciones obsoletas, pero no garantiza ejecución exactly-once. Un crash en la estrecha ventana entre publicar el archivo y persistir la finalización puede dejar un artefacto sin referencia hasta su limpieza; Playback no entrega ese artefacto como resultado.
+## Current limitations
 
-## Persistencia
+- Event Bus V1 is local to the process and non-durable.
+- Inventory is limited and does not constitute a full ERP.
+- Frontend module loading is not dynamic; general Identity/RBAC is not implemented.
+- Assets and Audit have initial providers; additional providers are future work.
+- Distributed coordination uses a single SQLite coordinator; no distributed PostgreSQL or multi-master.
+- There is no hostile-code sandbox, and A/B is not universal across domains.
 
-Hay dos ámbitos distintos:
+## Future directions
 
-| Ámbito | Implementación actual | Recuperación y límites |
-|---|---|---|
-| Catálogo y datos de Media | Adaptadores SQLite y PostgreSQL seleccionables al iniciar | Migraciones por proveedor; PostgreSQL live probado en CI y con una prueba dedicada en Linux. |
-| Coordinación de trabajo remoto | SQLite transaccional | Snapshot y lock exclusivo `.coordinator.lock`; solo un coordinador puede poseer ese estado. |
-| Experimentos Playback | Memoria por defecto; archivo JSON local opcional | La persistencia opcional es de un host y requiere una sal estable protegida. |
+These are roadmap possibilities, not current functionality or an indication that Phase 13 has started: Identity/users/permissions; ERP core (organizations, product catalog, BOM, purchasing, manufacturing); Store/Web; Automation; a durable Event Bus; additional storage providers; and stronger process-isolation options.
 
-SQLite coordinador soporta recuperación y fencing de un único proceso servidor. PostgreSQL para el catálogo **no** significa que el estado distribuido soporte PostgreSQL ni varios coordinadores. PostgreSQL distribuido, consenso y multi-master permanecen pendientes.
+## Repository map and further reading
 
-## Seguridad y límites
-
-### Controles implementados
-
-- SHA-256 por archivo de paquete; verificación opcional de firma RSA-PSS/SHA-256 y confianza/revocación de editor configurada por el host.
-- Allowlist de módulos y autorización explícita de capacidades por worker.
-- HTTPS con certificados cliente, validación de identidad/fingerprint y negociación de protocolo.
-- Grants de transferencia vinculados a la lease activa, bloques acotados, límites de tamaño, hash del resultado y handles opacos.
-- Fencing por generación, límites de proceso configurados y cleanup de artefactos parciales/expirados.
-- `Job Objects` en Windows y `prlimit` en Linux para los límites de proceso que admite la política del worker.
-
-### Lo que estos controles no son
-
-**Proceso separado ≠ sandbox. TLS/mTLS ≠ sandbox. `AssemblyLoadContext` ≠ sandbox.** OutOfProcess contiene fallos y aplica algunos techos operativos; el proceso aún hereda usuario, entorno y acceso de la máquina. mTLS autentica extremos autorizados, no protege frente al compromiso de un worker legítimo. No se promete protección total frente a extensiones maliciosas, aislamiento de kernel, cuotas globales de disco ni exactly-once. Ejecuta solo workers y extensiones de confianza, con cuentas y permisos del sistema limitados por el operador.
-
-## Compatibilidad validada
-
-| Componente | Windows | Linux |
-|---|---|---|
-| HISPANIA Server / runtime .NET 10 | Compilación y suites locales validadas | CI y suite completa validadas en Ubuntu 24.04.5 |
-| Worker Agent | Pruebas de protocolo/proceso; coordinador físico de Phase 11 | Worker físico Ubuntu validado con coordinator Windows |
-| FFmpeg / FFprobe | Ejecución local validada | FFmpeg remoto real y FFprobe validados en Ubuntu |
-| OutOfProcess | Pruebas Windows | Pruebas Linux y ejecución física de módulos/worker |
-| Catálogo SQLite | Validado | Validado |
-| Catálogo PostgreSQL | Adaptador .NET disponible; live verificado en workflow Linux | PostgreSQL 16 live probado en CI y en prueba dedicada |
-| Estado distribuido PostgreSQL / multi-coordinator | No implementado | No implementado |
-| Job Objects | Aplicados por la política de Windows | No aplica |
-| `prlimit` | No aplica | Aplicado por la política Linux; requiere que esté instalado |
-
-La evidencia de Phase 11 incluye suite .NET completa en Windows y Ubuntu; la suite Linux completa registró 472 aprobadas, 0 fallidas y 1 omitida por no configurar PostgreSQL en esa ejecución. Después, la prueba PostgreSQL omitida se ejecutó explícitamente contra PostgreSQL 16.15 y pasó 1/1, 0 fallos, 0 omisiones. El workflow GitHub `Validation` ejecutó CI Linux con PostgreSQL 16 en [el commit `85b35b2`](https://github.com/joaquimcastilla/hispania/actions/runs/36357738829). La ejecución física Windows 11 ↔ Ubuntu 24.04.5 incluyó registro/autorización mTLS, transcode FFmpeg remoto consumido por Playback, fallo del worker, recuperación, expiración y reasignación de lease, fencing de generación obsoleta y rechazo HTTP 409. Los commits de cierre documentado son `8137963` y `652692c`.
-
-## Evolución futura
-
-Las siguientes capacidades son trabajo futuro; no forman parte de la Phase 12:
-
-- Incorporar varios workers con políticas de scheduling que consideren carga real y prioridades.
-- Seleccionar capacidades por CPU/GPU y compatibilidad efectiva, no solo por etiquetas informativas.
-- Añadir colas, afinidad y redistribución explícita de trabajos compatible con las políticas de retry y fencing.
-- Validar workers heterogéneos y estrategias de recuperación con más de un nodo.
-
-La coordinación multi-master, P2P público y federación entre instalaciones son trabajo futuro; no forman parte de las capacidades actuales.
-
-## Mapa del repositorio
-
-| Ruta | Contenido |
-|---|---|
-| `apps/server` | Composition root, API, administración, Playback, coordinador y transferencia. |
-| `core/runtime` | Registro, resolver, lifecycle, extensiones, router de experimentos y protocolo de worker genérico. |
-| `contracts` | Contratos públicos versionados de módulos, Media, Playback y workers. |
-| `application`, `core/domain` | Casos de uso y modelo de dominio independientes de adaptadores. |
-| `infrastructure` | FFmpeg/FFprobe, proveedores de metadatos y persistencia SQLite/PostgreSQL. |
-| `apps/module-host`, `apps/worker-agent`, `apps/ffmpeg-worker` | Hosts de proceso local/remoto y worker de transcoding. |
-| `apps/web` | Clientes web Modern y Classic. |
-| `tests` | Unitarias, integración de procesos, Playback, persistencia y workers. |
-
-## Documentación relacionada
-
-- [Arquitectura](docs/ARCHITECTURE.md)
-- [Sistema de módulos](docs/MODULE_SYSTEM.md)
-- [ADR-0029: trabajo distribuido con coordinador único](docs/adr/ADR-0029-single-coordinator-distributed-work.md)
-- [Registro de progreso](PROGRESS-LOG.md)
-- [Guía de contribución](docs/CONTRIBUTING.md)
-- [Visión](VISION.md) · [Contexto del proyecto](PROJECT_CONTEXT.md) · [Auditoría de modularidad](docs/MODULARITY_AUDIT_2026-09-23.md)
+- `contracts`, `core/runtime`, `core/domain`, `application`, `infrastructure`: contracts, runtime, domain logic and adapters.
+- `apps/server`, `apps/worker-agent`, `apps/module-host`: composition roots and process hosts.
+- `apps/web`: Modern and Classic Web Shell builds.
+- `tests`: unit, integration, persistence, architecture and process-restart coverage.
+- [Architecture](docs/ARCHITECTURE.md) · [Module System](docs/MODULE_SYSTEM.md) · [ADR-0030](docs/adr/ADR-0030-platform-generalization-and-domain-suites.md) · [Progress log](PROGRESS-LOG.md) · [Contributing](docs/CONTRIBUTING.md)

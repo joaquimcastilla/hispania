@@ -87,3 +87,9 @@ Phase 12 is **CLOSED — validated on Linux and Windows** at `b789f0fc7486afb3c3
 - Workflow annotations: 0. Informational Vitest/jsdom and ephemeral PostgreSQL initdb notices remain; PostgreSQL negative tests intentionally log missing-migration/constraint errors.
 
 The architectural principle is: **HISPANIA Platform provides mechanisms; domain suites provide business logic.** Platform has no dependency on domains. Media, Inventory and future suites depend on Platform; domain implementations do not depend directly on each other. Host composition may connect their public contracts. Inventory is an ERP foundation only, not a complete ERP. The event bus is local and non-durable; frontend module loading is not dynamic. Current Assets/Audit providers are the first Platform implementations and may gain additional providers later.
+
+## Post-checkpoint `main` validation
+
+The immutable `phase-12-complete` tag remains at `d0ca0b51a89fb0ba7fc6071f025b91404abf5e38`. A concurrency correction was subsequently merged to `main`; it is not part of this Phase 12 checkpoint. Current `main` SHA `2e16b039d0fb8a3223366f7af478353b68886af1` passed GitHub Actions [Validation #36625775324](https://github.com/joaquimcastilla/hispania/actions/runs/36625775324): Linux 476 passed/0 failed/0 skipped; Windows 486 passed/0 failed/1 skipped (PostgreSQL-live, which passed 1/1 on Linux). Platform-only passed on both; Inventory, persistence, architecture and real process restart/recovery 6/6; WorkerAgent/mTLS/distributed workers 10/10; Playback 92/92; Web 31/31; Modern/Classic builds passed; 0 compilation warnings and 0 annotations.
+
+The run also verified persistent Assets and Audit, Inventory's independent store, generic WorkerAgent provider loading, host composition for Asset-to-Media streaming, Media regression and the multi-domain Web Shell. This records the status of current `main`; it does not move the Phase 12 tag or expand the scope of this ADR.
