@@ -30,6 +30,7 @@ public sealed class ServerProcessRestartTests
         {
             server = StartServer(serverDll, serverDirectory, root, libraryRoot, adminToken, shutdownToken, port);
             await WaitUntilHealthyAsync(server, client);
+            var identityToken = await CreateAndLoginIdentityUserAsync(client, adminToken);
             var first = await AssertPersistentStateAsync(client, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 5);
             await AssertAdminWritesAndAssociationAsync(client, adminToken, first.ItemId, serverDirectory);
             first = await AssertPersistentStateAsync(client, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 8);
@@ -38,18 +39,26 @@ public sealed class ServerProcessRestartTests
 
             server = StartServer(serverDll, serverDirectory, root, libraryRoot, adminToken, shutdownToken, port);
             await WaitUntilHealthyAsync(server, client);
+            await AssertIdentitySessionAsync(client, identityToken, expectedStatus: HttpStatusCode.OK);
             var afterOrderlyRestart = await AssertPersistentStateAsync(client, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 8);
             Assert.Equal(first.ItemId, afterOrderlyRestart.ItemId);
             Assert.Equal(first.AssetIds.Order(), afterOrderlyRestart.AssetIds.Order());
 
             await IssueOneUnitAsync(client, adminToken, afterOrderlyRestart.ItemId, afterOrderlyRestart.LocationId);
             _ = await AssertPersistentStateAsync(client, adminToken, expectedStock: 11, expectedMinimumAuditRecords: 9);
+            using (var logout = new HttpRequestMessage(HttpMethod.Post, "/api/identity/logout"))
+            {
+                logout.Headers.Authorization = new AuthenticationHeaderValue("Session", identityToken);
+                using var logoutResponse = await client.SendAsync(logout);
+                Assert.Equal(HttpStatusCode.NoContent, logoutResponse.StatusCode);
+            }
             server.Kill(entireProcessTree: true);
             await server.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
             server.Dispose(); server = null;
 
             server = StartServer(serverDll, serverDirectory, root, libraryRoot, adminToken, shutdownToken, port);
             await WaitUntilHealthyAsync(server, client);
+            await AssertIdentitySessionAsync(client, identityToken, expectedStatus: HttpStatusCode.Unauthorized);
             var afterAbruptRestart = await AssertPersistentStateAsync(client, adminToken, expectedStock: 11, expectedMinimumAuditRecords: 9);
             Assert.Equal(first.ItemId, afterAbruptRestart.ItemId);
             Assert.Equal(first.AssetIds.Order(), afterAbruptRestart.AssetIds.Order());
@@ -62,6 +71,48 @@ public sealed class ServerProcessRestartTests
             if (server is { HasExited: false }) { server.Kill(entireProcessTree: true); await server.WaitForExitAsync(); }
             server?.Dispose();
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static async Task<string> CreateAndLoginIdentityUserAsync(HttpClient client, string adminToken)
+    {
+        using var create = new HttpRequestMessage(HttpMethod.Post, "/api/identity/users")
+        {
+            Content = JsonContent.Create(new { username = "RestartUser", displayName = "Restart User", password = "a persistent test passphrase" })
+        };
+        create.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+        using var created = await client.SendAsync(create);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+
+        using (var legacyTokenAsSession = new HttpRequestMessage(HttpMethod.Get, "/api/identity/me"))
+        {
+            legacyTokenAsSession.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+            using var rejected = await client.SendAsync(legacyTokenAsSession);
+            Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+        }
+
+        using var login = await client.PostAsJsonAsync("/api/identity/login", new { username = "restartuser", password = "a persistent test passphrase" });
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        using var loginJson = JsonDocument.Parse(await login.Content.ReadAsStringAsync());
+        var token = Assert.IsType<string>(loginJson.RootElement.GetProperty("sessionToken").GetString());
+        using var wrongPassword = await client.PostAsJsonAsync("/api/identity/login", new { username = "restartuser", password = "wrong persistent test passphrase" });
+        using var unknownUser = await client.PostAsJsonAsync("/api/identity/login", new { username = "unknownuser", password = "wrong persistent test passphrase" });
+        Assert.Equal(wrongPassword.StatusCode, unknownUser.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, wrongPassword.StatusCode);
+        Assert.Equal(await wrongPassword.Content.ReadAsStringAsync(), await unknownUser.Content.ReadAsStringAsync());
+        return token;
+    }
+
+    private static async Task AssertIdentitySessionAsync(HttpClient client, string token, HttpStatusCode expectedStatus)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/identity/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Session", token);
+        using var response = await client.SendAsync(request);
+        Assert.Equal(expectedStatus, response.StatusCode);
+        if (response.IsSuccessStatusCode)
+        {
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal("restartuser", json.RootElement.GetProperty("user").GetProperty("username").GetString());
         }
     }
 
@@ -246,9 +297,10 @@ public sealed class ServerProcessRestartTests
         var inventory = Path.GetFullPath(Path.Combine(root, "inventory", "inventory.sqlite"));
         var assets = Path.GetFullPath(Path.Combine(root, "platform", "assets.sqlite"));
         var audit = Path.GetFullPath(Path.Combine(root, "platform", "audit.sqlite"));
+        var identity = Path.GetFullPath(Path.Combine(root, "platform", "identity.sqlite"));
         var media = Path.GetFullPath(Path.Combine(root, "media", "catalog.sqlite"));
-        Assert.True(File.Exists(inventory)); Assert.True(File.Exists(assets)); Assert.True(File.Exists(audit)); Assert.True(File.Exists(media));
-        Assert.NotEqual(inventory, assets); Assert.NotEqual(assets, audit); Assert.NotEqual(audit, media);
+        Assert.True(File.Exists(inventory)); Assert.True(File.Exists(assets)); Assert.True(File.Exists(audit)); Assert.True(File.Exists(identity)); Assert.True(File.Exists(media));
+        Assert.NotEqual(inventory, assets); Assert.NotEqual(assets, audit); Assert.NotEqual(audit, identity); Assert.NotEqual(identity, media);
         Assert.True(Directory.EnumerateFiles(Path.Combine(root, "platform", "assets"), "*.blob").Any());
         Assert.False(Directory.EnumerateFiles(Path.Combine(root, "inventory"), "*.blob").Any());
     }

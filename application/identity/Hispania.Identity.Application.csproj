@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>Hispania.Identity.Application</AssemblyName><RootNamespace>Hispania.Identity.Application</RootNamespace></PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\..\contracts\platform\Hispania.Platform.Contracts.csproj" /></ItemGroup>
+</Project>

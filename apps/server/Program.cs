@@ -47,6 +47,10 @@ builder.Services.AddPlatformSqlitePersistence(
     builder.Configuration["Platform:Assets:ContentPath"] ?? Path.Combine(platformDataPath, "assets"),
     builder.Configuration["Platform:Audit:Path"] ?? Path.Combine(platformDataPath, "audit.sqlite"),
     builder.Configuration.GetValue("Platform:Assets:MaximumBytes", 100L * 1024 * 1024));
+var identityLifetime = TimeSpan.FromMinutes(builder.Configuration.GetValue("Identity:SessionLifetimeMinutes", 720));
+builder.Services.AddPlatformIdentitySqlite(
+    builder.Configuration["Identity:Sqlite:Path"] ?? Path.Combine(platformDataPath, "identity.sqlite"),
+    options: new Hispania.Platform.Contracts.Identity.IdentityOptions(identityLifetime));
 var inventoryDatabasePath = builder.Configuration["Inventory:Sqlite:Path"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "inventory.sqlite");
 builder.Services.AddInventorySqlite(inventoryDatabasePath);
 var distributedStatePath = builder.Configuration["DistributedWorkers:StatePath"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "distributed-coordinator.sqlite");
@@ -239,6 +243,7 @@ app.MapArtworkDeliveryEndpoints();
 app.MapInventoryEndpoints();
 app.MapPlatformAssetEndpoints();
 app.MapPlatformAuditEndpoints();
+app.MapIdentityEndpoints();
 app.MapInventoryMediaAssetEndpoints();
 var testShutdownToken = builder.Configuration["Testing:ShutdownToken"];
 if (!string.IsNullOrWhiteSpace(testShutdownToken))

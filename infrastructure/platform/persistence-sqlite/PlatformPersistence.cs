@@ -2,6 +2,8 @@ using System.Text.Json;
 using System.Globalization;
 using Hispania.Platform.Contracts.Assets;
 using Hispania.Platform.Contracts.Audit;
+using Hispania.Platform.Contracts.Identity;
+using Hispania.Identity.Application;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -17,6 +19,16 @@ public static class PlatformPersistenceRegistration
         services.AddSingleton<SqlitePlatformAuditStore>(_ => new SqlitePlatformAuditStore(auditPath));
         services.AddSingleton<IPlatformAuditWriter>(sp => sp.GetRequiredService<SqlitePlatformAuditStore>());
         services.AddSingleton<IPlatformAuditReader>(sp => sp.GetRequiredService<SqlitePlatformAuditStore>());
+        return services;
+    }
+
+    public static IServiceCollection AddPlatformIdentitySqlite(this IServiceCollection services, string path, IPlatformAuditWriter? auditWriter = null, IdentityOptions? options = null)
+    {
+        services.AddSingleton<SqliteIdentityStore>(_ => new SqliteIdentityStore(path));
+        services.AddSingleton<IIdentityStore>(sp => sp.GetRequiredService<SqliteIdentityStore>());
+        services.AddSingleton<IdentityService>(sp => new IdentityService(sp.GetRequiredService<IIdentityStore>(), auditWriter ?? sp.GetService<IPlatformAuditWriter>(), options));
+        services.AddSingleton<IIdentityQueryV1>(sp => sp.GetRequiredService<IdentityService>());
+        services.AddSingleton<IIdentityCommandV1>(sp => sp.GetRequiredService<IdentityService>());
         return services;
     }
 }

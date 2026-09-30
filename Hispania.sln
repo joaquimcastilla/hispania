@@ -179,6 +179,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "persistence-sqlite", "persi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hispania.Platform.Persistence.Sqlite", "infrastructure\platform\persistence-sqlite\Hispania.Platform.Persistence.Sqlite.csproj", "{406BC467-BA76-468D-8B80-3BE822CD828E}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "identity", "identity", "{BD5F5EA5-56B7-71C1-A922-7567A10338CD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hispania.Identity.Application", "application\identity\Hispania.Identity.Application.csproj", "{4362F1F0-B859-46D4-AB9A-79F82D4A1DA4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -717,6 +721,18 @@ Global
 		{406BC467-BA76-468D-8B80-3BE822CD828E}.Release|x64.Build.0 = Release|Any CPU
 		{406BC467-BA76-468D-8B80-3BE822CD828E}.Release|x86.ActiveCfg = Release|Any CPU
 		{406BC467-BA76-468D-8B80-3BE822CD828E}.Release|x86.Build.0 = Release|Any CPU
+		{4362F1F0-B859-46D4-AB9A-79F82D4A1DA4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4362F1F0-B859-46D4-AB9A-79F82D4A1DA4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4362F1F0-B859-46D4-AB9A-79F82D4A1DA4}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4362F1F0-B859-46D4-AB9A-79F82D4A1DA4}.Debug|x64.Build.0 = Debug|Any CPU
+		{4362F1F0-B859-46D4-AB9A-79F82D4A1DA4}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4362F1F0-B859-46D4-AB9A-79F82D4A1DA4}.Debug|x86.Build.0 = Debug|Any CPU
+		{4362F1F0-B859-46D4-AB9A-79F82D4A1DA4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4362F1F0-B859-46D4-AB9A-79F82D4A1DA4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4362F1F0-B859-46D4-AB9A-79F82D4A1DA4}.Release|x64.ActiveCfg = Release|Any CPU
+		{4362F1F0-B859-46D4-AB9A-79F82D4A1DA4}.Release|x64.Build.0 = Release|Any CPU
+		{4362F1F0-B859-46D4-AB9A-79F82D4A1DA4}.Release|x86.ActiveCfg = Release|Any CPU
+		{4362F1F0-B859-46D4-AB9A-79F82D4A1DA4}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -787,5 +803,7 @@ Global
 		{39D0EDD3-E627-BDF1-3DC5-0EF80A5C7655} = {DFEE68D8-A7D0-1A41-506C-9B74AA9A7B7B}
 		{0C60CF73-8CB4-6965-7AFA-D243BB93EFB7} = {39D0EDD3-E627-BDF1-3DC5-0EF80A5C7655}
 		{406BC467-BA76-468D-8B80-3BE822CD828E} = {0C60CF73-8CB4-6965-7AFA-D243BB93EFB7}
+		{BD5F5EA5-56B7-71C1-A922-7567A10338CD} = {A74F262E-BDE7-D5D2-89E9-785413424D0A}
+		{4362F1F0-B859-46D4-AB9A-79F82D4A1DA4} = {BD5F5EA5-56B7-71C1-A922-7567A10338CD}
 	EndGlobalSection
 EndGlobal
