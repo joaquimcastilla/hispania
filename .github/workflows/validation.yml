@@ -16,8 +16,8 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_USER: hispania
-          POSTGRES_PASSWORD: hispania
           POSTGRES_DB: hispania_tests
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -26,7 +26,7 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     env:
-      HISPANIA_POSTGRES_TEST_CONNECTION: Host=localhost;Port=5432;Database=hispania_tests;Username=hispania;Password=hispania;Timeout=5
+      HISPANIA_POSTGRES_TEST_CONNECTION: Host=localhost;Port=5432;Database=hispania_tests;Username=hispania;Timeout=5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
