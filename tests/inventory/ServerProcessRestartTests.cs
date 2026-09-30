@@ -5,6 +5,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Security.Cryptography;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace Hispania.Inventory.Tests;
@@ -32,7 +34,7 @@ public sealed class ServerProcessRestartTests
             server = StartServer(serverDll, serverDirectory, root, libraryRoot, adminToken, bootstrapToken, shutdownToken, port);
             await WaitUntilHealthyAsync(server, client);
             var identityToken = await CreateAndLoginIdentityUserAsync(client, adminToken);
-            await AssertAuthorizationApiAsync(client, identityToken, adminToken, bootstrapToken);
+            await AssertAuthorizationApiAsync(client, identityToken, adminToken, bootstrapToken, root);
             var first = await AssertPersistentStateAsync(client, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 5);
             await AssertAdminWritesAndAssociationAsync(client, adminToken, first.ItemId, serverDirectory);
             first = await AssertPersistentStateAsync(client, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 8);
@@ -72,6 +74,7 @@ public sealed class ServerProcessRestartTests
         {
             if (server is { HasExited: false }) { server.Kill(entireProcessTree: true); await server.WaitForExitAsync(); }
             server?.Dispose();
+            SqliteConnection.ClearAllPools();
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
     }
@@ -118,7 +121,7 @@ public sealed class ServerProcessRestartTests
         }
     }
 
-    private static async Task AssertAuthorizationApiAsync(HttpClient client, string sessionToken, string legacyToken, string bootstrapToken)
+    private static async Task AssertAuthorizationApiAsync(HttpClient client, string sessionToken, string legacyToken, string bootstrapToken, string root)
     {
         using (var noSession = await client.GetAsync("/api/authorization/users")) Assert.Equal(HttpStatusCode.Unauthorized, noSession.StatusCode);
         using (var invalidSession = new HttpRequestMessage(HttpMethod.Get, "/api/authorization/users"))
@@ -135,6 +138,11 @@ public sealed class ServerProcessRestartTests
         using var meResponse = await client.SendAsync(me); meResponse.EnsureSuccessStatusCode();
         using var meJson = JsonDocument.Parse(await meResponse.Content.ReadAsStringAsync());
         var userId = meJson.RootElement.GetProperty("user").GetProperty("id").GetProperty("value").GetGuid();
+        using (var wrongBootstrap = new HttpRequestMessage(HttpMethod.Post, "/api/authorization/bootstrap-admin") { Content = JsonContent.Create(new { userId }) })
+        {
+            wrongBootstrap.Headers.Authorization = new AuthenticationHeaderValue("Bootstrap", Convert.ToHexString(Guid.NewGuid().ToByteArray()));
+            using var rejected = await client.SendAsync(wrongBootstrap); Assert.Equal(HttpStatusCode.Forbidden, rejected.StatusCode);
+        }
         using var bootstrap = new HttpRequestMessage(HttpMethod.Post, "/api/authorization/bootstrap-admin") { Content = JsonContent.Create(new { userId }) };
         bootstrap.Headers.Authorization = new AuthenticationHeaderValue("Bootstrap", bootstrapToken);
         using var bootstrapped = await client.SendAsync(bootstrap); Assert.Equal(HttpStatusCode.OK, bootstrapped.StatusCode);
@@ -149,9 +157,67 @@ public sealed class ServerProcessRestartTests
             legacy.Headers.Authorization = new AuthenticationHeaderValue("Bearer", legacyToken);
             using var allowed = await client.SendAsync(legacy); Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
         }
+
+        using var createdUser = new HttpRequestMessage(HttpMethod.Post, "/api/identity/users") { Content = JsonContent.Create(new { username = "sessioncheck", displayName = "Session Check", password = "a sufficiently long passphrase" }) };
+        createdUser.Headers.Authorization = new AuthenticationHeaderValue("Bearer", legacyToken);
+        using var userResponse = await client.SendAsync(createdUser); Assert.Equal(HttpStatusCode.Created, userResponse.StatusCode);
+        using var createdUserJson = JsonDocument.Parse(await userResponse.Content.ReadAsStringAsync());
+        var sessionUserId = createdUserJson.RootElement.GetProperty("id").GetProperty("value").GetGuid();
+
+        var expiredToken = await LoginForTokenAsync(client);
+        await ExpireSessionTokenAsync(Path.Combine(root, "platform", "identity.sqlite"), expiredToken);
+        using (var expiredAccess = new HttpRequestMessage(HttpMethod.Get, "/api/authorization/users"))
+        {
+            expiredAccess.Headers.Authorization = new AuthenticationHeaderValue("Session", expiredToken);
+            using var rejected = await client.SendAsync(expiredAccess); Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+        }
+
+        var revokedToken = await LoginForTokenAsync(client);
+        using (var logout = new HttpRequestMessage(HttpMethod.Post, "/api/identity/logout"))
+        {
+            logout.Headers.Authorization = new AuthenticationHeaderValue("Session", revokedToken);
+            using var loggedOut = await client.SendAsync(logout); Assert.Equal(HttpStatusCode.NoContent, loggedOut.StatusCode);
+        }
+        using (var revokedAccess = new HttpRequestMessage(HttpMethod.Get, "/api/authorization/users"))
+        {
+            revokedAccess.Headers.Authorization = new AuthenticationHeaderValue("Session", revokedToken);
+            using var rejected = await client.SendAsync(revokedAccess); Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+        }
+
+        var disabledToken = await LoginForTokenAsync(client);
+        using (var disable = new HttpRequestMessage(HttpMethod.Patch, $"/api/authorization/users/{sessionUserId:D}/status") { Content = JsonContent.Create(new { enabled = false }) })
+        {
+            disable.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+            using var disabled = await client.SendAsync(disable); Assert.Equal(HttpStatusCode.OK, disabled.StatusCode);
+        }
+        using (var disabledAccess = new HttpRequestMessage(HttpMethod.Get, "/api/authorization/users"))
+        {
+            disabledAccess.Headers.Authorization = new AuthenticationHeaderValue("Session", disabledToken);
+            using var rejected = await client.SendAsync(disabledAccess); Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+        }
         using var bootstrapAgain = new HttpRequestMessage(HttpMethod.Post, "/api/authorization/bootstrap-admin") { Content = JsonContent.Create(new { userId }) };
         bootstrapAgain.Headers.Authorization = new AuthenticationHeaderValue("Bootstrap", bootstrapToken);
         using var rejectedAgain = await client.SendAsync(bootstrapAgain); Assert.Equal(HttpStatusCode.Forbidden, rejectedAgain.StatusCode);
+    }
+
+    private static async Task<string> LoginForTokenAsync(HttpClient client)
+    {
+        using var login = await client.PostAsJsonAsync("/api/identity/login", new { username = "sessioncheck", password = "a sufficiently long passphrase" });
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        using var json = JsonDocument.Parse(await login.Content.ReadAsStringAsync());
+        return Assert.IsType<string>(json.RootElement.GetProperty("sessionToken").GetString());
+    }
+
+    private static async Task ExpireSessionTokenAsync(string databasePath, string token)
+    {
+        var tokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+        await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath }.ToString());
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE identity_sessions SET expires_utc=$expires WHERE token_hash=$tokenHash";
+        command.Parameters.AddWithValue("$expires", DateTimeOffset.UtcNow.AddMinutes(-1).ToString("O"));
+        command.Parameters.AddWithValue("$tokenHash", tokenHash);
+        Assert.Equal(1, await command.ExecuteNonQueryAsync());
     }
 
     private static async Task<(Guid ItemId, Guid LocationId, Guid[] AssetIds)> AssertPersistentStateAsync(HttpClient client, string adminToken, int expectedStock, int expectedMinimumAuditRecords)
@@ -282,7 +348,7 @@ public sealed class ServerProcessRestartTests
         start.ArgumentList.Add("--Ffprobe:ExecutablePath=ffprobe"); start.ArgumentList.Add("--Ffmpeg:ExecutablePath=ffmpeg");
         start.ArgumentList.Add($"--Playback:TranscodeCachePath={Path.Combine(root, "media", "transcodes")}");
         start.ArgumentList.Add($"--PlaybackExperiments:StatePath={Path.Combine(root, "platform", "playback-experiments.json")}");
-        start.ArgumentList.Add($"--Modules:AdminToken={adminToken}"); start.ArgumentList.Add($"--Identity:Bootstrap:Token={bootstrapToken}"); start.ArgumentList.Add($"--Testing:ShutdownToken={shutdownToken}");
+        start.ArgumentList.Add($"--Modules:AdminToken={adminToken}"); start.Environment["Identity__Bootstrap__Token"] = bootstrapToken; start.ArgumentList.Add($"--Testing:ShutdownToken={shutdownToken}");
         var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Hispania.Server process.");
         _ = process.StandardOutput.ReadToEndAsync(); _ = process.StandardError.ReadToEndAsync();
         return process;

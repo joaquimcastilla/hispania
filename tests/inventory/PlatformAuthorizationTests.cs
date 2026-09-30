@@ -1,5 +1,6 @@
 using Hispania.Authorization.Application;
 using Hispania.Identity.Application;
+using Hispania.Platform.Contracts.Audit;
 using Hispania.Platform.Contracts.Authorization;
 using Hispania.Platform.Contracts.Identity;
 using Hispania.Platform.Persistence.Sqlite;
@@ -10,6 +11,37 @@ namespace Hispania.Inventory.Tests;
 
 public sealed class PlatformAuthorizationTests
 {
+    private static readonly string[] BootstrapColumns = ["id", "consumed"];
+    [Fact]
+    public async Task AdministratorBootstrapRequiresConfiguredCorrectTokenIsAtomicOneTimeAndNeverPersistsSecret()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "identity.sqlite");
+        var identity = new IdentityService(new SqliteIdentityStore(path));
+        var created = await identity.CreateUserAsync("bootstrapuser", "Bootstrap User", "a sufficiently long passphrase");
+        var store = new SqlitePlatformAuthorizationStore(path);
+        var audit = new RecordingAuditWriter();
+        var secret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+
+        Assert.False(await new AuthorizationAdministrationService(store, identity).BootstrapAdministratorAsync(created.Value!.Id, secret));
+        Assert.False(await new AuthorizationAdministrationService(store, identity, configuredBootstrapToken: "").BootstrapAdministratorAsync(created.Value.Id, secret));
+        Assert.False(await new AuthorizationAdministrationService(store, identity, configuredBootstrapToken: secret).BootstrapAdministratorAsync(created.Value.Id, "incorrect-token-value-000000000000"));
+
+        var service = new AuthorizationAdministrationService(store, identity, audit, secret);
+        var attempts = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => service.BootstrapAdministratorAsync(created.Value.Id, secret).AsTask()));
+        Assert.Single(attempts, result => result);
+        Assert.Single(await service.GetUserRolesAsync(created.Value.Id));
+        Assert.Single(audit.Records, record => record.Action == "bootstrap-admin-created");
+        Assert.DoesNotContain(secret, System.Text.Json.JsonSerializer.Serialize(audit.Records), StringComparison.Ordinal);
+
+        await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ToString());
+        await connection.OpenAsync();
+        await using var columns = connection.CreateCommand(); columns.CommandText = "PRAGMA table_info(authorization_bootstrap)";
+        await using var reader = await columns.ExecuteReaderAsync();
+        var names = new List<string>(); while (await reader.ReadAsync()) names.Add(reader.GetString(1));
+        Assert.Equal(BootstrapColumns, names);
+    }
+
     [Fact]
     public async Task RolesPermissionsAssignmentsAndEffectiveAccessPersistAndChangeForExistingSession()
     {
@@ -59,5 +91,11 @@ public sealed class PlatformAuthorizationTests
         public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "hispania-authorization-" + Guid.NewGuid().ToString("N"));
         public TemporaryDirectory() => Directory.CreateDirectory(Path);
         public void Dispose() { SqliteConnection.ClearAllPools(); if (Directory.Exists(Path)) Directory.Delete(Path, recursive: true); }
+    }
+
+    private sealed class RecordingAuditWriter : IPlatformAuditWriter
+    {
+        public List<AuditRecord> Records { get; } = [];
+        public ValueTask WriteAsync(AuditRecord record, CancellationToken cancellationToken = default) { Records.Add(record); return ValueTask.CompletedTask; }
     }
 }
