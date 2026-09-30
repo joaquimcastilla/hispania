@@ -22,22 +22,24 @@ public sealed class ServerProcessRestartTests
         Assert.True(File.Exists(serverDll), $"Server output was not built: {serverDll}");
         var adminToken = Convert.ToHexString(Guid.NewGuid().ToByteArray());
         var shutdownToken = Convert.ToHexString(Guid.NewGuid().ToByteArray());
+        var bootstrapToken = Convert.ToHexString(Guid.NewGuid().ToByteArray());
         var port = ReserveLoopbackPort();
         var baseAddress = new Uri($"http://127.0.0.1:{port}/");
         using var client = new HttpClient { BaseAddress = baseAddress, Timeout = TimeSpan.FromSeconds(5) };
         Process? server = null;
         try
         {
-            server = StartServer(serverDll, serverDirectory, root, libraryRoot, adminToken, shutdownToken, port);
+            server = StartServer(serverDll, serverDirectory, root, libraryRoot, adminToken, bootstrapToken, shutdownToken, port);
             await WaitUntilHealthyAsync(server, client);
             var identityToken = await CreateAndLoginIdentityUserAsync(client, adminToken);
+            await AssertAuthorizationApiAsync(client, identityToken, adminToken, bootstrapToken);
             var first = await AssertPersistentStateAsync(client, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 5);
             await AssertAdminWritesAndAssociationAsync(client, adminToken, first.ItemId, serverDirectory);
             first = await AssertPersistentStateAsync(client, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 8);
             await StopServerGracefullyAsync(server, client, shutdownToken);
             server.Dispose(); server = null;
 
-            server = StartServer(serverDll, serverDirectory, root, libraryRoot, adminToken, shutdownToken, port);
+            server = StartServer(serverDll, serverDirectory, root, libraryRoot, adminToken, bootstrapToken, shutdownToken, port);
             await WaitUntilHealthyAsync(server, client);
             await AssertIdentitySessionAsync(client, identityToken, expectedStatus: HttpStatusCode.OK);
             var afterOrderlyRestart = await AssertPersistentStateAsync(client, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 8);
@@ -56,7 +58,7 @@ public sealed class ServerProcessRestartTests
             await server.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
             server.Dispose(); server = null;
 
-            server = StartServer(serverDll, serverDirectory, root, libraryRoot, adminToken, shutdownToken, port);
+            server = StartServer(serverDll, serverDirectory, root, libraryRoot, adminToken, bootstrapToken, shutdownToken, port);
             await WaitUntilHealthyAsync(server, client);
             await AssertIdentitySessionAsync(client, identityToken, expectedStatus: HttpStatusCode.Unauthorized);
             var afterAbruptRestart = await AssertPersistentStateAsync(client, adminToken, expectedStock: 11, expectedMinimumAuditRecords: 9);
@@ -114,6 +116,42 @@ public sealed class ServerProcessRestartTests
             using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             Assert.Equal("restartuser", json.RootElement.GetProperty("user").GetProperty("username").GetString());
         }
+    }
+
+    private static async Task AssertAuthorizationApiAsync(HttpClient client, string sessionToken, string legacyToken, string bootstrapToken)
+    {
+        using (var noSession = await client.GetAsync("/api/authorization/users")) Assert.Equal(HttpStatusCode.Unauthorized, noSession.StatusCode);
+        using (var invalidSession = new HttpRequestMessage(HttpMethod.Get, "/api/authorization/users"))
+        {
+            invalidSession.Headers.Authorization = new AuthenticationHeaderValue("Session", "invalid-session-token-which-is-long-enough");
+            using var rejected = await client.SendAsync(invalidSession); Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+        }
+        using (var forbidden = new HttpRequestMessage(HttpMethod.Get, "/api/authorization/users"))
+        {
+            forbidden.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+            using var denied = await client.SendAsync(forbidden); Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        }
+        using var me = new HttpRequestMessage(HttpMethod.Get, "/api/identity/me"); me.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+        using var meResponse = await client.SendAsync(me); meResponse.EnsureSuccessStatusCode();
+        using var meJson = JsonDocument.Parse(await meResponse.Content.ReadAsStringAsync());
+        var userId = meJson.RootElement.GetProperty("user").GetProperty("id").GetProperty("value").GetGuid();
+        using var bootstrap = new HttpRequestMessage(HttpMethod.Post, "/api/authorization/bootstrap-admin") { Content = JsonContent.Create(new { userId }) };
+        bootstrap.Headers.Authorization = new AuthenticationHeaderValue("Bootstrap", bootstrapToken);
+        using var bootstrapped = await client.SendAsync(bootstrap); Assert.Equal(HttpStatusCode.OK, bootstrapped.StatusCode);
+
+        using (var granted = new HttpRequestMessage(HttpMethod.Get, "/api/authorization/users"))
+        {
+            granted.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+            using var allowed = await client.SendAsync(granted); Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
+        }
+        using (var legacy = new HttpRequestMessage(HttpMethod.Get, "/api/authorization/users"))
+        {
+            legacy.Headers.Authorization = new AuthenticationHeaderValue("Bearer", legacyToken);
+            using var allowed = await client.SendAsync(legacy); Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
+        }
+        using var bootstrapAgain = new HttpRequestMessage(HttpMethod.Post, "/api/authorization/bootstrap-admin") { Content = JsonContent.Create(new { userId }) };
+        bootstrapAgain.Headers.Authorization = new AuthenticationHeaderValue("Bootstrap", bootstrapToken);
+        using var rejectedAgain = await client.SendAsync(bootstrapAgain); Assert.Equal(HttpStatusCode.Forbidden, rejectedAgain.StatusCode);
     }
 
     private static async Task<(Guid ItemId, Guid LocationId, Guid[] AssetIds)> AssertPersistentStateAsync(HttpClient client, string adminToken, int expectedStock, int expectedMinimumAuditRecords)
@@ -229,7 +267,7 @@ public sealed class ServerProcessRestartTests
 
     private static Guid ReadWrappedId(JsonElement id) => Guid.Parse(id.GetProperty("value").GetString()!);
 
-    private static Process StartServer(string serverDll, string workingDirectory, string root, string libraryRoot, string adminToken, string shutdownToken, int port)
+    private static Process StartServer(string serverDll, string workingDirectory, string root, string libraryRoot, string adminToken, string bootstrapToken, string shutdownToken, int port)
     {
         var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true, WorkingDirectory = workingDirectory };
         start.ArgumentList.Add(serverDll);
@@ -244,7 +282,7 @@ public sealed class ServerProcessRestartTests
         start.ArgumentList.Add("--Ffprobe:ExecutablePath=ffprobe"); start.ArgumentList.Add("--Ffmpeg:ExecutablePath=ffmpeg");
         start.ArgumentList.Add($"--Playback:TranscodeCachePath={Path.Combine(root, "media", "transcodes")}");
         start.ArgumentList.Add($"--PlaybackExperiments:StatePath={Path.Combine(root, "platform", "playback-experiments.json")}");
-        start.ArgumentList.Add($"--Modules:AdminToken={adminToken}"); start.ArgumentList.Add($"--Testing:ShutdownToken={shutdownToken}");
+        start.ArgumentList.Add($"--Modules:AdminToken={adminToken}"); start.ArgumentList.Add($"--Identity:Bootstrap:Token={bootstrapToken}"); start.ArgumentList.Add($"--Testing:ShutdownToken={shutdownToken}");
         var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Hispania.Server process.");
         _ = process.StandardOutput.ReadToEndAsync(); _ = process.StandardError.ReadToEndAsync();
         return process;

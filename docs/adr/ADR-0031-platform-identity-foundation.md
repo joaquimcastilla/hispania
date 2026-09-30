@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented for Phase 13.1; local validation passed; CI pending.
+Implemented for Phase 13.1; local validation and GitHub Actions Validation run 36777214916 passed on Linux and Windows at SHA `d3b680cf9555b90107fb4ea819b2b92655695648`.
 
 ## Context
 

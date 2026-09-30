@@ -6,6 +6,9 @@ import { InventoryPage } from "./InventoryPage";
 import { moduleNavigation, routeForPath, shellRoutes } from "./webModules";
 import { metadataClient, MetadataEditModel, PersonMetadata } from "./metadataClient";
 import "./MovieExperience.css";
+import { AuthProvider, useAuth } from "./AuthContext";
+import { LoginPage } from "./LoginPage";
+import { AdminRolesPage, AdminUsersPage } from "./AuthorizationPages";
 
 type MediaListItem = { id: string; displayName: string; effective?: { title?: string | null; releaseDate?: string | null; posterUrl?: string | null }; technical?: { durationSeconds?: number | null; container?: string | null; video?: { codec: string; width: number; height: number; bitDepth?: number | null } | null; audioTracks?: { representationId: string; streamIndex?: number | null; codec: string; channels: number; sampleRateHertz: number }[] } };
 type MetadataField = { value?: string | number | null; provider?: string | null };
@@ -87,6 +90,30 @@ function PersonPage({ person, metadata, profileLoading, onBack, onOpenMovie, med
 }
 
 export function App({ variant = "modern" }: { variant?: "modern" | "classic" }) {
+  return <AuthProvider><AuthenticatedApp variant={variant} /></AuthProvider>;
+}
+
+function AuthenticatedApp({ variant }: { variant: "modern" | "classic" }) {
+  const auth = useAuth();
+  const [locationPath, setLocationPath] = useState(window.location.pathname);
+  useEffect(() => { const updatePath = () => setLocationPath(window.location.pathname); window.addEventListener("popstate", updatePath); return () => window.removeEventListener("popstate", updatePath); }, []);
+  const path = locationPath;
+  if (path === "/login") return <LoginPage />;
+  if (path === "/admin/users" || path === "/admin/roles") {
+    if (auth.loading) return <main className="authorization-shell" role="status">Comprobando sesión…</main>;
+    if (!auth.currentUser) {
+      window.history.replaceState({}, "", `/login?returnTo=${encodeURIComponent(path)}`);
+      return <LoginPage />;
+    }
+    const permission = path.endsWith("/users") ? "platform.users.read" : "platform.roles.read";
+    if (!auth.hasPermission(permission)) return <main className="authorization-shell"><h1>Acceso denegado</h1><p>No tienes permiso para esta página.</p><a href="/">Volver a HISPANIA</a></main>;
+    return path.endsWith("/users") ? <AdminUsersPage /> : <AdminRolesPage />;
+  }
+  return <ShellApplication variant={variant} />;
+}
+
+function ShellApplication({ variant }: { variant: "modern" | "classic" }) {
+  const auth = useAuth();
   const [section, setSection] = useState<LibrarySection>(routeForPath(window.location.pathname)?.section ?? "movies");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [media, setMedia] = useState<MediaListItem[]>([]);
@@ -243,7 +270,7 @@ export function App({ variant = "modern" }: { variant?: "modern" | "classic" }) 
 
   const drawerSection = (nextSection: LibrarySection) => { window.history.pushState({}, "", routeForSection(nextSection)?.path ?? "/"); setSection(nextSection); setSelectedMedia(null); setPerson(null); setDrawerOpen(false); };
   return <main className={`app-shell web-variant-${variant}`}>
-    <header className="topbar"><button type="button" className="menu-button" aria-label="Abrir menú" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>☰</button><button className="brand" type="button" onClick={() => selectSection("home")} aria-label="HISPANIA, ir a Inicio"><span className="brand-mark" aria-hidden="true">H</span><span>HISPANIA</span></button><nav className="main-navigation" aria-label="Navegación principal"><button type="button" className="nav-item" aria-current={section === "home" ? "page" : undefined} onClick={() => selectSection("home")}>Inicio</button>{navigation.map(item => <button key={item.id} type="button" className="nav-item" aria-current={section === item.id ? "page" : undefined} onClick={() => selectSection(item.id)}>{item.label}</button>)}<button type="button" className="nav-item" aria-current={section === "inventory" ? "page" : undefined} onClick={() => selectSection("inventory")}>Inventario</button></nav></header>
+    <header className="topbar"><button type="button" className="menu-button" aria-label="Abrir menú" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>☰</button><button className="brand" type="button" onClick={() => selectSection("home")} aria-label="HISPANIA, ir a Inicio"><span className="brand-mark" aria-hidden="true">H</span><span>HISPANIA</span></button><nav className="main-navigation" aria-label="Navegación principal"><button type="button" className="nav-item" aria-current={section === "home" ? "page" : undefined} onClick={() => selectSection("home")}>Inicio</button>{navigation.map(item => <button key={item.id} type="button" className="nav-item" aria-current={section === item.id ? "page" : undefined} onClick={() => selectSection(item.id)}>{item.label}</button>)}<button type="button" className="nav-item" aria-current={section === "inventory" ? "page" : undefined} onClick={() => selectSection("inventory")}>Inventario</button>{auth.currentUser ? <><a className="nav-item" href="/admin/users" hidden={!auth.hasPermission("platform.users.read")}>Usuarios</a><a className="nav-item" href="/admin/roles" hidden={!auth.hasPermission("platform.roles.read")}>Roles</a><span>{auth.currentUser.user.displayName}</span><button type="button" className="nav-item" onClick={() => void auth.logout()}>Cerrar sesión</button></> : <a className="nav-item" href="/login">Iniciar sesión</a>}</nav></header>
     {drawerOpen && <div className="drawer-layer" role="presentation" onClick={() => setDrawerOpen(false)}><aside className="app-drawer" role="dialog" aria-modal="true" aria-label="Menú HISPANIA" onClick={event => event.stopPropagation()}><div className="drawer-heading"><strong>HISPANIA</strong><button type="button" aria-label="Cerrar menú" onClick={() => setDrawerOpen(false)}>×</button></div><button type="button" className={section === "home" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("home")}>Inicio</button><p className="drawer-label">MEDIOS</p>{navigation.map(item => <button key={item.id} type="button" className={section === item.id ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection(item.id)}>{item.label}</button>)}<p className="drawer-label">ERP</p><button type="button" className={section === "inventory" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("inventory")}>Inventario</button><p className="drawer-label">ADMINISTRACIÓN</p><button type="button" className={section === "dashboard" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("dashboard")}>Panel de control</button>{["Bibliotecas", "Ajustes"].map(item => <button key={item} type="button" className="drawer-link" disabled aria-disabled="true">{item}</button>)}</aside></div>}
     {section === "home" && <Home onNavigate={selectSection} movies={media} onOpenMovie={openMovie} />}
     {section === "dashboard" && <AdminPanel movieCount={media.length} onMetadataUpdated={handleMetadataUpdated} />}

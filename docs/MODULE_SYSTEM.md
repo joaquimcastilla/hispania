@@ -356,3 +356,9 @@ Esto no es requisito para MVP, pero no debemos cerrar esa puerta.
 ## Generic distributed worker providers
 
 WorkerAgent hosts generic transport, mTLS identity, leases, health, and capability dispatch. Optional capability providers implement `IDistributedWorkerCapabilityProviderV1` in Runtime and are loaded from operator-configured assembly paths. The FFmpeg provider is implemented by the Media transcoding adapter and is absent from WorkerAgent project references. Keep provider loading explicit and trusted: assemblies run with the worker process privileges. `apps/server` and WorkerAgent are composition roots; they may join generic contracts with selected implementation providers while domain projects remain restricted to their owned contracts.
+
+## Platform Authorization and Web Authentication (Phase 13.2)
+
+Platform defines versioned authorization contracts independently of Media and Inventory implementations. Roles and string permission identifiers are persisted with Identity in `identity.sqlite`; grants are resolved server-side for each protected request, so active sessions reflect role changes immediately. A missing grant denies access, and disabled users have no effective permissions. For contract ownership, bootstrap, legacy bearer coexistence, and the Web `sessionStorage` decision, see [ADR-0032](adr/ADR-0032-platform-authorization-and-web-auth.md).
+
+The ASP.NET endpoint filter centralizes `Session` validation and permission checks. Session absence/invalidity returns 401; an authenticated user without the required grant receives 403. A one-time operator-configured bootstrap secret provisions the first administrator, and the temporary legacy bearer is explicitly logged when used on compatibility-filtered Platform routes. Media and Inventory fine-grained endpoint migration is deferred to Phase 13.3.

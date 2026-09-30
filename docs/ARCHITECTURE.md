@@ -364,3 +364,11 @@ Inventory item → AssetRef → Platform Assets → (if video/mp4 and public) Me
 ```
 
 Server and WorkerAgent are composition roots. They assemble public contracts with concrete adapters and providers; domain projects may reference Platform contracts but cannot reference peer-domain implementations. FFmpeg is discovered by WorkerAgent through the generic Runtime provider interface and configured provider assembly list.
+
+### Phase 13.2: Platform authorization and Web authentication
+
+Platform Authorization owns versioned role/access contracts, policy and SQLite persistence alongside Identity in `identity.sqlite`. Effective permissions are resolved from a user's roles on every protected request; missing grants deny, and disabled users are denied regardless of session validity. The reserved `platform.admin` permission grants `platform.*` only. Media and Inventory do not reference the authorization implementation and their complete authorization migration remains deferred to Phase 13.3. See ADR-0032 for bootstrap and compatibility details.
+
+The server's reusable permission endpoint filter validates the opaque session through Identity before checking the current permission grants. It distinguishes unauthenticated 401 from authenticated 403. The bootstrap endpoint is separately guarded by an operator-configured, one-time secret. The legacy admin bearer remains accepted only on endpoints using the compatibility filter, with a warning, until a later removal phase.
+
+The shared Modern/Classic Web Shell keeps its tab session in `sessionStorage`, reloads current user/effective permissions through `/api/identity/me`, and revokes on logout. Protected user/role routes gate navigation and direct page rendering while their server endpoints enforce permissions independently. `sessionStorage` is not protected from same-origin script execution; cookie-based auth would require an explicit CSRF/origin design.

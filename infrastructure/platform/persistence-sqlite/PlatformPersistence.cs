@@ -4,6 +4,8 @@ using Hispania.Platform.Contracts.Assets;
 using Hispania.Platform.Contracts.Audit;
 using Hispania.Platform.Contracts.Identity;
 using Hispania.Identity.Application;
+using Hispania.Authorization.Application;
+using Hispania.Platform.Contracts.Authorization;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -29,6 +31,15 @@ public static class PlatformPersistenceRegistration
         services.AddSingleton<IdentityService>(sp => new IdentityService(sp.GetRequiredService<IIdentityStore>(), auditWriter ?? sp.GetService<IPlatformAuditWriter>(), options));
         services.AddSingleton<IIdentityQueryV1>(sp => sp.GetRequiredService<IdentityService>());
         services.AddSingleton<IIdentityCommandV1>(sp => sp.GetRequiredService<IdentityService>());
+        return services;
+    }
+
+    public static IServiceCollection AddPlatformAuthorizationSqlite(this IServiceCollection services, string path, string? bootstrapToken = null)
+    {
+        services.AddSingleton<SqlitePlatformAuthorizationStore>(_ => new SqlitePlatformAuthorizationStore(path));
+        services.AddSingleton<IPlatformAuthorizationStore>(sp => sp.GetRequiredService<SqlitePlatformAuthorizationStore>());
+        services.AddSingleton<IAuthorizationServiceV1>(sp => new AuthorizationService(sp.GetRequiredService<IPlatformAuthorizationStore>(), sp.GetRequiredService<IIdentityQueryV1>()));
+        services.AddSingleton<IAuthorizationAdministrationV1>(sp => new AuthorizationAdministrationService(sp.GetRequiredService<IPlatformAuthorizationStore>(), sp.GetRequiredService<IIdentityQueryV1>(), sp.GetService<IPlatformAuditWriter>(), bootstrapToken));
         return services;
     }
 }
