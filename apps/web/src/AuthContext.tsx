@@ -4,7 +4,15 @@ export type AuthUser = { id: { value: string }; username: string; displayName: s
 export const isUserEnabled = (user: AuthUser) => user.status === "Enabled" || user.status === 0;
 export type AuthSession = { id: { value: string }; userId: { value: string }; expiresAt: string };
 export type CurrentUser = { user: AuthUser; session: AuthSession; effectivePermissions: string[] };
-const storageKey = "hispania.identity.session";
+export const sessionStorageKey = "hispania.identity.session";
+
+export function sessionFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const token = window.sessionStorage.getItem(sessionStorageKey);
+  if (token) headers.set("Authorization", `Session ${token}`);
+  if (init.body && !headers.has("content-type")) headers.set("content-type", "application/json");
+  return fetch(path, { ...init, headers });
+}
 
 type AuthContextValue = {
   currentUser: CurrentUser | null;
@@ -19,7 +27,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => window.sessionStorage.getItem(storageKey));
+  const [token, setToken] = useState<string | null>(() => window.sessionStorage.getItem(sessionStorageKey));
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
     void refresh(token).catch(() => {
       if (!active) return;
-      window.sessionStorage.removeItem(storageKey);
+      window.sessionStorage.removeItem(sessionStorageKey);
       setToken(null);
       setCurrentUser(null);
     }).finally(() => { if (active) setLoading(false); });
@@ -54,10 +62,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const response = await fetch("/api/identity/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username, password }) });
     if (!response.ok) { setError("Usuario o contraseña incorrectos."); throw new Error("No se pudo iniciar sesión."); }
     const result = await response.json() as { sessionToken: string };
-    window.sessionStorage.setItem(storageKey, result.sessionToken);
+    window.sessionStorage.setItem(sessionStorageKey, result.sessionToken);
     setToken(result.sessionToken);
     try { await refresh(result.sessionToken); }
-    catch (cause) { window.sessionStorage.removeItem(storageKey); setToken(null); throw cause; }
+    catch (cause) { window.sessionStorage.removeItem(sessionStorageKey); setToken(null); throw cause; }
   }, [refresh]);
 
   const logout = useCallback(async () => {
@@ -65,14 +73,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (activeToken) await fetch("/api/identity/logout", { method: "POST", headers: { Authorization: `Session ${activeToken}` } });
     } finally {
-      window.sessionStorage.removeItem(storageKey);
+      window.sessionStorage.removeItem(sessionStorageKey);
       setToken(null);
       setCurrentUser(null);
       setError(null);
     }
   }, [token]);
 
-  const value = useMemo<AuthContextValue>(() => ({ currentUser, token, loading, error, login, logout, request, hasPermission: permission => currentUser?.effectivePermissions.includes(permission) === true || currentUser?.effectivePermissions.includes("platform.admin") === true }), [currentUser, token, loading, error, login, logout, request]);
+  const value = useMemo<AuthContextValue>(() => ({ currentUser, token, loading, error, login, logout, request, hasPermission: permission => currentUser?.effectivePermissions.includes(permission) === true || (permission.startsWith("platform.") && currentUser?.effectivePermissions.includes("platform.admin") === true) }), [currentUser, token, loading, error, login, logout, request]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

@@ -157,10 +157,12 @@ public sealed class DistributedWorkerProcessIntegrationTests
             playbackBuilder.Services.AddSingleton<IDirectPlayExecutor>(new DirectPlayExecutor(catalog, sourceAccessor));
             playbackBuilder.Services.AddSingleton<ICompatibleMediaTranscoderV1>(transcoder);
             playbackBuilder.Services.AddSingleton<ITranscodedContentStore>(transcoder);
+            DomainAuthorizationTestHost.AddAuthorizedUser(playbackBuilder.Services);
             playbackApp = playbackBuilder.Build();
             playbackApp.MapDirectPlayEndpoints();
             await playbackApp.StartAsync();
             using var playbackClient = playbackApp.GetTestClient();
+            DomainAuthorizationTestHost.Authenticate(playbackClient);
             using var playbackResponse = await playbackClient.GetAsync($"/api/v1/media/{entry.Id.Value}/stream");
             Assert.Equal(HttpStatusCode.OK, playbackResponse.StatusCode);
             Assert.Equal("video/mp4", playbackResponse.Content.Headers.ContentType?.MediaType);

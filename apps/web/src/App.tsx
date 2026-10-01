@@ -109,6 +109,13 @@ function AuthenticatedApp({ variant }: { variant: "modern" | "classic" }) {
     if (!auth.hasPermission(permission)) return <main className="authorization-shell"><h1>Acceso denegado</h1><p>No tienes permiso para esta página.</p><a href="/">Volver a HISPANIA</a></main>;
     return path.endsWith("/users") ? <AdminUsersPage /> : <AdminRolesPage />;
   }
+  if (auth.loading) return <main className="authorization-shell" role="status">Comprobando sesión…</main>;
+  const domainPermission = path === "/erp/inventory" ? "inventory.read" : /^\/media\/[^/]+\/metadata\/edit$/.test(path) ? "media.admin" : "media.library.read";
+  if (!auth.currentUser) {
+    window.history.replaceState({}, "", `/login?returnTo=${encodeURIComponent(path)}`);
+    return <LoginPage />;
+  }
+  if (!auth.hasPermission(domainPermission)) return <main className="authorization-shell"><h1>Acceso denegado</h1><p>No tienes permiso para esta página.</p><a href={auth.hasPermission("inventory.read") ? "/erp/inventory" : "/login"}>Volver</a></main>;
   return <ShellApplication variant={variant} />;
 }
 
@@ -154,7 +161,7 @@ function ShellApplication({ variant }: { variant: "modern" | "classic" }) {
   }, [drawerOpen]);
 
   useEffect(() => {
-    if (editingMediaId) return;
+    if (editingMediaId || !auth.hasPermission("media.library.read")) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const delays = [500, 1000, 2000, 4000, 8000];
@@ -163,7 +170,7 @@ function ShellApplication({ variant }: { variant: "modern" | "classic" }) {
       setLoading(media.length === 0);
       for (let attempt = 0; ; attempt++) {
         try {
-          const response = await fetch(catalogUrl, { signal: controller.signal });
+          const response = await auth.request(catalogUrl, { signal: controller.signal });
           if (!response.ok) throw new Error();
           const catalog: unknown = await response.json();
           if (!controller.signal.aborted) { setMedia(Array.isArray(catalog) ? catalog as MediaListItem[] : []); setError(null); }
@@ -178,15 +185,15 @@ function ShellApplication({ variant }: { variant: "modern" | "classic" }) {
     };
     void load();
     return () => { controller.abort(); if (timer !== undefined) clearTimeout(timer); };
-  }, [reload, editingMediaId]);
+  }, [reload, editingMediaId, auth.request, auth.hasPermission]);
 
   useEffect(() => {
     if (editingMediaId || !selectedMedia) return;
     const controller = new AbortController();
     setDetail(null); setDetailError(false); setDetailLoading(true); setPlaying(false);
-    void fetch(`/api/v1/media/${encodeURIComponent(selectedMedia.id)}/metadata`, { signal: controller.signal }).then(async response => response.ok ? response.json() : Promise.reject(new Error())).then((value: MetadataDetail) => setDetail(value)).catch(() => { if (!controller.signal.aborted) setDetailError(true); }).finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
+    void auth.request(`/api/v1/media/${encodeURIComponent(selectedMedia.id)}/metadata`, { signal: controller.signal }).then(async response => response.ok ? response.json() : Promise.reject(new Error())).then((value: MetadataDetail) => setDetail(value)).catch(() => { if (!controller.signal.aborted) setDetailError(true); }).finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
     return () => controller.abort();
-  }, [selectedMedia, reload, editingMediaId]);
+  }, [selectedMedia, reload, editingMediaId, auth.request]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -240,17 +247,32 @@ function ShellApplication({ variant }: { variant: "modern" | "classic" }) {
     return () => { cancelled = true; };
   }, [person, personMetadata]);
 
-  const startPlayback = () => {
-    const video = videoRef.current;
-    if (video) {
-      setPlaybackError(null);
-      void Promise.resolve(video.play()).catch(() => setPlaybackError("No se pudo reproducir este archivo. Comprueba que el servidor tenga FFmpeg disponible y que el vídeo use un códec que pueda convertir."));
-      const container = playerContainerRef.current;
-      const requestFullscreen = container?.requestFullscreen?.bind(container) ?? document.documentElement.requestFullscreen?.bind(document.documentElement);
-      if (requestFullscreen) void Promise.resolve(requestFullscreen()).catch(() => undefined);
+  const [playbackObjectUrl, setPlaybackObjectUrl] = useState<string | null>(null);
+  const canPlay = auth.hasPermission("media.playback.use");
+  const canEditMedia = auth.hasPermission("media.admin");
+  const startPlayback = async () => {
+    if (!selectedMedia || !canPlay) return;
+    setPlaybackError(null);
+    try {
+      const response = await auth.request(streamUrl(selectedMedia.id));
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      const nextUrl = typeof URL.createObjectURL === "function" ? URL.createObjectURL(blob) : `blob:hispania/${selectedMedia.id}`;
+      setPlaybackObjectUrl(previous => { if (previous && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(previous); return nextUrl; });
+      setPlaying(true);
+    } catch {
+      setPlaybackError("No se pudo reproducir este archivo. Comprueba tus permisos y que el servidor tenga FFmpeg disponible.");
     }
-    setPlaying(true);
   };
+  useEffect(() => {
+    if (!playing || !playbackObjectUrl) return;
+    const video = videoRef.current;
+    if (video) void Promise.resolve(video.play()).catch(() => setPlaybackError("No se pudo iniciar la reproducción."));
+    const container = playerContainerRef.current;
+    const requestFullscreen = container?.requestFullscreen?.bind(container) ?? document.documentElement.requestFullscreen?.bind(document.documentElement);
+    if (requestFullscreen) void Promise.resolve(requestFullscreen()).catch(() => undefined);
+  }, [playing, playbackObjectUrl]);
+  useEffect(() => () => { if (playbackObjectUrl && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(playbackObjectUrl); }, [playbackObjectUrl]);
 
   useEffect(() => {
     if (!playing) return;
@@ -259,7 +281,7 @@ function ShellApplication({ variant }: { variant: "modern" | "classic" }) {
     return () => { document.removeEventListener("keydown", onKeyDown); videoRef.current?.pause(); if (document.fullscreenElement) void Promise.resolve(document.exitFullscreen?.()).catch(() => undefined); };
   }, [playing]);
 
-  const selectSection = (nextSection: LibrarySection) => { window.history.pushState({}, "", routeForSection(nextSection)?.path ?? "/"); setSection(nextSection); setSelectedMedia(null); if (nextSection !== "movies") setPlaying(false); setPerson(null); };
+  const selectSection = (nextSection: LibrarySection) => { if (nextSection === "inventory" ? !auth.hasPermission("inventory.read") : nextSection === "dashboard" ? !auth.hasPermission("media.admin") : !auth.hasPermission("media.library.read")) return; window.history.pushState({}, "", routeForSection(nextSection)?.path ?? "/"); setSection(nextSection); setSelectedMedia(null); if (nextSection !== "movies") setPlaying(false); setPerson(null); };
   const handleMetadataUpdated = () => { setMetadataByMovie({}); setCreditsByMovie({}); setPeopleByMovie({}); setReload(value => value + 1); };
   const detailTitle = String(detail?.title?.value || (selectedMedia ? presentationTitle(selectedMedia) : ""));
 
@@ -270,10 +292,10 @@ function ShellApplication({ variant }: { variant: "modern" | "classic" }) {
 
   const drawerSection = (nextSection: LibrarySection) => { window.history.pushState({}, "", routeForSection(nextSection)?.path ?? "/"); setSection(nextSection); setSelectedMedia(null); setPerson(null); setDrawerOpen(false); };
   return <main className={`app-shell web-variant-${variant}`}>
-    <header className="topbar"><button type="button" className="menu-button" aria-label="Abrir menú" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>☰</button><button className="brand" type="button" onClick={() => selectSection("home")} aria-label="HISPANIA, ir a Inicio"><span className="brand-mark" aria-hidden="true">H</span><span>HISPANIA</span></button><nav className="main-navigation" aria-label="Navegación principal"><button type="button" className="nav-item" aria-current={section === "home" ? "page" : undefined} onClick={() => selectSection("home")}>Inicio</button>{navigation.map(item => <button key={item.id} type="button" className="nav-item" aria-current={section === item.id ? "page" : undefined} onClick={() => selectSection(item.id)}>{item.label}</button>)}<button type="button" className="nav-item" aria-current={section === "inventory" ? "page" : undefined} onClick={() => selectSection("inventory")}>Inventario</button>{auth.currentUser ? <><a className="nav-item" href="/admin/users" hidden={!auth.hasPermission("platform.users.read")}>Usuarios</a><a className="nav-item" href="/admin/roles" hidden={!auth.hasPermission("platform.roles.read")}>Roles</a><span>{auth.currentUser.user.displayName}</span><button type="button" className="nav-item" onClick={() => void auth.logout()}>Cerrar sesión</button></> : <a className="nav-item" href="/login">Iniciar sesión</a>}</nav></header>
-    {drawerOpen && <div className="drawer-layer" role="presentation" onClick={() => setDrawerOpen(false)}><aside className="app-drawer" role="dialog" aria-modal="true" aria-label="Menú HISPANIA" onClick={event => event.stopPropagation()}><div className="drawer-heading"><strong>HISPANIA</strong><button type="button" aria-label="Cerrar menú" onClick={() => setDrawerOpen(false)}>×</button></div><button type="button" className={section === "home" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("home")}>Inicio</button><p className="drawer-label">MEDIOS</p>{navigation.map(item => <button key={item.id} type="button" className={section === item.id ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection(item.id)}>{item.label}</button>)}<p className="drawer-label">ERP</p><button type="button" className={section === "inventory" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("inventory")}>Inventario</button><p className="drawer-label">ADMINISTRACIÓN</p><button type="button" className={section === "dashboard" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("dashboard")}>Panel de control</button>{["Bibliotecas", "Ajustes"].map(item => <button key={item} type="button" className="drawer-link" disabled aria-disabled="true">{item}</button>)}</aside></div>}
+    <header className="topbar"><button type="button" className="menu-button" aria-label="Abrir menú" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>☰</button><button className="brand" type="button" onClick={() => selectSection("home")} aria-label="HISPANIA, ir a Inicio"><span className="brand-mark" aria-hidden="true">H</span><span>HISPANIA</span></button><nav className="main-navigation" aria-label="Navegación principal">{auth.hasPermission("media.library.read") && <><button type="button" className="nav-item" aria-current={section === "home" ? "page" : undefined} onClick={() => selectSection("home")}>Inicio</button>{navigation.map(item => <button key={item.id} type="button" className="nav-item" aria-current={section === item.id ? "page" : undefined} onClick={() => selectSection(item.id)}>{item.label}</button>)}</>}{auth.hasPermission("inventory.read") && <button type="button" className="nav-item" aria-current={section === "inventory" ? "page" : undefined} onClick={() => selectSection("inventory")}>Inventario</button>}<a className="nav-item" href="/admin/users" hidden={!auth.hasPermission("platform.users.read")}>Usuarios</a><a className="nav-item" href="/admin/roles" hidden={!auth.hasPermission("platform.roles.read")}>Roles</a><span>{auth.currentUser?.user.displayName}</span><button type="button" className="nav-item" onClick={() => void auth.logout()}>Cerrar sesión</button></nav></header>
+    {drawerOpen && <div className="drawer-layer" role="presentation" onClick={() => setDrawerOpen(false)}><aside className="app-drawer" role="dialog" aria-modal="true" aria-label="Menú HISPANIA" onClick={event => event.stopPropagation()}><div className="drawer-heading"><strong>HISPANIA</strong><button type="button" aria-label="Cerrar menú" onClick={() => setDrawerOpen(false)}>×</button></div>{auth.hasPermission("media.library.read") && <><button type="button" className={section === "home" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("home")}>Inicio</button><p className="drawer-label">MEDIOS</p>{navigation.map(item => <button key={item.id} type="button" className={section === item.id ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection(item.id)}>{item.label}</button>)}</>}{auth.hasPermission("inventory.read") && <><p className="drawer-label">ERP</p><button type="button" className={section === "inventory" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("inventory")}>Inventario</button></>}{canEditMedia && <><p className="drawer-label">ADMINISTRACIÓN</p><button type="button" className={section === "dashboard" ? "drawer-link active" : "drawer-link"} onClick={() => drawerSection("dashboard")}>Panel de control</button></>}{["Bibliotecas", "Ajustes"].map(item => <button key={item} type="button" className="drawer-link" disabled aria-disabled="true">{item}</button>)}</aside></div>}
     {section === "home" && <Home onNavigate={selectSection} movies={media} onOpenMovie={openMovie} />}
-    {section === "dashboard" && <AdminPanel movieCount={media.length} onMetadataUpdated={handleMetadataUpdated} />}
+    {section === "dashboard" && canEditMedia && <AdminPanel movieCount={media.length} onMetadataUpdated={handleMetadataUpdated} />}
     {section === "inventory" && <InventoryPage />}
     {section === "movies" && !selectedMedia && !person && !initialPersonId && <section className="movie-library" aria-labelledby="movies-heading"><div className="section-heading"><div><span className="eyebrow">Tu biblioteca</span><h1 id="movies-heading">Películas</h1><p>Historias listas para volver a descubrir.</p></div><span className="catalog-count">{media.length} títulos</span></div>{loading && media.length === 0 && <div className="state-panel" role="status"><span className="state-symbol" aria-hidden="true">◌</span>Cargando películas…</div>}{error && <div className="state-panel state-error" role="status">{error} <button type="button" onClick={() => setReload(value => value + 1)}>Reintentar</button></div>}{!loading && !error && media.length === 0 && <div className="state-panel"><span className="state-symbol" aria-hidden="true">◇</span><strong>El catálogo está vacío.</strong><span>Aquí aparecerán las películas cuando estén disponibles en tu biblioteca.</span></div>}{media.length > 0 && <ul className="movie-grid">{media.map(item => <li key={item.id}><button type="button" className="movie-card" onClick={() => openMovie(item)}><Artwork key={item.effective?.posterUrl} src={item.effective?.posterUrl} alt={presentationTitle(item)} className="card-artwork" placeholderTestId="grid-artwork-placeholder" /><span className="movie-card-copy"><span className="movie-title">{presentationTitle(item)}</span>{releaseYear(item.effective?.releaseDate) && <span className="movie-year">{releaseYear(item.effective?.releaseDate)}</span>}</span></button></li>)}</ul>}</section>}
     {section === "movies" && initialPersonId && !person && <div className={`state-panel${initialPersonLoadFailed ? " state-error" : ""}`} role={initialPersonLoadFailed ? "alert" : "status"}>{initialPersonLoadFailed ? "No se pudo cargar la ficha de esta persona. Comprueba la conexión con HISPANIA e inténtalo de nuevo." : "Cargando ficha de la persona…"}</div>}
@@ -288,7 +310,7 @@ function ShellApplication({ variant }: { variant: "modern" | "classic" }) {
           {detail?.originalTitle?.value && detail.originalTitle.value !== detailTitle && <p className="original-title">{detail.originalTitle.value}</p>}
           <MovieMetadataPresentation model={metadataByMovie[selectedMedia.id]} people={peopleByMovie[selectedMedia.id] ?? []} credits={creditsByMovie[selectedMedia.id] ?? []} technical={selectedMedia.technical} year={releaseYear(typeof detail?.releaseDate?.value === "string" ? detail.releaseDate.value : selectedMedia.effective?.releaseDate)} factsOnly now={clockNow} onOpenPerson={openPerson} />
           {detail?.description?.value && <p className="detail-description">{detail.description.value}</p>}
-          <div className="detail-actions"><button type="button" className="play-button" onClick={startPlayback}><span aria-hidden="true">▶ </span>Reproducir</button><button type="button" className="close-detail-button" onClick={() => openEditor(selectedMedia.id)}>Editar metadata</button></div>
+          <div className="detail-actions">{canPlay && <button type="button" className="play-button" onClick={() => void startPlayback()}><span aria-hidden="true">▶ </span>Reproducir</button>}{canEditMedia && <button type="button" className="close-detail-button" onClick={() => openEditor(selectedMedia.id)}>Editar metadata</button>}</div>
         </div>
       </div>
       <section className="movie-extra">
@@ -298,7 +320,7 @@ function ShellApplication({ variant }: { variant: "modern" | "classic" }) {
         </section>
       </section>
     </section>}    {section === "movies" && person && <PersonPage person={person} metadata={personMetadata} media={media} profileLoading={personProfileLoading} onBack={() => { window.history.pushState({}, "", selectedMedia ? `/movies/${encodeURIComponent(selectedMedia.id)}` : "/"); setPerson(null); setPersonMetadata(null); }} onOpenMovie={openMovie} />}
-    {selectedMedia && <div ref={playerContainerRef} className={`fullscreen-player${playing ? " is-open" : ""}`} role={playing ? "dialog" : undefined} aria-modal={playing ? "true" : undefined} aria-hidden={!playing} aria-label={playing ? `Reproductor: ${detailTitle}` : undefined} inert={!playing}>{playbackError && playing && <p className="player-error" role="alert">{playbackError}</p>}<video ref={videoRef} controls playsInline preload={playing ? "metadata" : "none"} src={streamUrl(selectedMedia.id)} onError={() => setPlaybackError("No se pudo reproducir este archivo. Comprueba que el servidor tenga FFmpeg disponible y que el vídeo use un códec que pueda convertir.")}>Tu navegador no admite la reproducción de vídeo.</video><button type="button" className="fullscreen-close" aria-label="Cerrar reproductor" onClick={() => setPlaying(false)}>×</button></div>}
+    {selectedMedia && canPlay && <div ref={playerContainerRef} className={`fullscreen-player${playing ? " is-open" : ""}`} role={playing ? "dialog" : undefined} aria-modal={playing ? "true" : undefined} aria-hidden={!playing} aria-label={playing ? `Reproductor: ${detailTitle}` : undefined} inert={!playing}>{playbackError && playing && <p className="player-error" role="alert">{playbackError}</p>}<video ref={videoRef} controls playsInline preload={playing ? "metadata" : "none"} src={playbackObjectUrl ?? undefined} onError={() => setPlaybackError("No se pudo reproducir este archivo. Comprueba FFmpeg y el acceso al vídeo.")}>Tu navegador no admite la reproducción de vídeo.</video><button type="button" className="fullscreen-close" aria-label="Cerrar reproductor" onClick={() => setPlaying(false)}>×</button></div>}
     <footer className="tmdb-attribution">This product uses the TMDB API but is not endorsed or certified by TMDB.</footer>
   </main>;
 }

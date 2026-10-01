@@ -11,14 +11,15 @@ public static class MetadataEditingEndpoints
     public static IEndpointRouteBuilder MapMetadataEditingEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/media/{mediaEntityId:guid}/metadata");
-        group.MapGet("/edit", GetAsync);
-        group.MapPut("/settings", UpdateSettingsAsync);
-        group.MapPut("/locks/{fieldCode}", UpdateLockAsync);
-        group.MapPut("/scalars/{fieldCode}/manual", SetScalarAsync);
-        group.MapDelete("/scalars/{fieldCode}/manual", ClearScalarAsync);
-        MapCollection(group, "genres", MetadataCollection.Genres);
-        MapCollection(group, "tags", MetadataCollection.Tags);
-        MapCollection(group, "studios", MetadataCollection.Studios);
+        var adminGroup = group.MapGroup("").AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(MediaPermissionIds.Admin, allowLegacyAdminBearer: false));
+        adminGroup.MapGet("/edit", GetAsync);
+        adminGroup.MapPut("/settings", UpdateSettingsAsync);
+        adminGroup.MapPut("/locks/{fieldCode}", UpdateLockAsync);
+        adminGroup.MapPut("/scalars/{fieldCode}/manual", SetScalarAsync);
+        adminGroup.MapDelete("/scalars/{fieldCode}/manual", ClearScalarAsync);
+        MapCollection(adminGroup, "genres", MetadataCollection.Genres);
+        MapCollection(adminGroup, "tags", MetadataCollection.Tags);
+        MapCollection(adminGroup, "studios", MetadataCollection.Studios);
         return endpoints;
     }
 

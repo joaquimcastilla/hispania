@@ -35,21 +35,21 @@ public sealed class ServerProcessRestartTests
             await WaitUntilHealthyAsync(server, client);
             var identityToken = await CreateAndLoginIdentityUserAsync(client, adminToken);
             await AssertAuthorizationApiAsync(client, identityToken, adminToken, bootstrapToken, root);
-            var first = await AssertPersistentStateAsync(client, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 5);
+            var first = await AssertPersistentStateAsync(client, identityToken, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 5);
             await AssertAdminWritesAndAssociationAsync(client, adminToken, first.ItemId, serverDirectory);
-            first = await AssertPersistentStateAsync(client, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 8);
+            first = await AssertPersistentStateAsync(client, identityToken, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 8);
             await StopServerGracefullyAsync(server, client, shutdownToken);
             server.Dispose(); server = null;
 
             server = StartServer(serverDll, serverDirectory, root, libraryRoot, adminToken, bootstrapToken, shutdownToken, port);
             await WaitUntilHealthyAsync(server, client);
             await AssertIdentitySessionAsync(client, identityToken, expectedStatus: HttpStatusCode.OK);
-            var afterOrderlyRestart = await AssertPersistentStateAsync(client, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 8);
+            var afterOrderlyRestart = await AssertPersistentStateAsync(client, identityToken, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 8);
             Assert.Equal(first.ItemId, afterOrderlyRestart.ItemId);
             Assert.Equal(first.AssetIds.Order(), afterOrderlyRestart.AssetIds.Order());
 
             await IssueOneUnitAsync(client, adminToken, afterOrderlyRestart.ItemId, afterOrderlyRestart.LocationId);
-            _ = await AssertPersistentStateAsync(client, adminToken, expectedStock: 11, expectedMinimumAuditRecords: 9);
+            _ = await AssertPersistentStateAsync(client, identityToken, adminToken, expectedStock: 11, expectedMinimumAuditRecords: 9);
             using (var logout = new HttpRequestMessage(HttpMethod.Post, "/api/identity/logout"))
             {
                 logout.Headers.Authorization = new AuthenticationHeaderValue("Session", identityToken);
@@ -63,7 +63,8 @@ public sealed class ServerProcessRestartTests
             server = StartServer(serverDll, serverDirectory, root, libraryRoot, adminToken, bootstrapToken, shutdownToken, port);
             await WaitUntilHealthyAsync(server, client);
             await AssertIdentitySessionAsync(client, identityToken, expectedStatus: HttpStatusCode.Unauthorized);
-            var afterAbruptRestart = await AssertPersistentStateAsync(client, adminToken, expectedStock: 11, expectedMinimumAuditRecords: 9);
+            var reauthenticatedToken = await LoginRestartUserForTokenAsync(client);
+            var afterAbruptRestart = await AssertPersistentStateAsync(client, reauthenticatedToken, adminToken, expectedStock: 11, expectedMinimumAuditRecords: 9);
             Assert.Equal(first.ItemId, afterAbruptRestart.ItemId);
             Assert.Equal(first.AssetIds.Order(), afterAbruptRestart.AssetIds.Order());
             AssertStoreOwnership(root);
@@ -147,6 +148,59 @@ public sealed class ServerProcessRestartTests
         bootstrap.Headers.Authorization = new AuthenticationHeaderValue("Bootstrap", bootstrapToken);
         using var bootstrapped = await client.SendAsync(bootstrap); Assert.Equal(HttpStatusCode.OK, bootstrapped.StatusCode);
 
+        var protectedMediaId = Guid.NewGuid();
+        foreach (var path in new[] { "/api/inventory/items", "/api/v1/media", $"/api/v1/media/{protectedMediaId:D}/stream", $"/api/v1/media/{protectedMediaId:D}/metadata/edit" })
+        {
+            using var noSession = await client.GetAsync(path);
+            Assert.Equal(HttpStatusCode.Unauthorized, noSession.StatusCode);
+            using var legacyOnly = new HttpRequestMessage(HttpMethod.Get, path);
+            legacyOnly.Headers.Authorization = new AuthenticationHeaderValue("Bearer", legacyToken);
+            using var legacyDenied = await client.SendAsync(legacyOnly);
+            Assert.Equal(HttpStatusCode.Unauthorized, legacyDenied.StatusCode);
+            using var missingGrant = new HttpRequestMessage(HttpMethod.Get, path);
+            missingGrant.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+            using var grantDenied = await client.SendAsync(missingGrant);
+            Assert.Equal(HttpStatusCode.Forbidden, grantDenied.StatusCode);
+        }
+        using var preWrite = new HttpRequestMessage(HttpMethod.Post, "/api/inventory/items") { Content = JsonContent.Create(new { sku = "AUTHZ-BEFORE", name = "Denied" }) };
+        preWrite.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+        using (var deniedWrite = await client.SendAsync(preWrite)) Assert.Equal(HttpStatusCode.Forbidden, deniedWrite.StatusCode);
+
+        using var roleListRequest = new HttpRequestMessage(HttpMethod.Get, "/api/authorization/roles");
+        roleListRequest.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+        using var roleListResponse = await client.SendAsync(roleListRequest); roleListResponse.EnsureSuccessStatusCode();
+        using var rolesJson = JsonDocument.Parse(await roleListResponse.Content.ReadAsStringAsync());
+        var administratorRoleId = rolesJson.RootElement.EnumerateArray().Single(role => role.GetProperty("role").GetProperty("name").GetString() == "administrator").GetProperty("role").GetProperty("id").GetProperty("value").GetGuid();
+        await GrantPermissionAsync(client, sessionToken, administratorRoleId, "inventory.read");
+        await GrantPermissionAsync(client, sessionToken, administratorRoleId, "media.library.read");
+        await GrantPermissionAsync(client, sessionToken, administratorRoleId, "media.playback.use");
+        using (var inventoryRead = await SendWithSessionAsync(client, HttpMethod.Get, "/api/inventory/items", sessionToken)) Assert.Equal(HttpStatusCode.OK, inventoryRead.StatusCode);
+        using (var mediaRead = await SendWithSessionAsync(client, HttpMethod.Get, "/api/v1/media", sessionToken)) Assert.Equal(HttpStatusCode.OK, mediaRead.StatusCode);
+        using (var playbackGranted = await SendWithSessionAsync(client, HttpMethod.Get, $"/api/v1/media/{protectedMediaId:D}/stream", sessionToken)) Assert.Equal(HttpStatusCode.NotFound, playbackGranted.StatusCode);
+        using (var adminDenied = await SendWithSessionAsync(client, HttpMethod.Get, $"/api/v1/media/{protectedMediaId:D}/metadata/edit", sessionToken)) Assert.Equal(HttpStatusCode.Forbidden, adminDenied.StatusCode);
+        await GrantPermissionAsync(client, sessionToken, administratorRoleId, "inventory.write");
+        using (var postWrite = new HttpRequestMessage(HttpMethod.Post, "/api/inventory/items") { Content = JsonContent.Create(new { sku = "AUTHZ-AFTER", name = "Granted in active session" }) })
+        {
+            postWrite.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+            using var created = await client.SendAsync(postWrite);
+            Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        }
+        await GrantPermissionAsync(client, sessionToken, administratorRoleId, "media.admin");
+        using (var adminGranted = await SendWithSessionAsync(client, HttpMethod.Get, $"/api/v1/media/{protectedMediaId:D}/metadata/edit", sessionToken)) Assert.Equal(HttpStatusCode.NotFound, adminGranted.StatusCode);
+        using (var adminOperation = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/media/{protectedMediaId:D}/metadata/tmdb/select") { Content = JsonContent.Create(new { tmdbMovieId = "42" }) })
+        {
+            adminOperation.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+            using var missingMedia = await client.SendAsync(adminOperation);
+            Assert.Equal(HttpStatusCode.NotFound, missingMedia.StatusCode);
+        }
+        using (var mediaAuditRequest = new HttpRequestMessage(HttpMethod.Get, "/internal/admin/audit?domain=media&page=1&pageSize=100"))
+        {
+            mediaAuditRequest.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+            using var mediaAuditResponse = await client.SendAsync(mediaAuditRequest); mediaAuditResponse.EnsureSuccessStatusCode();
+            using var mediaAudit = JsonDocument.Parse(await mediaAuditResponse.Content.ReadAsStringAsync());
+            Assert.Contains(mediaAudit.RootElement.GetProperty("items").EnumerateArray(), item => item.GetProperty("domain").GetString() == "media" && item.GetProperty("actorId").GetString() == userId.ToString("D"));
+        }
+
         using (var granted = new HttpRequestMessage(HttpMethod.Get, "/api/authorization/users"))
         {
             granted.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
@@ -163,6 +217,11 @@ public sealed class ServerProcessRestartTests
         using var userResponse = await client.SendAsync(createdUser); Assert.Equal(HttpStatusCode.Created, userResponse.StatusCode);
         using var createdUserJson = JsonDocument.Parse(await userResponse.Content.ReadAsStringAsync());
         var sessionUserId = createdUserJson.RootElement.GetProperty("id").GetProperty("value").GetGuid();
+        using (var assignRole = new HttpRequestMessage(HttpMethod.Post, $"/api/authorization/users/{sessionUserId:D}/roles/{administratorRoleId:D}"))
+        {
+            assignRole.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+            using var assigned = await client.SendAsync(assignRole); Assert.Equal(HttpStatusCode.OK, assigned.StatusCode);
+        }
 
         var expiredToken = await LoginForTokenAsync(client);
         await ExpireSessionTokenAsync(Path.Combine(root, "platform", "identity.sqlite"), expiredToken);
@@ -195,6 +254,13 @@ public sealed class ServerProcessRestartTests
             disabledAccess.Headers.Authorization = new AuthenticationHeaderValue("Session", disabledToken);
             using var rejected = await client.SendAsync(disabledAccess); Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
         }
+        foreach (var protectedPath in new[] { "/api/inventory/items", "/api/v1/media", $"/api/v1/media/{protectedMediaId:D}/stream", $"/api/v1/media/{protectedMediaId:D}/metadata/edit" })
+        {
+            using var disabledDomainAccess = new HttpRequestMessage(HttpMethod.Get, protectedPath);
+            disabledDomainAccess.Headers.Authorization = new AuthenticationHeaderValue("Session", disabledToken);
+            using var disabledDomainDenied = await client.SendAsync(disabledDomainAccess);
+            Assert.Equal(HttpStatusCode.Unauthorized, disabledDomainDenied.StatusCode);
+        }
         using var bootstrapAgain = new HttpRequestMessage(HttpMethod.Post, "/api/authorization/bootstrap-admin") { Content = JsonContent.Create(new { userId }) };
         bootstrapAgain.Headers.Authorization = new AuthenticationHeaderValue("Bootstrap", bootstrapToken);
         using var rejectedAgain = await client.SendAsync(bootstrapAgain); Assert.Equal(HttpStatusCode.Forbidden, rejectedAgain.StatusCode);
@@ -206,6 +272,29 @@ public sealed class ServerProcessRestartTests
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         using var json = JsonDocument.Parse(await login.Content.ReadAsStringAsync());
         return Assert.IsType<string>(json.RootElement.GetProperty("sessionToken").GetString());
+    }
+
+    private static async Task<string> LoginRestartUserForTokenAsync(HttpClient client)
+    {
+        using var login = await client.PostAsJsonAsync("/api/identity/login", new { username = "restartuser", password = "a persistent test passphrase" });
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        using var json = JsonDocument.Parse(await login.Content.ReadAsStringAsync());
+        return Assert.IsType<string>(json.RootElement.GetProperty("sessionToken").GetString());
+    }
+
+    private static async Task GrantPermissionAsync(HttpClient client, string sessionToken, Guid roleId, string permission)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"/api/authorization/roles/{roleId:D}/permissions/{Uri.EscapeDataString(permission)}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    private static Task<HttpResponseMessage> SendWithSessionAsync(HttpClient client, HttpMethod method, string path, string sessionToken)
+    {
+        var request = new HttpRequestMessage(method, path);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+        return client.SendAsync(request);
     }
 
     private static async Task ExpireSessionTokenAsync(string databasePath, string token)
@@ -220,22 +309,22 @@ public sealed class ServerProcessRestartTests
         Assert.Equal(1, await command.ExecuteNonQueryAsync());
     }
 
-    private static async Task<(Guid ItemId, Guid LocationId, Guid[] AssetIds)> AssertPersistentStateAsync(HttpClient client, string adminToken, int expectedStock, int expectedMinimumAuditRecords)
+    private static async Task<(Guid ItemId, Guid LocationId, Guid[] AssetIds)> AssertPersistentStateAsync(HttpClient client, string sessionToken, string adminToken, int expectedStock, int expectedMinimumAuditRecords)
     {
-        using var itemsDoc = await GetJsonAsync(client, "/api/inventory/items");
+        using var itemsDoc = await GetJsonAsync(client, "/api/inventory/items", sessionToken);
         var item = Assert.Single(itemsDoc.RootElement.EnumerateArray(), element => element.GetProperty("sku").GetString() == "BP48");
         var itemId = ReadWrappedId(item.GetProperty("id"));
         var references = item.GetProperty("assets").EnumerateArray().Select(element => ReadWrappedId(element.GetProperty("id"))).ToArray();
         Assert.True(references.Length >= 3);
 
-        using var warehousesDoc = await GetJsonAsync(client, "/api/inventory/warehouses");
+        using var warehousesDoc = await GetJsonAsync(client, "/api/inventory/warehouses", sessionToken);
         var warehouse = Assert.Single(warehousesDoc.RootElement.EnumerateArray(), element => element.GetProperty("code").GetString() == "MAD");
         Assert.Equal("Madrid Warehouse", warehouse.GetProperty("name").GetString());
-        using var locationsDoc = await GetJsonAsync(client, "/api/inventory/locations");
+        using var locationsDoc = await GetJsonAsync(client, "/api/inventory/locations", sessionToken);
         var location = Assert.Single(locationsDoc.RootElement.EnumerateArray(), element => element.GetProperty("code").GetString() == "A-01");
         var locationId = ReadWrappedId(location.GetProperty("id"));
-        Assert.Equal(expectedStock, await GetStockAsync(client, itemId));
-        using var movementsDoc = await GetJsonAsync(client, $"/api/inventory/items/{itemId:D}/movements");
+        Assert.Equal(expectedStock, await GetStockAsync(client, itemId, sessionToken));
+        using var movementsDoc = await GetJsonAsync(client, $"/api/inventory/items/{itemId:D}/movements", sessionToken);
         Assert.True(movementsDoc.RootElement.GetArrayLength() >= (expectedStock == 12 ? 1 : 2));
 
         var types = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -267,13 +356,16 @@ public sealed class ServerProcessRestartTests
         var auditItems = auditDoc.RootElement.GetProperty("items");
         Assert.True(auditItems.GetArrayLength() >= expectedMinimumAuditRecords);
         Assert.Contains(auditItems.EnumerateArray(), record => record.GetProperty("resourceType").GetString() == "stock-movement");
+        using var currentUser = await GetJsonAsync(client, "/api/identity/me", sessionToken);
+        var actorId = currentUser.RootElement.GetProperty("user").GetProperty("id").GetProperty("value").GetGuid().ToString("D");
+        Assert.Contains(auditItems.EnumerateArray(), record => record.GetProperty("domain").GetString() == "inventory" && record.GetProperty("actorId").GetString() == actorId);
 
         using var unauthorizedAudit = await client.GetAsync("/internal/admin/audit");
         Assert.Equal(HttpStatusCode.Unauthorized, unauthorizedAudit.StatusCode);
-        using var playback = await GetJsonAsync(client, $"/api/media/assets/{videoId:D}/playback");
+        using var playback = await GetJsonAsync(client, $"/api/media/assets/{videoId:D}/playback", sessionToken);
         Assert.True(playback.RootElement.GetProperty("available").GetBoolean());
         var streamUrl = playback.RootElement.GetProperty("streamUrl").GetString()!;
-        using var videoResponse = await client.GetAsync(streamUrl); videoResponse.EnsureSuccessStatusCode();
+        using var videoResponse = await SendWithSessionAsync(client, HttpMethod.Get, streamUrl, sessionToken); videoResponse.EnsureSuccessStatusCode();
         Assert.Equal("video/mp4", videoResponse.Content.Headers.ContentType?.MediaType);
         var streamBytes = await videoResponse.Content.ReadAsByteArrayAsync();
         Assert.Equal("ftyp", Encoding.ASCII.GetString(streamBytes, 4, 4));
@@ -319,15 +411,17 @@ public sealed class ServerProcessRestartTests
         using var response = await client.SendAsync(request); response.EnsureSuccessStatusCode();
     }
 
-    private static async Task<int> GetStockAsync(HttpClient client, Guid itemId)
+    private static async Task<int> GetStockAsync(HttpClient client, Guid itemId, string sessionToken)
     {
-        using var stock = await GetJsonAsync(client, "/api/inventory/stock");
+        using var stock = await GetJsonAsync(client, "/api/inventory/stock", sessionToken);
         return stock.RootElement.EnumerateArray().Where(level => ReadWrappedId(level.GetProperty("itemId")) == itemId).Sum(level => level.GetProperty("quantity").GetInt32());
     }
 
-    private static async Task<JsonDocument> GetJsonAsync(HttpClient client, string path)
+    private static async Task<JsonDocument> GetJsonAsync(HttpClient client, string path, string? sessionToken = null)
     {
-        using var response = await client.GetAsync(path); response.EnsureSuccessStatusCode();
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        if (sessionToken is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+        using var response = await client.SendAsync(request); response.EnsureSuccessStatusCode();
         return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
     }
 

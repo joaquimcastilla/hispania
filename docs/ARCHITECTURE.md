@@ -367,8 +367,24 @@ Server and WorkerAgent are composition roots. They assemble public contracts wit
 
 ### Phase 13.2: Platform authorization and Web authentication
 
-Platform Authorization owns versioned role/access contracts, policy and SQLite persistence alongside Identity in `identity.sqlite`. Effective permissions are resolved from a user's roles on every protected request; missing grants deny, and disabled users are denied regardless of session validity. The reserved `platform.admin` permission grants `platform.*` only. Media and Inventory do not reference the authorization implementation and their complete authorization migration remains deferred to Phase 13.3. See ADR-0032 for bootstrap and compatibility details.
+Platform Authorization owns versioned role/access contracts, policy and SQLite persistence alongside Identity in `identity.sqlite`. Effective permissions are resolved from a user's roles on every protected request; missing grants deny, and disabled users are denied regardless of session validity. The reserved `platform.admin` permission grants `platform.*` only. Media and Inventory use the reusable Platform Authorization contracts/filter at the server composition root; neither domain references the authorization implementation, and Platform does not reference either domain. Bootstrap grants only the built-in Platform permissions. An administrator can grant concrete domain permission IDs through the role API; no wildcard expansion is used for domain access. See ADR-0032 for bootstrap and legacy compatibility details.
 
 The server's reusable permission endpoint filter validates the opaque session through Identity before checking the current permission grants. It distinguishes unauthenticated 401 from authenticated 403. The bootstrap endpoint is separately guarded by an operator-configured, one-time secret. The legacy admin bearer remains accepted only on endpoints using the compatibility filter, with a warning, until a later removal phase.
 
 The shared Modern/Classic Web Shell keeps its tab session in `sessionStorage`, reloads current user/effective permissions through `/api/identity/me`, and revokes on logout. Protected user/role routes gate navigation and direct page rendering while their server endpoints enforce permissions independently. `sessionStorage` is not protected from same-origin script execution; cookie-based auth would require an explicit CSRF/origin design.
+
+### Phase 13.3: Domain authorization integration
+
+Domains own these stable permission IDs; Platform stores grants and resolves them without depending on domain semantics:
+
+| Permission | Domain | Purpose |
+|---|---|---|
+| `inventory.read` | Inventory | Read inventory items, locations, warehouses, stock, movements and associated asset metadata |
+| `inventory.write` | Inventory | Create inventory records, associate assets and record stock changes |
+| `media.library.read` | Media | Read the media catalog, effective metadata, TMDB identification state and people |
+| `media.playback.use` | Media | Request playback capability and stream media |
+| `media.admin` | Media | Edit metadata, run TMDB identification operations and trigger metadata scans |
+
+Inventory reads require a session with `inventory.read`; mutations require `inventory.write`. The existing `Modules:AdminToken` remains an explicit compatibility exception for Inventory writes only while existing administrative tooling migrates. Media catalog, playback and administrative endpoints require session permissions and do not accept that legacy bearer. Permission grants are resolved on every request, so changes apply to an active session; disabled users receive 401. Inventory mutations retain their existing audit records and now set `Audit.Actor` to the Identity user ID for sessions or the nonsecret `legacy-admin-bearer` marker for the compatibility path. Successfully authenticated Media admin mutations write actor-aware audit attempts; normal Media reads are not recorded.
+
+The API keeps these read routes public by design: `GET /api/v1/artwork/{id}` serves published poster/backdrop assets consumed by native image elements, and `GET /api/assets/{id}` plus `/content` continue honoring `PublicRead` for public assets. The existing administrative bearer may still read private Platform assets only on those explicit Platform asset endpoints. Inventory APIs, Media catalog/metadata/people, playback, metadata administration and TMDB operations are protected. Web navigation and direct routes reflect effective permissions; the server remains authoritative. Session-authenticated playback fetches the stream with an Authorization header and creates a temporary browser object URL because native `<video src>` cannot attach the `Session` header.

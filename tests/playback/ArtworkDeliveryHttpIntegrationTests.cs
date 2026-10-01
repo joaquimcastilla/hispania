@@ -204,6 +204,7 @@ public sealed class ArtworkDeliveryHttpIntegrationTests
             builder.Services.AddSingleton<IMediaCatalogReader>(catalog);
             builder.Services.AddSingleton<IEffectiveMetadataResolver, EffectiveMetadataResolver>();
             builder.Services.AddSingleton<IEffectiveMetadataProjectionReader, EffectiveMetadataProjectionReader>();
+            DomainAuthorizationTestHost.AddAuthorizedUser(builder.Services);
             builder.Services.AddSingleton<IArtworkContentResolver>(new TmdbArtworkContentResolver(new HttpClient(handler)));
             var application = builder.Build();
             await application.Services.GetRequiredService<SqliteMigrationRunner>().MigrateAndLoadAsync(application.Services.GetRequiredService<EfLibraryCatalogStore>(), default);
@@ -211,7 +212,9 @@ public sealed class ArtworkDeliveryHttpIntegrationTests
             application.MapEffectiveMetadataEndpoints();
             application.MapArtworkDeliveryEndpoints();
             await application.StartAsync();
-            return new Host(application, application.GetTestClient(), application.Services.GetRequiredService<IMetadataEnrichmentStore>(), entry, directory);
+            var client = application.GetTestClient();
+            DomainAuthorizationTestHost.Authenticate(client);
+            return new Host(application, client, application.Services.GetRequiredService<IMetadataEnrichmentStore>(), entry, directory);
         }
 
         public async Task<ArtworkReference> PersistAsync(string scheme, string path)

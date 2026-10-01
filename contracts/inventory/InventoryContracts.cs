@@ -2,6 +2,12 @@ using Hispania.Platform.Contracts.Assets;
 
 namespace Hispania.Inventory.Contracts;
 
+public static class InventoryPermissionIds
+{
+    public const string Read = "inventory.read";
+    public const string Write = "inventory.write";
+}
+
 public readonly record struct ItemId(Guid Value) { public static ItemId New() => new(Guid.CreateVersion7()); }
 public readonly record struct WarehouseId(Guid Value) { public static WarehouseId New() => new(Guid.CreateVersion7()); }
 public readonly record struct LocationId(Guid Value) { public static LocationId New() => new(Guid.CreateVersion7()); }

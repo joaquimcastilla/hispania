@@ -15,7 +15,7 @@ describe("Web authentication and protected routes", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input); requests.push({ url, init });
       if (url === "/api/identity/login") return response({ sessionToken: "opaque-session-token" });
-      if (url === "/api/identity/me") return response({ user, session, effectivePermissions: ["platform.users.read"] });
+      if (url === "/api/identity/me") return response({ user, session, effectivePermissions: ["platform.users.read", "media.library.read", "media.playback.use"] });
       if (url === "/api/identity/logout") return response(null);
       if (url === "/api/v1/media") return response([]);
       throw new Error(`Unexpected request: ${url}`);
@@ -58,5 +58,18 @@ describe("Web authentication and protected routes", () => {
     permissions = ["platform.roles.read"];
     view.unmount(); window.history.replaceState({}, "", "/admin/roles"); render(<App />);
     expect(await screen.findByRole("heading", { name: "Roles" })).toBeInTheDocument();
+  });
+
+  it("does not treat platform.admin as an implicit Media or Inventory grant", async () => {
+    window.sessionStorage.setItem("hispania.identity.session", "opaque-session-token");
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input); requests.push(url);
+      if (url === "/api/identity/me") return response({ user, session, effectivePermissions: ["platform.admin"] });
+      return response([]);
+    }));
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Acceso denegado" })).toBeInTheDocument();
+    expect(requests).not.toContain("/api/v1/media");
   });
 });

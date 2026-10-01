@@ -7,6 +7,16 @@ function catalogResponse(body: unknown, ok = true) {
   return Promise.resolve({ ok, json: async () => body } as Response);
 }
 
+function stubAppFetch(mock: (...args: any[]) => any, permissions = ["platform.admin", "inventory.read", "inventory.write", "media.library.read", "media.playback.use", "media.admin"]) {
+  window.sessionStorage.setItem("hispania.identity.session", "test-session-token-with-sufficient-length");
+  vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/identity/me") return catalogResponse({ user: { id: { value: "test-user" }, username: "test", displayName: "Test", status: "Enabled" }, session: { id: { value: "test-session" }, userId: { value: "test-user" }, expiresAt: "2099-01-01T00:00:00Z" }, effectivePermissions: permissions });
+    if (url.endsWith("/stream")) return Promise.resolve({ ok: true, blob: async () => new Blob(["video"]) } as Response);
+    return mock(input, init);
+  }));
+}
+
 describe("App", () => {
   beforeEach(() => {
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
@@ -16,13 +26,14 @@ describe("App", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    window.sessionStorage.clear();
     window.history.replaceState({}, "", "/");
   });
 
   it("shows the home rows in order and keeps the library card navigable", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([])));
-    render(<App />);
+    stubAppFetch(vi.fn(() => catalogResponse([])));
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
     await user.click(screen.getByRole("button", { name: "Inicio" }));
     const headings = screen.getAllByRole("heading").map(heading => heading.textContent);
     expect(headings.indexOf("Mis contenidos")).toBeGreaterThanOrEqual(0);
@@ -36,8 +47,8 @@ describe("App", () => {
 
   it("opens Movie Detail from a recent poster and keeps the local artwork placeholder", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([{ id: "recent-id", displayName: "Película reciente", effective: { title: "Película reciente", releaseDate: "2024-03-01", posterUrl: null } }])));
-    render(<App />);
+    stubAppFetch(vi.fn(() => catalogResponse([{ id: "recent-id", displayName: "Película reciente", effective: { title: "Película reciente", releaseDate: "2024-03-01", posterUrl: null } }])));
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
     await user.click(screen.getByRole("button", { name: "Inicio" }));
     const recentCard = await screen.findByRole("button", { name: /Película reciente/ });
     expect(within(recentCard).getByText("✦")).toBeInTheDocument();
@@ -53,7 +64,7 @@ describe("App", () => {
     const personId = "33333333-3333-4333-8333-333333333333";
     const movies = [{ id: movieId, displayName: "First Movie" }, { id: secondId, displayName: "Second Movie" }];
     const editModel = (id: string) => ({ mediaId: id, workId: `work-${id}`, settings: {}, locks: [], fields: [], collections: [], people: [{ providerId: "tmdb:42", name: "Actor Name", internalPersonId: personId }], credits: [{ personId, workId: `work-${id}`, creditType: "Actor", character: "Hero", job: null, ordinal: 0, origin: "ExternalProvider", providerCode: "tmdb", observedAt: "2026-01-01T00:00:00Z" }] });
-    vi.stubGlobal("fetch", vi.fn((url: string) => {
+    stubAppFetch(vi.fn((url: string) => {
       if (url === "/api/v1/media") return catalogResponse(movies);
       if (url.endsWith("/metadata/edit")) return catalogResponse(editModel(url.includes(movieId) ? movieId : secondId));
       if (url.endsWith("/metadata/tmdb")) return catalogResponse({ provider: "tmdb", candidate: null, confirmed: null, refresh: null });
@@ -61,12 +72,12 @@ describe("App", () => {
       if (url.endsWith("/metadata")) return catalogResponse({ title: { value: url.includes(movieId) ? "First Movie" : "Second Movie" }, originalTitle: {}, description: {}, releaseDate: {}, artwork: { poster: {}, backdrop: {} } });
       throw new Error(`Unexpected request: ${url}`);
     }));
-    render(<App />);
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
     await user.click(await screen.findByRole("button", { name: "First Movie" }));
     expect(window.location.pathname).toBe(`/movies/${movieId}`);
     await user.click(await screen.findByRole("button", { name: "Reproducir" }));
     expect(screen.getByRole("dialog", { name: "Reproductor: First Movie" })).toBeInTheDocument();
-    expect(document.querySelector(".fullscreen-player video")).toHaveAttribute("src", `/api/v1/media/${movieId}/stream`);
+    expect(document.querySelector(".fullscreen-player video")).toHaveAttribute("src", expect.stringMatching(/^blob:/));
     fireEvent.error(document.querySelector(".fullscreen-player video")!);
     expect(screen.getByRole("alert")).toHaveTextContent("No se pudo reproducir este archivo");
     await user.click(screen.getByRole("button", { name: "Cerrar reproductor" }));
@@ -77,27 +88,27 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "Second Movie" })).toBeInTheDocument();
   });
 
-  it("renders a loading state", () => {
-    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+  it("renders a loading state", async () => {
+    stubAppFetch(vi.fn(() => new Promise(() => {})));
 
-    render(<App />);
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
 
     expect(screen.getByRole("status")).toHaveTextContent("Cargando películas…");
   });
 
   it("renders an empty catalog", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([])));
+    stubAppFetch(vi.fn(() => catalogResponse([])));
 
-    render(<App />);
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
 
     expect(await screen.findByText("El catálogo está vacío.")).toBeInTheDocument();
   });
 
   it("renders catalog media and selects a movie with its direct play URL", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([{ id: "media-id", displayName: "Big Buck Bunny" }])));
+    stubAppFetch(vi.fn(() => catalogResponse([{ id: "media-id", displayName: "Big Buck Bunny" }])));
 
-    render(<App />);
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
 
     const selection = await screen.findByRole("button", { name: "Big Buck Bunny" });
     await user.click(selection);
@@ -105,13 +116,13 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/movies/media-id");
     expect(screen.getByRole("heading", { name: "Big Buck Bunny", level: 2 })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reproducir" }));
-    expect(document.querySelector("video")).toHaveAttribute("src", "/api/v1/media/media-id/stream");
+    expect(document.querySelector("video")).toHaveAttribute("src", expect.stringMatching(/^blob:/));
   });
 
   it("uses effective title, year, and posterUrl in the library grid", async () => {
     const posterUrl = "/api/v1/artwork/artwork-id?variant=poster-card";
-    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([{ id: "media-id", displayName: "local-file", effective: { title: "Seduction and Snacks", releaseDate: "2021-01-01", posterUrl } }])));
-    render(<App />);
+    stubAppFetch(vi.fn(() => catalogResponse([{ id: "media-id", displayName: "local-file", effective: { title: "Seduction and Snacks", releaseDate: "2021-01-01", posterUrl } }])));
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
     expect(await screen.findByRole("button", { name: /Seduction and Snacks/ })).toBeInTheDocument();
     expect(screen.getByText("2021")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Seduction and Snacks" })).toHaveAttribute("src", posterUrl);
@@ -119,11 +130,11 @@ describe("App", () => {
   });
 
   it("keeps a per-card placeholder when posterUrl is missing or the image fails", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([
+    stubAppFetch(vi.fn(() => catalogResponse([
       { id: "with-poster", displayName: "With poster", effective: { title: "With poster", posterUrl: "/api/v1/artwork/a?variant=poster-card" } },
       { id: "without-poster", displayName: "Without poster", effective: { title: "Without poster", posterUrl: null } }
     ])));
-    render(<App />);
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
 
     const image = await screen.findByRole("img", { name: "With poster" });
     expect(screen.getByTestId("grid-artwork-placeholder")).toBeInTheDocument();
@@ -136,23 +147,23 @@ describe("App", () => {
 
   it("loads effective metadata detail while keeping Play available", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn((url: string) => url.endsWith("/metadata")
+    stubAppFetch(vi.fn((url: string) => url.endsWith("/metadata")
       ? catalogResponse({ title: { value: "Title" }, originalTitle: { value: "Original" }, description: { value: "Description" }, releaseDate: { value: "2021-01-01" }, artwork: { poster: {}, backdrop: {} } })
       : catalogResponse([{ id: "media-id", displayName: "local-file", effective: { title: "Title" } }])));
-    render(<App />);
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
     await user.click(await screen.findByRole("button", { name: "Title" }));
     expect(await screen.findByText("Description")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reproducir" }));
-    expect(document.querySelector("video")).toHaveAttribute("src", "/api/v1/media/media-id/stream");
+    expect(document.querySelector("video")).toHaveAttribute("src", expect.stringMatching(/^blob:/));
   });
 
   it("renders the detail poster deliveryUrl and falls back locally on error", async () => {
     const user = userEvent.setup();
     const detailPosterUrl = "/api/v1/artwork/detail-artwork?variant=poster-card";
-    vi.stubGlobal("fetch", vi.fn((url: string) => url.endsWith("/metadata")
+    stubAppFetch(vi.fn((url: string) => url.endsWith("/metadata")
       ? catalogResponse({ title: { value: "Detail title" }, originalTitle: {}, description: {}, releaseDate: {}, artwork: { poster: { deliveryUrl: detailPosterUrl }, backdrop: { deliveryUrl: "/api/v1/artwork/backdrop?variant=backdrop-detail" } } })
       : catalogResponse([{ id: "media-id", displayName: "local-file", effective: { title: "Detail title", posterUrl: null } }])));
-    render(<App />);
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
     await user.click(await screen.findByRole("button", { name: "Detail title" }));
 
     const detailImage = await screen.findByRole("img", { name: "Detail title" });
@@ -164,15 +175,15 @@ describe("App", () => {
     expect(screen.getByTestId("detail-artwork-placeholder")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Detail title", level: 2 })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reproducir" }));
-    expect(document.querySelector("video")).toHaveAttribute("src", "/api/v1/media/media-id/stream");
+    expect(document.querySelector("video")).toHaveAttribute("src", expect.stringMatching(/^blob:/));
   });
 
   it("uses a detail placeholder when metadata has no poster deliveryUrl", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn((url: string) => url.endsWith("/metadata")
+    stubAppFetch(vi.fn((url: string) => url.endsWith("/metadata")
       ? catalogResponse({ title: { value: "No detail poster" }, originalTitle: {}, description: {}, releaseDate: {}, artwork: { poster: {}, backdrop: {} } })
       : catalogResponse([{ id: "media-id", displayName: "local-file", effective: { title: "No detail poster" } }])));
-    render(<App />);
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
     await user.click(await screen.findByRole("button", { name: "No detail poster" }));
     expect(await screen.findByTestId("detail-artwork-placeholder")).toBeInTheDocument();
     expect(screen.getByTestId("backdrop-placeholder")).toBeInTheDocument();
@@ -181,8 +192,8 @@ describe("App", () => {
   it("recovers the catalog after an unavailable API and offers a retry", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValueOnce(await catalogResponse(null, false)).mockResolvedValueOnce(await catalogResponse([{ id: "media-id", displayName: "Recovered movie" }]));
-    vi.stubGlobal("fetch", fetchMock);
-    render(<App />);
+    stubAppFetch(fetchMock);
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
     expect(await screen.findByText(/El servidor está iniciándose/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reintentar" }));
     expect(await screen.findByRole("button", { name: "Recovered movie" })).toBeInTheDocument();
@@ -190,15 +201,15 @@ describe("App", () => {
   });
 
   it("shows TMDB attribution", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([])));
-    render(<App />);
+    stubAppFetch(vi.fn(() => catalogResponse([])));
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
     expect(await screen.findByText("This product uses the TMDB API but is not endorsed or certified by TMDB.")).toBeInTheDocument();
   });
 
   it("keeps every library section visible and shows honest unavailable states", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([])));
-    render(<App />);
+    stubAppFetch(vi.fn(() => catalogResponse([])));
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
 
     expect(screen.getByRole("navigation", { name: "Navegación principal" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Películas" })).toHaveAttribute("aria-current", "page");
@@ -225,14 +236,14 @@ describe("App", () => {
       { personId: "director-id", creditType: "director", character: null, job: "Director", ordinal: 1 },
       { personId: "writer-id", creditType: "writer", character: null, job: "Writer", ordinal: 2 }
     ] };
-    vi.stubGlobal("fetch", vi.fn((url: string) => {
+    stubAppFetch(vi.fn((url: string) => {
       if (url === "/api/v1/media") return catalogResponse([{ id: movieId, displayName: "Local movie", technical: { durationSeconds: 7380, video: { codec: "h264", width: 1920, height: 1080, bitDepth: 8 }, audioTracks: [] } }]);
       if (url.endsWith("/metadata/edit")) return catalogResponse(editModel);
       if (url.endsWith("/api/v1/people/director-id")) return catalogResponse({ personId: "director-id", providerCode: "tmdb", providerId: "102", name: "Director Name", filmography: [{ mediaId: movieId, title: "Local movie", displayName: "Local movie", releaseDate: "2021-01-01" }] });
       if (url.endsWith("/metadata")) return catalogResponse({ title: { value: "Local movie" }, originalTitle: {}, description: { value: "Synopsis" }, releaseDate: { value: "2021-01-01" }, artwork: { poster: {}, backdrop: {} } });
       throw new Error(`Unexpected request: ${url}`);
     }));
-    render(<App />);
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
     await user.click(await screen.findByRole("button", { name: "Local movie" }));
     expect(await screen.findByText("2 h 3 min")).toBeInTheDocument();
     expect(screen.getByText("★ 8.2")).toBeInTheDocument();
@@ -255,8 +266,8 @@ describe("App", () => {
   });
   it("opens and closes the accessible global drawer with Escape and outside click", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([])));
-    render(<App />);
+    stubAppFetch(vi.fn(() => catalogResponse([])));
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
     await user.click(screen.getByRole("button", { name: "Abrir menú" }));
     expect(screen.getByRole("dialog", { name: "Menú HISPANIA" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
@@ -268,11 +279,51 @@ describe("App", () => {
 
   it("navigates real sections from the drawer and keeps unavailable sections honest", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn(() => catalogResponse([])));
-    render(<App />);
+    stubAppFetch(vi.fn(() => catalogResponse([])));
+    render(<App />); await screen.findByRole("navigation", { name: "Navegación principal" });
     await user.click(screen.getByRole("button", { name: "Abrir menú" }));
     await user.click(within(screen.getByRole("dialog", { name: "Menú HISPANIA" })).getByRole("button", { name: "Series" }));
     expect(screen.getByRole("heading", { name: "Series" })).toBeInTheDocument();
     expect(screen.getByText("Aún no disponible")).toBeInTheDocument();
+  });
+
+  it("shows only authorized domain navigation", async () => {
+    stubAppFetch(vi.fn(() => catalogResponse([])), ["inventory.read"]);
+    window.history.replaceState({}, "", "/erp/inventory");
+    render(<App />);
+    await screen.findByRole("navigation", { name: "Navegación principal" });
+    expect(await screen.findByRole("heading", { name: "Inventario" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Inventario" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Películas" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Inicio" })).not.toBeInTheDocument();
+  });
+
+  it("blocks a direct Inventory route without inventory.read", async () => {
+    stubAppFetch(vi.fn(() => catalogResponse([])), ["media.library.read"]);
+    window.history.replaceState({}, "", "/erp/inventory");
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Acceso denegado" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Inventario" })).not.toBeInTheDocument();
+  });
+
+  it("redirects an unauthenticated direct Media route to login", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    window.history.replaceState({}, "", "/movies/secret-media-id");
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Iniciar sesión" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/login");
+    expect(screen.queryByRole("heading", { name: "Películas" })).not.toBeInTheDocument();
+  });
+
+  it("hides playback and Media administration controls when the session only has library read", async () => {
+    const user = userEvent.setup();
+    stubAppFetch(vi.fn(() => catalogResponse([{ id: "media-id", displayName: "Restricted movie" }])), ["media.library.read"]);
+    render(<App />);
+    await screen.findByRole("navigation", { name: "Navegación principal" });
+    await user.click(await screen.findByRole("button", { name: "Restricted movie" }));
+    expect(await screen.findByRole("heading", { name: "Restricted movie", level: 2 })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reproducir" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Editar metadata" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Inventario" })).not.toBeInTheDocument();
   });
 });

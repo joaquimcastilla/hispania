@@ -1,7 +1,9 @@
 using Hispania.Inventory.Application;
+using Hispania.Inventory.Contracts;
 using Hispania.Inventory.Persistence.Sqlite;
 using Hispania.Media.Domain.Works;
 using Hispania.Library.Application;
+using Hispania.Library.Contracts;
 using Hispania.Metadata.Application;
 using Hispania.Playback.Application;
 using Hispania.Transcoding.FFmpeg;
@@ -9,6 +11,7 @@ using Hispania.Library.Persistence.Sqlite;
 using Hispania.Platform.Contracts.Events;
 using Hispania.Platform.Contracts.Audit;
 using Hispania.Platform.Persistence.Sqlite;
+using Hispania.Authorization.Application;
 using Hispania.Runtime;
 using Xunit;
 
@@ -22,7 +25,16 @@ public sealed class PlatformDependencyTests
         AssertNoForbiddenReferences(typeof(IPlatformEvent).Assembly, "Media", "Inventory", "Store");
         AssertNoForbiddenReferences(typeof(LocalPlatformEventBus).Assembly, "Media", "Inventory", "Store");
         AssertNoForbiddenReferences(typeof(InventoryService).Assembly, "Media", "Playback", "Library", "Metadata", "Store");
+        AssertNoForbiddenReferences(typeof(InventoryService).Assembly, "Authorization.Application");
         AssertNoForbiddenReferences(typeof(InventorySqliteStore).Assembly, "Media", "Playback", "Library", "Metadata", "Store");
+        AssertNoForbiddenReferences(typeof(DirectPlayPlanner).Assembly, "Authorization.Application");
+        AssertNoForbiddenReferences(typeof(LibraryScanner).Assembly, "Authorization.Application");
+        AssertNoForbiddenReferences(typeof(AuthorizationService).Assembly, "Media", "Inventory");
+        Assert.Equal("inventory.read", InventoryPermissionIds.Read);
+        Assert.Equal("inventory.write", InventoryPermissionIds.Write);
+        Assert.Equal("media.library.read", MediaPermissionIds.LibraryRead);
+        Assert.Equal("media.playback.use", MediaPermissionIds.PlaybackUse);
+        Assert.Equal("media.admin", MediaPermissionIds.Admin);
         Assert.DoesNotContain(typeof(Work).Assembly.GetReferencedAssemblies(), reference => reference.Name?.Contains("Inventory", StringComparison.OrdinalIgnoreCase) == true);
         AssertNoInventoryReference(typeof(LibraryScanner).Assembly);
         AssertNoInventoryReference(typeof(MovieMetadataApplicationService).Assembly);

@@ -6,13 +6,13 @@ namespace Hispania.Server;
 
 public static class AuthorizationEndpointFilters
 {
-    private static readonly Action<ILogger, string, PathString, Exception?> LegacyAdminBearerUsed = LoggerMessage.Define<string, PathString>(LogLevel.Warning, new EventId(1302, "LegacyAdminBearerUsed"), "Deprecated admin bearer used for Platform endpoint {PermissionId} at {Path}.");
+    private static readonly Action<ILogger, string, PathString, Exception?> LegacyAdminBearerUsed = LoggerMessage.Define<string, PathString>(LogLevel.Warning, new EventId(1302, "LegacyAdminBearerUsed"), "Deprecated admin bearer used for protected endpoint {PermissionId} at {Path}.");
     private static readonly object UserKey = new();
     private static readonly object LegacyKey = new();
 
-    public static IEndpointFilter RequirePermission(string permissionId) => new PermissionFilter(permissionId);
+    public static IEndpointFilter RequirePermission(string permissionId, bool allowLegacyAdminBearer = true) => new PermissionFilter(permissionId, allowLegacyAdminBearer);
 
-    private sealed class PermissionFilter(string permissionId) : IEndpointFilter
+    private sealed class PermissionFilter(string permissionId, bool allowLegacyAdminBearer) : IEndpointFilter
     {
         public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
         {
@@ -21,7 +21,7 @@ public static class AuthorizationEndpointFilters
             var correlationId = http.Request.Headers["X-Correlation-ID"].FirstOrDefault() ?? System.Diagnostics.Activity.Current?.TraceId.ToString();
             var authorizationHeader = http.Request.Headers.Authorization.ToString();
 
-            if (await PlatformEndpoints.IsAdminAsync(http, config, http.RequestAborted).ConfigureAwait(false))
+            if (allowLegacyAdminBearer && await PlatformEndpoints.IsAdminAsync(http, config, http.RequestAborted).ConfigureAwait(false))
             {
                 http.Items[LegacyKey] = true;
                 LegacyAdminBearerUsed(http.RequestServices.GetRequiredService<ILogger<PermissionFilter>>(), permissionId, http.Request.Path, null);
@@ -39,6 +39,11 @@ public static class AuthorizationEndpointFilters
 
             var authorization = http.RequestServices.GetRequiredService<IAuthorizationServiceV1>();
             var decision = await authorization.RequirePermissionAsync(session.UserId, permissionId, http.RequestAborted).ConfigureAwait(false);
+            if (!decision.Authenticated)
+            {
+                await WriteDeniedAuditAsync(http, correlationId, permissionId, session.UserId).ConfigureAwait(false);
+                return Results.Unauthorized();
+            }
             if (!decision.Allowed)
             {
                 await WriteDeniedAuditAsync(http, correlationId, permissionId, session.UserId).ConfigureAwait(false);
@@ -46,7 +51,14 @@ public static class AuthorizationEndpointFilters
             }
 
             http.Items[UserKey] = session.UserId;
-            return await next(context).ConfigureAwait(false);
+            var result = await next(context).ConfigureAwait(false);
+            if (permissionId == Hispania.Library.Contracts.MediaPermissionIds.Admin && !HttpMethods.IsGet(http.Request.Method))
+            {
+                var audit = http.RequestServices.GetService<IPlatformAuditWriter>();
+                if (audit is not null)
+                    await audit.WriteAsync(new(DateTimeOffset.UtcNow, session.UserId.Value.ToString("D"), correlationId, "media", $"{http.Request.Method.ToLowerInvariant()} {http.Request.Path}", "media-operation", http.Request.Path, "attempted", new Dictionary<string, string>()), http.RequestAborted).ConfigureAwait(false);
+            }
+            return result;
         }
     }
 

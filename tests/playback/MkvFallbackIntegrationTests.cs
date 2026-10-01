@@ -110,10 +110,12 @@ public sealed class MkvFallbackIntegrationTests
             builder.Services.AddSingleton<IDirectPlayExecutor, DirectPlayExecutor>();
             builder.Services.AddSingleton<ICompatibleMediaTranscoderV1>(transcoder);
             builder.Services.AddSingleton<ITranscodedContentStore>(transcoder);
+            DomainAuthorizationTestHost.AddAuthorizedUser(builder.Services);
             await using var app = builder.Build();
             app.MapDirectPlayEndpoints();
             await app.StartAsync();
             using var client = app.GetTestClient();
+            DomainAuthorizationTestHost.Authenticate(client);
             using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/media/{entry.Id.Value}/stream");
             request.Headers.TryAddWithoutValidation("Range", "bytes=0-1023");
             using var response = await client.SendAsync(request);

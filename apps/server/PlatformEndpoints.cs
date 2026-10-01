@@ -66,17 +66,15 @@ public static class PlatformEndpoints
         {
             var asset = await assets.GetMetadataAsync(new(id), ct);
             if (asset is null || asset.Type != AssetType.Video || !asset.MimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)) return Results.NotFound();
-            if (!asset.AccessPolicy.PublicRead) return Results.Unauthorized();
             return Results.Ok(new { available = true, mimeType = asset.MimeType, streamUrl = $"/api/media/assets/{id:D}/stream" });
-        });
+        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(Hispania.Library.Contracts.MediaPermissionIds.PlaybackUse, allowLegacyAdminBearer: false));
         group.MapGet("/{id:guid}/stream", async (Guid id, IPlatformAssetStore assets, CancellationToken ct) =>
         {
             var asset = await assets.GetMetadataAsync(new(id), ct);
             if (asset is null || asset.Type != AssetType.Video || !asset.MimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)) return Results.NotFound();
-            if (!asset.AccessPolicy.PublicRead) return Results.Unauthorized();
             var stream = await assets.OpenReadAsync(new(id), ct);
             return stream is null ? Results.NotFound() : Results.Stream(stream, asset.MimeType, enableRangeProcessing: true);
-        });
+        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(Hispania.Library.Contracts.MediaPermissionIds.PlaybackUse, allowLegacyAdminBearer: false));
         return endpoints;
     }
 
