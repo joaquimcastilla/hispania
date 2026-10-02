@@ -8,7 +8,7 @@ import { metadataClient, MetadataEditModel, PersonMetadata } from "./metadataCli
 import "./MovieExperience.css";
 import { AuthProvider, useAuth } from "./AuthContext";
 import { LoginPage } from "./LoginPage";
-import { AdminRolesPage, AdminUsersPage } from "./AuthorizationPages";
+import { AdminEventsPage, AdminRolesPage, AdminUsersPage } from "./AuthorizationPages";
 
 type MediaListItem = { id: string; displayName: string; effective?: { title?: string | null; releaseDate?: string | null; posterUrl?: string | null }; technical?: { durationSeconds?: number | null; container?: string | null; video?: { codec: string; width: number; height: number; bitDepth?: number | null } | null; audioTracks?: { representationId: string; streamIndex?: number | null; codec: string; channels: number; sampleRateHertz: number }[] } };
 type MetadataField = { value?: string | number | null; provider?: string | null };
@@ -99,15 +99,15 @@ function AuthenticatedApp({ variant }: { variant: "modern" | "classic" }) {
   useEffect(() => { const updatePath = () => setLocationPath(window.location.pathname); window.addEventListener("popstate", updatePath); return () => window.removeEventListener("popstate", updatePath); }, []);
   const path = locationPath;
   if (path === "/login") return <LoginPage />;
-  if (path === "/admin/users" || path === "/admin/roles") {
+  if (path === "/admin/users" || path === "/admin/roles" || path === "/admin/events") {
     if (auth.loading) return <main className="authorization-shell" role="status">Comprobando sesión…</main>;
     if (!auth.currentUser) {
       window.history.replaceState({}, "", `/login?returnTo=${encodeURIComponent(path)}`);
       return <LoginPage />;
     }
-    const permission = path.endsWith("/users") ? "platform.users.read" : "platform.roles.read";
+    const permission = path.endsWith("/users") ? "platform.users.read" : path.endsWith("/roles") ? "platform.roles.read" : "platform.events.read";
     if (!auth.hasPermission(permission)) return <main className="authorization-shell"><h1>Acceso denegado</h1><p>No tienes permiso para esta página.</p><a href="/">Volver a HISPANIA</a></main>;
-    return path.endsWith("/users") ? <AdminUsersPage /> : <AdminRolesPage />;
+    return path.endsWith("/users") ? <AdminUsersPage /> : path.endsWith("/roles") ? <AdminRolesPage /> : <AdminEventsPage />;
   }
   if (auth.loading) return <main className="authorization-shell" role="status">Comprobando sesión…</main>;
   const domainPermission = path === "/erp/inventory" ? "inventory.read" : /^\/media\/[^/]+\/metadata\/edit$/.test(path) ? "media.admin" : "media.library.read";

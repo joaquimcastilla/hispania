@@ -6,10 +6,20 @@ type Role = { id: { value: string }; name: string; description: string; createdA
 type UserRow = { user: AuthUser; roles: Role[] };
 type RoleRow = { role: Role; permissions: string[] };
 
-export function AuthorizationHeader({ active }: { active: "users" | "roles" }) {
-  const { currentUser, logout } = useAuth();
+export function AuthorizationHeader({ active }: { active: "users" | "roles" | "events" }) {
+  const { currentUser, logout, hasPermission } = useAuth();
   const signOut = async () => { await logout(); window.history.replaceState({}, "", "/login"); window.dispatchEvent(new PopStateEvent("popstate")); };
-  return <header className="authorization-header"><a className="authorization-brand" href="/">HISPANIA</a><nav aria-label="Administración"><a aria-current={active === "users" ? "page" : undefined} href="/admin/users">Usuarios</a><a aria-current={active === "roles" ? "page" : undefined} href="/admin/roles">Roles</a></nav><span>{currentUser?.user.displayName}</span><button type="button" onClick={() => void signOut()}>Cerrar sesión</button></header>;
+  return <header className="authorization-header"><a className="authorization-brand" href="/">HISPANIA</a><nav aria-label="Administración"><a aria-current={active === "users" ? "page" : undefined} href="/admin/users">Usuarios</a><a aria-current={active === "roles" ? "page" : undefined} href="/admin/roles">Roles</a>{hasPermission("platform.events.read") && <a aria-current={active === "events" ? "page" : undefined} href="/admin/events">Eventos</a>}</nav><span>{currentUser?.user.displayName}</span><button type="button" onClick={() => void signOut()}>Cerrar sesión</button></header>;
+}
+
+type DeliveryRow = { deliveryId: string; eventId: string; eventType: string; subscriberId: string; status: string; attemptCount: number; nextAttemptAt: string; lastError?: string | null };
+export function AdminEventsPage() {
+  const { request, hasPermission } = useAuth(); const canManage = hasPermission("platform.events.manage");
+  const [rows, setRows] = useState<DeliveryRow[]>([]); const [error, setError] = useState<string | null>(null); const [busy, setBusy] = useState(true);
+  const load = useCallback(async () => { setBusy(true); setError(null); try { const response = await request("/internal/admin/events/deliveries?limit=200"); if (!response.ok) throw new Error("No se pudieron cargar las entregas."); setRows(await response.json() as DeliveryRow[]); } catch (cause) { setError(cause instanceof Error ? cause.message : "Error de conexión."); } finally { setBusy(false); } }, [request]);
+  useEffect(() => { void load(); }, [load]);
+  const replay = async (id: string) => { const response = await request(`/internal/admin/events/deliveries/${id}/replay`, { method: "POST" }); if (!response.ok) { setError("No se pudo reproducir la entrega."); return; } await load(); };
+  return <main className="authorization-admin"><AuthorizationHeader active="events"/><section className="authorization-content"><p className="auth-eyebrow">PLATFORM · EVENTOS</p><h1>Entregas de eventos</h1><p className="auth-lede">Estado por subscriber, intentos y entregas en dead-letter.</p>{error && <p className="auth-error" role="alert">{error}</p>}{busy && <p role="status">Cargando entregas…</p>}{!busy && <div className="auth-table-wrap"><table><thead><tr><th>Evento</th><th>Subscriber</th><th>Estado</th><th>Intentos</th><th>Último error</th><th>Acción</th></tr></thead><tbody>{rows.map(row => <tr key={row.deliveryId}><td>{row.eventType}<small>{row.eventId}</small></td><td>{row.subscriberId}</td><td>{row.status}</td><td>{row.attemptCount}</td><td>{row.lastError ?? "—"}</td><td>{canManage && row.status === "DeadLettered" && <button type="button" className="auth-secondary" onClick={() => void replay(row.deliveryId)}>Reproducir</button>}</td></tr>)}{rows.length === 0 && <tr><td colSpan={6}>No hay entregas.</td></tr>}</tbody></table></div>}</section></main>;
 }
 
 export function AdminUsersPage() {

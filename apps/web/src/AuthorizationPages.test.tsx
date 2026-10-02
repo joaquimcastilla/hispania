@@ -60,6 +60,20 @@ describe("Web authentication and protected routes", () => {
     expect(await screen.findByRole("heading", { name: "Roles" })).toBeInTheDocument();
   });
 
+  it("protects the durable events page and loads delivery metadata", async () => {
+    window.sessionStorage.setItem("hispania.identity.session", "opaque-session-token");
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/identity/me") return response({ user, session, effectivePermissions: ["platform.events.read"] });
+      if (url.startsWith("/internal/admin/events/deliveries")) return response([{ deliveryId: "d1", eventId: "e1", eventType: "inventory.stock-changed", subscriberId: "test.consumer", status: "Pending", attemptCount: 0 }]);
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+    window.history.replaceState({}, "", "/admin/events"); render(<App />);
+    expect(await screen.findByRole("heading", { name: "Entregas de eventos" })).toBeInTheDocument();
+    expect(await screen.findByText("inventory.stock-changed")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reproducir" })).not.toBeInTheDocument();
+  });
+
   it("does not treat platform.admin as an implicit Media or Inventory grant", async () => {
     window.sessionStorage.setItem("hispania.identity.session", "opaque-session-token");
     const requests: string[] = [];

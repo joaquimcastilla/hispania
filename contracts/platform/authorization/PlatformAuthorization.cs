@@ -17,7 +17,9 @@ public static class PlatformPermissionIds
     public const string RolesPermissionsWrite = "platform.roles.permissions.write";
     public const string AuditRead = "platform.audit.read";
     public const string AssetsWrite = "platform.assets.write";
-    public static IReadOnlyList<string> BuiltIn { get; } = [Admin, UsersRead, UsersWrite, RolesRead, RolesWrite, RolesPermissionsWrite, AuditRead, AssetsWrite];
+    public const string EventsRead = "platform.events.read";
+    public const string EventsManage = "platform.events.manage";
+    public static IReadOnlyList<string> BuiltIn { get; } = [Admin, UsersRead, UsersWrite, RolesRead, RolesWrite, RolesPermissionsWrite, AuditRead, AssetsWrite, EventsRead, EventsManage];
 }
 
 public enum AuthorizationFailure { None, InvalidInput, DuplicateRoleName, NotFound, Conflict }

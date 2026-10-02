@@ -6,6 +6,8 @@
 
 Cross-domain module/runtime mechanisms belong in `Hispania.Platform.Contracts` or `Hispania.ModuleSystem.Contracts`; domain-specific contracts stay with their suite. The platform assembly has no Media project reference. `LocalPlatformEventBus` provides deterministic sequential in-process dispatch over versioned event contracts. Publishers receive per-handler failures, and remaining handlers still run. This transport is not durable and does not retry; a future transport can implement `IPlatformEventPublisher` without changing event consumers.
 
+The durable V1 contract is separate: `IDurablePlatformEventBusV1` stores explicit event type/version and bounded UTF-8 JSON with independent subscriber delivery rows. Stable subscriber IDs and registered codecs prevent CLR type names in persisted payloads from selecting runtime types. SQLite is Platform-owned and separate from domain databases. At-least-once delivery, bounded retries/dead-letter, lease recovery and replay are documented in [ADR-0033](adr/ADR-0033-platform-durable-event-bus.md). One local dispatcher per store is supported; no distributed coordination or global ordering guarantee is made.
+
 ### Domain suite ownership
 
 Media owns Library, Metadata, Search/catalog, Playback, Streaming, and Transcoding. Inventory owns its Item/Warehouse/Location/Stock/Movement records and its SQLite schema. Inventory code references Platform contracts and its own persistence; it does not reference Media projects or tables. The server is the composition root and may reference both suites' public APIs and adapters. `Hispania.Platform.slnf` builds the Platform projects, generic WorkerAgent, and Platform persistence without Media, Playback, FFmpeg, or Inventory implementation.

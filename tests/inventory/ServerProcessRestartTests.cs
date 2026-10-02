@@ -174,11 +174,29 @@ public sealed class ServerProcessRestartTests
         await GrantPermissionAsync(client, sessionToken, administratorRoleId, "inventory.read");
         await GrantPermissionAsync(client, sessionToken, administratorRoleId, "media.library.read");
         await GrantPermissionAsync(client, sessionToken, administratorRoleId, "media.playback.use");
+        using (var eventsLegacy = new HttpRequestMessage(HttpMethod.Get, "/internal/admin/events/deliveries"))
+        {
+            eventsLegacy.Headers.Authorization = new AuthenticationHeaderValue("Bearer", legacyToken);
+            using var rejectedEventsBearer = await client.SendAsync(eventsLegacy);
+            Assert.Equal(HttpStatusCode.Unauthorized, rejectedEventsBearer.StatusCode);
+        }
         using (var inventoryRead = await SendWithSessionAsync(client, HttpMethod.Get, "/api/inventory/items", sessionToken)) Assert.Equal(HttpStatusCode.OK, inventoryRead.StatusCode);
         using (var mediaRead = await SendWithSessionAsync(client, HttpMethod.Get, "/api/v1/media", sessionToken)) Assert.Equal(HttpStatusCode.OK, mediaRead.StatusCode);
         using (var playbackGranted = await SendWithSessionAsync(client, HttpMethod.Get, $"/api/v1/media/{protectedMediaId:D}/stream", sessionToken)) Assert.Equal(HttpStatusCode.NotFound, playbackGranted.StatusCode);
         using (var adminDenied = await SendWithSessionAsync(client, HttpMethod.Get, $"/api/v1/media/{protectedMediaId:D}/metadata/edit", sessionToken)) Assert.Equal(HttpStatusCode.Forbidden, adminDenied.StatusCode);
         await GrantPermissionAsync(client, sessionToken, administratorRoleId, "inventory.write");
+        await GrantPermissionAsync(client, sessionToken, administratorRoleId, "platform.events.read");
+        await GrantPermissionAsync(client, sessionToken, administratorRoleId, "platform.events.manage");
+        using (var durableDeliveries = await SendWithSessionAsync(client, HttpMethod.Get, "/internal/admin/events/deliveries", sessionToken))
+        {
+            durableDeliveries.EnsureSuccessStatusCode();
+            using var deliveryRows = JsonDocument.Parse(await durableDeliveries.Content.ReadAsStringAsync());
+            var stockDelivery = deliveryRows.RootElement.EnumerateArray().FirstOrDefault(row => row.GetProperty("eventType").GetString() == "inventory.stock-changed" && row.GetProperty("subscriberId").GetString() == "platform.inventory.stock-observer");
+            Assert.NotEqual(JsonValueKind.Undefined, stockDelivery.ValueKind);
+            Assert.Equal("Delivered", stockDelivery.GetProperty("status").GetString());
+            using var detail = await SendWithSessionAsync(client, HttpMethod.Get, $"/internal/admin/events/{stockDelivery.GetProperty("eventId").GetGuid():D}", sessionToken);
+            detail.EnsureSuccessStatusCode();
+        }
         using (var postWrite = new HttpRequestMessage(HttpMethod.Post, "/api/inventory/items") { Content = JsonContent.Create(new { sku = "AUTHZ-AFTER", name = "Granted in active session" }) })
         {
             postWrite.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);

@@ -23,6 +23,9 @@ public sealed class PlatformDependencyTests
     public void PlatformAndInventoryAssembliesHaveNoCrossDomainImplementationReferences()
     {
         AssertNoForbiddenReferences(typeof(IPlatformEvent).Assembly, "Media", "Inventory", "Store");
+        AssertNoForbiddenReferences(typeof(IDurablePlatformEventBusV1).Assembly, "Media", "Inventory", "Store");
+        AssertNoForbiddenReferences(typeof(SqliteDurablePlatformEventBus).Assembly, "Media", "Inventory", "Store");
+        Assert.Contains(typeof(InventoryService).Assembly.GetReferencedAssemblies(), reference => reference.Name == typeof(IDurablePlatformEventBusV1).Assembly.GetName().Name);
         AssertNoForbiddenReferences(typeof(LocalPlatformEventBus).Assembly, "Media", "Inventory", "Store");
         AssertNoForbiddenReferences(typeof(InventoryService).Assembly, "Media", "Playback", "Library", "Metadata", "Store");
         AssertNoForbiddenReferences(typeof(InventoryService).Assembly, "Authorization.Application");

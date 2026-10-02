@@ -40,8 +40,20 @@ WebUiStaticAssets.Configure(builder.Environment, webBuild);
 builder.Services.AddArchitectureTestModules();
 builder.Services.AddModuleRuntime();
 builder.Services.AddSingleton<LocalPlatformEventBus>();
-builder.Services.AddSingleton<IPlatformEventPublisher>(services => services.GetRequiredService<LocalPlatformEventBus>());
 var platformDataPath = builder.Configuration["Platform:DataPath"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "platform");
+var durableEventBus = new SqliteDurablePlatformEventBus(
+    builder.Configuration["Platform:Events:Path"] ?? Path.Combine(platformDataPath, "events.sqlite"),
+    new Hispania.Platform.Contracts.Events.DurableEventOptionsV1(
+        builder.Configuration.GetValue("Platform:Events:MaximumPayloadBytes", 262144),
+        builder.Configuration.GetValue("Platform:Events:MaximumAttempts", 5),
+        TimeSpan.FromSeconds(builder.Configuration.GetValue("Platform:Events:RetryDelaySeconds", 2))));
+builder.Services.AddSingleton(durableEventBus);
+builder.Services.AddSingleton<Hispania.Platform.Contracts.Events.IDurablePlatformEventBusV1>(sp => sp.GetRequiredService<SqliteDurablePlatformEventBus>());
+builder.Services.AddSingleton(sp => new Hispania.Platform.Contracts.Events.DurableEventHandlerRegistryV1()
+    .Register<StockChangedV1>("inventory.stock-changed", 1, "platform.inventory.stock-observer", sp.GetRequiredService<InventoryStockEventObserver>()));
+builder.Services.AddSingleton<InventoryStockEventObserver>();
+builder.Services.AddSingleton<IPlatformEventPublisher, DurablePlatformEventPublisher>();
+builder.Services.AddHostedService<DurablePlatformEventDispatcher>();
 builder.Services.AddPlatformSqlitePersistence(
     builder.Configuration["Platform:Assets:MetadataPath"] ?? Path.Combine(platformDataPath, "assets.sqlite"),
     builder.Configuration["Platform:Assets:ContentPath"] ?? Path.Combine(platformDataPath, "assets"),
@@ -246,6 +258,7 @@ app.MapArtworkDeliveryEndpoints();
 app.MapInventoryEndpoints();
 app.MapPlatformAssetEndpoints();
 app.MapPlatformAuditEndpoints();
+app.MapPlatformEventAdminEndpoints();
 app.MapIdentityEndpoints();
 app.MapAuthorizationEndpoints();
 app.MapInventoryMediaAssetEndpoints();
