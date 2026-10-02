@@ -18,6 +18,8 @@ using Hispania.Inventory.Persistence.Sqlite;
 using Hispania.Platform.Contracts.Assets;
 using Hispania.Platform.Contracts.Audit;
 using Hispania.Platform.Contracts.Events;
+using Hispania.Platform.Contracts.Jobs;
+using Hispania.Platform.Jobs.Application;
 using Hispania.Platform.Persistence.Sqlite;
 using Hispania.Metadata.Application;
 using Hispania.Metadata.Contracts;
@@ -54,6 +56,22 @@ builder.Services.AddSingleton(sp => new Hispania.Platform.Contracts.Events.Durab
 builder.Services.AddSingleton<InventoryStockEventObserver>();
 builder.Services.AddSingleton<IPlatformEventPublisher, DurablePlatformEventPublisher>();
 builder.Services.AddHostedService<DurablePlatformEventDispatcher>();
+var jobOptions = new PlatformJobOptionsV1(
+    builder.Configuration.GetValue("Platform:Jobs:MaximumPayloadBytes", 262144),
+    builder.Configuration.GetValue("Platform:Jobs:MaximumResultMetadataBytes", 8192),
+    builder.Configuration.GetValue("Platform:Jobs:MaximumAttempts", 5),
+    TimeSpan.FromSeconds(builder.Configuration.GetValue("Platform:Jobs:RetryDelaySeconds", 2)),
+    TimeSpan.FromSeconds(builder.Configuration.GetValue("Platform:Jobs:ExecutionLeaseSeconds", 120)),
+    TimeSpan.FromMilliseconds(builder.Configuration.GetValue("Platform:Jobs:PollIntervalMilliseconds", 500)));
+jobOptions.Validate();
+builder.Services.AddSingleton(jobOptions);
+builder.Services.AddSingleton<PlatformJobMetricsV1>();
+builder.Services.AddSingleton<IPlatformJobHandlerRegistryV1>(_ => new PlatformJobHandlerRegistryV1().Register(new PlatformTestHashHandlerV1()));
+builder.Services.AddPlatformJobsSqlite(builder.Configuration["Platform:Jobs:Path"] ?? Path.Combine(platformDataPath, "jobs.sqlite"));
+builder.Services.AddSingleton<LocalPlatformJobDispatcher>();
+builder.Services.AddSingleton<IPlatformJobExecutionControlV1>(sp => sp.GetRequiredService<LocalPlatformJobDispatcher>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<LocalPlatformJobDispatcher>());
+builder.Services.AddSingleton<IPlatformJobServiceV1, PlatformJobService>();
 builder.Services.AddPlatformSqlitePersistence(
     builder.Configuration["Platform:Assets:MetadataPath"] ?? Path.Combine(platformDataPath, "assets.sqlite"),
     builder.Configuration["Platform:Assets:ContentPath"] ?? Path.Combine(platformDataPath, "assets"),
@@ -259,6 +277,7 @@ app.MapInventoryEndpoints();
 app.MapPlatformAssetEndpoints();
 app.MapPlatformAuditEndpoints();
 app.MapPlatformEventAdminEndpoints();
+app.MapPlatformJobEndpoints();
 app.MapIdentityEndpoints();
 app.MapAuthorizationEndpoints();
 app.MapInventoryMediaAssetEndpoints();

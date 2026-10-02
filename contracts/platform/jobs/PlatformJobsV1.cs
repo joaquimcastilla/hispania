@@ -1,0 +1,109 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+
+namespace Hispania.Platform.Contracts.Jobs;
+
+public enum PlatformJobStatusV1 { Pending, Running, Succeeded, Failed, Cancelled, DeadLettered }
+public enum PlatformJobAttemptOutcomeV1 { Succeeded, Failed, Cancelled, TimedOut, Recovered, Running }
+
+public sealed record PlatformJobV1(Guid JobId, string JobType, PlatformJobStatusV1 Status, DateTimeOffset CreatedAt,
+    DateTimeOffset ScheduledAt, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt, int AttemptCount,
+    int MaxAttempts, int? TimeoutSeconds, string? CorrelationId, string? CausationId, string? IdempotencyKey,
+    string PayloadJson, string? ResultMetadataJson, string? ErrorMetadata, string Executor,
+    DateTimeOffset? LeaseExpiresAt);
+public sealed record PlatformJobListItemV1(Guid JobId, string JobType, PlatformJobStatusV1 Status,
+    DateTimeOffset CreatedAt, DateTimeOffset ScheduledAt, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
+    int AttemptCount, int MaxAttempts, string Executor, string? ErrorSummary);
+public sealed record PlatformJobAttemptV1(Guid AttemptId, Guid JobId, int AttemptNumber, DateTimeOffset StartedAt,
+    DateTimeOffset? CompletedAt, PlatformJobAttemptOutcomeV1 Outcome, string? ErrorSummary, string Executor);
+public sealed record PlatformJobResultMetadataV1(string? ContentType = null, string? OpaqueResultRef = null,
+    IReadOnlyDictionary<string, string>? Metadata = null);
+public sealed record PlatformJobOptionsV1(int MaximumPayloadBytes = 262144, int MaximumResultMetadataBytes = 8192,
+    int MaximumAttempts = 5, TimeSpan? RetryDelay = null, TimeSpan? ExecutionLease = null,
+    TimeSpan? PollInterval = null)
+{
+    public TimeSpan EffectiveRetryDelay => RetryDelay ?? TimeSpan.FromSeconds(2);
+    public TimeSpan EffectiveExecutionLease => ExecutionLease ?? TimeSpan.FromMinutes(2);
+    public TimeSpan EffectivePollInterval => PollInterval ?? TimeSpan.FromMilliseconds(500);
+    public void Validate()
+    {
+        if (MaximumPayloadBytes is < 1 or > 16 * 1024 * 1024 || MaximumResultMetadataBytes is < 1 or > 64 * 1024 || MaximumAttempts is < 1 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(PlatformJobOptionsV1), "Job payload/result limits and attempt count are outside supported bounds.");
+        if (RetryDelay is { } retry && retry < TimeSpan.Zero || ExecutionLease is { } lease && lease <= TimeSpan.Zero || PollInterval is { } poll && poll <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(PlatformJobOptionsV1), "Retry delay must be nonnegative and lease/poll intervals must be positive.");
+    }
+}
+public sealed record CreatePlatformJobV1(string JobType, string PayloadJson, DateTimeOffset? ScheduledAt = null,
+    int? MaxAttempts = null, TimeSpan? Timeout = null, string? CorrelationId = null, string? CausationId = null,
+    string? IdempotencyKey = null, string? RequestedBy = null);
+public sealed record PlatformJobCreateResultV1(PlatformJobV1 Job, bool Duplicate);
+public sealed record PlatformJobHealthV1(bool StoreAccessible, bool DispatcherActive, long Pending, long Running,
+    long Succeeded, long Failed, long Cancelled, long DeadLettered);
+
+/// <summary>Durable job APIs. Jobs are commands/work to perform; Events are facts that occurred.</summary>
+public interface IPlatformJobServiceV1
+{
+    ValueTask<PlatformJobCreateResultV1> CreateAsync(CreatePlatformJobV1 request, CancellationToken cancellationToken = default);
+    ValueTask<PlatformJobV1?> GetAsync(Guid jobId, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<PlatformJobListItemV1>> ListAsync(PlatformJobStatusV1? status = null, int limit = 100, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<PlatformJobAttemptV1>> GetAttemptsAsync(Guid jobId, CancellationToken cancellationToken = default);
+    ValueTask<bool> CancelAsync(Guid jobId, string? requestedBy = null, CancellationToken cancellationToken = default);
+    ValueTask<bool> RetryAsync(Guid jobId, string? requestedBy = null, CancellationToken cancellationToken = default);
+    ValueTask<PlatformJobHealthV1> GetHealthAsync(CancellationToken cancellationToken = default);
+}
+
+public interface IPlatformJobHandlerV1<TPayload> where TPayload : notnull
+{
+    string JobType { get; }
+    ValueTask<PlatformJobResultMetadataV1?> ExecuteAsync(TPayload payload, CancellationToken cancellationToken);
+}
+
+public interface IPlatformJobHandlerRegistryV1
+{
+    bool Contains(string jobType);
+    ValueTask<PlatformJobResultMetadataV1?> ExecuteAsync(string jobType, string payloadJson, CancellationToken cancellationToken);
+}
+
+/// <summary>Explicit allowlisted registry; durable data never chooses a CLR type.</summary>
+public sealed class PlatformJobHandlerRegistryV1 : IPlatformJobHandlerRegistryV1
+{
+    private readonly Dictionary<string, (Type PayloadType, Func<string, CancellationToken, ValueTask<PlatformJobResultMetadataV1?>> Execute)> handlers = new(StringComparer.Ordinal);
+    public PlatformJobHandlerRegistryV1 Register<TPayload>(IPlatformJobHandlerV1<TPayload> handler) where TPayload : notnull
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        if (!IsValidJobType(handler.JobType) || !handlers.TryAdd(handler.JobType, (typeof(TPayload), ExecuteTyped)))
+            throw new InvalidOperationException("Job type is invalid or already registered.");
+        return this;
+
+        async ValueTask<PlatformJobResultMetadataV1?> ExecuteTyped(string json, CancellationToken token)
+        {
+            var payload = JsonSerializer.Deserialize<TPayload>(json, JsonSerializerOptions.Web) ?? throw new InvalidDataException("Job payload is invalid.");
+            return await handler.ExecuteAsync(payload, token).ConfigureAwait(false);
+        }
+    }
+    public bool Contains(string jobType) => handlers.ContainsKey(jobType);
+    public ValueTask<PlatformJobResultMetadataV1?> ExecuteAsync(string jobType, string payloadJson, CancellationToken cancellationToken) =>
+        handlers.TryGetValue(jobType, out var handler) ? handler.Execute(payloadJson, cancellationToken) : throw new InvalidOperationException("No trusted handler is registered for this JobType.");
+    public static bool IsValidJobType(string? value) => value is { Length: >= 3 and <= 128 } && value.Split('.').Length is >= 2 and <= 8 && value.Split('.').All(part => part.Length is >= 1 and <= 32 && part.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'));
+}
+
+public sealed record PlatformTestHashPayloadV1(string Text, string Algorithm);
+public sealed class PlatformTestHashHandlerV1 : IPlatformJobHandlerV1<PlatformTestHashPayloadV1>
+{
+    public const string TypeId = "platform.test.hash";
+    public string JobType => TypeId;
+    public ValueTask<PlatformJobResultMetadataV1?> ExecuteAsync(PlatformTestHashPayloadV1 payload, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(payload.Text)) throw new InvalidDataException("Text is required.");
+        var bytes = Encoding.UTF8.GetBytes(payload.Text);
+        var hash = payload.Algorithm switch
+        {
+            "sha256" => Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(),
+            "sha512" => Convert.ToHexString(SHA512.HashData(bytes)).ToLowerInvariant(),
+            _ => throw new InvalidDataException("Unsupported hash algorithm.")
+        };
+        return ValueTask.FromResult<PlatformJobResultMetadataV1?>(new("text/plain", null, new Dictionary<string, string> { ["hash"] = hash }));
+    }
+}

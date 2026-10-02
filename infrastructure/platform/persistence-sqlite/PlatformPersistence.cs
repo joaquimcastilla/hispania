@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Globalization;
 using Hispania.Platform.Contracts.Assets;
+using Hispania.Platform.Contracts.Jobs;
+using Hispania.Platform.Jobs.Application;
 using Hispania.Platform.Contracts.Audit;
 using Hispania.Platform.Contracts.Identity;
 using Hispania.Identity.Application;
@@ -40,6 +42,12 @@ public static class PlatformPersistenceRegistration
         services.AddSingleton<IPlatformAuthorizationStore>(sp => sp.GetRequiredService<SqlitePlatformAuthorizationStore>());
         services.AddSingleton<IAuthorizationServiceV1>(sp => new AuthorizationService(sp.GetRequiredService<IPlatformAuthorizationStore>(), sp.GetRequiredService<IIdentityQueryV1>()));
         services.AddSingleton<IAuthorizationAdministrationV1>(sp => new AuthorizationAdministrationService(sp.GetRequiredService<IPlatformAuthorizationStore>(), sp.GetRequiredService<IIdentityQueryV1>(), sp.GetService<IPlatformAuditWriter>(), bootstrapToken));
+        return services;
+    }
+
+    public static IServiceCollection AddPlatformJobsSqlite(this IServiceCollection services, string path)
+    {
+        services.AddSingleton<IPlatformJobStoreV1>(_ => new SqlitePlatformJobStore(path));
         return services;
     }
 }

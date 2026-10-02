@@ -14,6 +14,61 @@ namespace Hispania.Inventory.Tests;
 public sealed class ServerProcessRestartTests
 {
     [Fact]
+    public async Task ScheduledPlatformJobSurvivesServerRestartAndRequiresSessionRbac()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "hispania-jobs-server-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root); var libraryRoot = Path.Combine(root, "empty-library"); Directory.CreateDirectory(libraryRoot);
+        var serverDirectory = FindServerOutputDirectory(); var serverDll = Path.Combine(serverDirectory, "Hispania.Server.dll");
+        var adminToken = Convert.ToHexString(Guid.NewGuid().ToByteArray()); var bootstrapToken = Convert.ToHexString(Guid.NewGuid().ToByteArray()); var shutdownToken = Convert.ToHexString(Guid.NewGuid().ToByteArray());
+        var port = ReserveLoopbackPort(); using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}/"), Timeout = TimeSpan.FromSeconds(5) }; Process? server = null;
+        try
+        {
+            server = StartServer(serverDll, serverDirectory, root, libraryRoot, adminToken, bootstrapToken, shutdownToken, port); await WaitUntilHealthyAsync(server, client);
+            var session = await CreateAndLoginIdentityUserAsync(client, adminToken);
+            using var me = await SendWithSessionAsync(client, HttpMethod.Get, "/api/identity/me", session); using var meJson = JsonDocument.Parse(await me.Content.ReadAsStringAsync());
+            var userId = meJson.RootElement.GetProperty("user").GetProperty("id").GetProperty("value").GetGuid();
+            using var bootstrap = new HttpRequestMessage(HttpMethod.Post, "/api/authorization/bootstrap-admin") { Content = JsonContent.Create(new { userId }) }; bootstrap.Headers.Authorization = new AuthenticationHeaderValue("Bootstrap", bootstrapToken);
+            using (var bootstrapped = await client.SendAsync(bootstrap)) Assert.Equal(HttpStatusCode.OK, bootstrapped.StatusCode);
+            using (var legacyJobs = new HttpRequestMessage(HttpMethod.Get, "/api/platform/jobs")) { legacyJobs.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken); using var rejected = await client.SendAsync(legacyJobs); Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode); }
+            using (var allowedJobs = await SendWithSessionAsync(client, HttpMethod.Get, "/api/platform/jobs", session)) Assert.Equal(HttpStatusCode.OK, allowedJobs.StatusCode);
+
+            var scheduledAt = DateTimeOffset.UtcNow.AddSeconds(15);
+            async Task<HttpResponseMessage> CreateJobAsync() { var req = new HttpRequestMessage(HttpMethod.Post, "/api/platform/jobs") { Content = JsonContent.Create(new { jobType = "platform.test.hash", payload = new { text = "restart-proof", algorithm = "sha256" }, scheduledAt, idempotencyKey = "server-restart-proof" }) }; req.Headers.Authorization = new AuthenticationHeaderValue("Session", session); return await client.SendAsync(req); }
+            using var accepted = await CreateJobAsync(); Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
+            using var acceptedJson = JsonDocument.Parse(await accepted.Content.ReadAsStringAsync()); var jobId = acceptedJson.RootElement.GetProperty("jobId").GetGuid();
+            Assert.False(acceptedJson.RootElement.TryGetProperty("payloadJson", out _));
+            using var duplicate = await CreateJobAsync(); Assert.Equal(HttpStatusCode.OK, duplicate.StatusCode); using var duplicateJson = JsonDocument.Parse(await duplicate.Content.ReadAsStringAsync()); Assert.Equal(jobId, duplicateJson.RootElement.GetProperty("jobId").GetGuid());
+            using var unknown = new HttpRequestMessage(HttpMethod.Post, "/api/platform/jobs") { Content = JsonContent.Create(new { jobType = "platform.test.untrusted", payload = new { any = "value" } }) }; unknown.Headers.Authorization = new AuthenticationHeaderValue("Session", session); using (var unknownResponse = await client.SendAsync(unknown)) Assert.Equal(HttpStatusCode.BadRequest, unknownResponse.StatusCode);
+
+            await StopServerGracefullyAsync(server, client, shutdownToken); server.Dispose(); server = null;
+            server = StartServer(serverDll, serverDirectory, root, libraryRoot, adminToken, bootstrapToken, shutdownToken, port); await WaitUntilHealthyAsync(server, client);
+            using var detailBeforeDue = await SendWithSessionAsync(client, HttpMethod.Get, $"/api/platform/jobs/{jobId:D}", session); detailBeforeDue.EnsureSuccessStatusCode(); using var detailJson = JsonDocument.Parse(await detailBeforeDue.Content.ReadAsStringAsync());
+            Assert.Equal(jobId, detailJson.RootElement.GetProperty("jobId").GetGuid()); Assert.False(detailJson.RootElement.TryGetProperty("payloadJson", out _));
+            using var completed = await WaitForJobStatusAsync(client, session, jobId, "Succeeded", TimeSpan.FromSeconds(30));
+            using var attempts = await SendWithSessionAsync(client, HttpMethod.Get, $"/api/platform/jobs/{jobId:D}/attempts", session); attempts.EnsureSuccessStatusCode(); using var attemptJson = JsonDocument.Parse(await attempts.Content.ReadAsStringAsync()); Assert.Single(attemptJson.RootElement.EnumerateArray());
+            using var audit = await SendWithSessionAsync(client, HttpMethod.Get, $"/internal/admin/audit?domain=platform.jobs&resourceId={jobId:D}", session); audit.EnsureSuccessStatusCode();
+            await StopServerGracefullyAsync(server, client, shutdownToken); server.Dispose(); server = null;
+        }
+        finally
+        {
+            if (server is { HasExited: false }) { server.Kill(entireProcessTree: true); await server.WaitForExitAsync(); } server?.Dispose(); SqliteConnection.ClearAllPools(); if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    private static async Task<HttpResponseMessage> WaitForJobStatusAsync(HttpClient client, string token, Guid id, string expected, TimeSpan timeout)
+    {
+        var until = DateTimeOffset.UtcNow + timeout; string last = "no response";
+        while (DateTimeOffset.UtcNow < until)
+        {
+            var response = await SendWithSessionAsync(client, HttpMethod.Get, $"/api/platform/jobs/{id:D}", token);
+            if (response.IsSuccessStatusCode) { last = await response.Content.ReadAsStringAsync(); using var json = JsonDocument.Parse(last); if (json.RootElement.GetProperty("status").GetString() == expected) return response; }
+            else last = $"HTTP {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}";
+            response.Dispose(); await Task.Delay(200);
+        }
+        throw new TimeoutException($"Platform Job did not reach {expected}. Last state: {last}");
+    }
+
+    [Fact]
     public async Task RealServerRestartsKeepInventoryAssetsAuditAndPlayableVideo()
     {
         var root = Path.Combine(Path.GetTempPath(), "hispania-server-restart-" + Guid.NewGuid().ToString("N"));

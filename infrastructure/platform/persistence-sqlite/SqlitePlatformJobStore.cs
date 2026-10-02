@@ -1,0 +1,124 @@
+using System.Globalization;
+using Hispania.Platform.Contracts.Jobs;
+using Hispania.Platform.Jobs.Application;
+using Microsoft.Data.Sqlite;
+
+namespace Hispania.Platform.Persistence.Sqlite;
+
+/// <summary>Independent SQLite file/schema for durable Platform Jobs.</summary>
+public sealed class SqlitePlatformJobStore : IPlatformJobStoreV1
+{
+    private readonly string connectionString;
+    public SqlitePlatformJobStore(string path)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        connectionString = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate, Pooling = false }.ToString();
+        using var connection = new SqliteConnection(connectionString); connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS platform_jobs(job_id TEXT PRIMARY KEY,job_type TEXT NOT NULL,status INTEGER NOT NULL,created_at TEXT NOT NULL,scheduled_at TEXT NOT NULL,started_at TEXT,completed_at TEXT,attempt_count INTEGER NOT NULL,max_attempts INTEGER NOT NULL,timeout_seconds INTEGER,correlation_id TEXT,causation_id TEXT,idempotency_key TEXT,payload_json TEXT NOT NULL,result_json TEXT,error_summary TEXT,executor TEXT NOT NULL,lease_expires_at TEXT,cancel_requested INTEGER NOT NULL DEFAULT 0,terminal_audit_recorded INTEGER NOT NULL DEFAULT 0); CREATE UNIQUE INDEX IF NOT EXISTS ux_platform_jobs_idempotency ON platform_jobs(job_type,idempotency_key) WHERE idempotency_key IS NOT NULL; CREATE INDEX IF NOT EXISTS ix_platform_jobs_due ON platform_jobs(status,scheduled_at,lease_expires_at); CREATE TABLE IF NOT EXISTS platform_job_attempts(attempt_id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES platform_jobs(job_id),attempt_number INTEGER NOT NULL,started_at TEXT NOT NULL,completed_at TEXT,outcome INTEGER,error_summary TEXT,executor TEXT NOT NULL,UNIQUE(job_id,attempt_number));";
+        command.ExecuteNonQuery();
+    }
+
+    public async ValueTask<PlatformJobCreateResultV1> CreateAsync(PlatformJobV1 job, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken); await using var tx = connection.BeginTransaction(deferred: false);
+        if (job.IdempotencyKey is not null)
+        {
+            await using var find = connection.CreateCommand(); find.Transaction = (SqliteTransaction)tx; find.CommandText = "SELECT job_id FROM platform_jobs WHERE job_type=$type AND idempotency_key=$key"; find.Parameters.AddWithValue("$type", job.JobType); find.Parameters.AddWithValue("$key", job.IdempotencyKey);
+            var found = await find.ExecuteScalarAsync(cancellationToken);
+            if (found is string id)
+            {
+                await using var read = connection.CreateCommand(); read.Transaction = (SqliteTransaction)tx; read.CommandText = "SELECT * FROM platform_jobs WHERE job_id=$id"; read.Parameters.AddWithValue("$id", id); await using var reader = await read.ExecuteReaderAsync(cancellationToken); var existing = await reader.ReadAsync(cancellationToken) ? ReadJob(reader) : throw new InvalidOperationException("Idempotency row disappeared inside its transaction."); await reader.DisposeAsync(); await tx.CommitAsync(cancellationToken); return new(existing, true);
+            }
+        }
+        await using (var insert = connection.CreateCommand())
+        {
+            insert.Transaction = (SqliteTransaction)tx; insert.CommandText = "INSERT INTO platform_jobs(job_id,job_type,status,created_at,scheduled_at,attempt_count,max_attempts,timeout_seconds,correlation_id,causation_id,idempotency_key,payload_json,executor) VALUES($id,$type,$status,$created,$scheduled,0,$max,$timeout,$correlation,$causation,$key,$payload,'local')";
+            insert.Parameters.AddWithValue("$id", Id(job.JobId)); insert.Parameters.AddWithValue("$type", job.JobType); insert.Parameters.AddWithValue("$status", (int)job.Status); insert.Parameters.AddWithValue("$created", Dt(job.CreatedAt)); insert.Parameters.AddWithValue("$scheduled", Dt(job.ScheduledAt)); insert.Parameters.AddWithValue("$max", job.MaxAttempts); insert.Parameters.AddWithValue("$timeout", Db(job.TimeoutSeconds)); insert.Parameters.AddWithValue("$correlation", Db(job.CorrelationId)); insert.Parameters.AddWithValue("$causation", Db(job.CausationId)); insert.Parameters.AddWithValue("$key", Db(job.IdempotencyKey)); insert.Parameters.AddWithValue("$payload", job.PayloadJson); await insert.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await tx.CommitAsync(cancellationToken); return new(job, false);
+    }
+
+    public async ValueTask<PlatformJobV1?> GetAsync(Guid jobId, CancellationToken cancellationToken)
+    { await using var c = await OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "SELECT * FROM platform_jobs WHERE job_id=$id"; q.Parameters.AddWithValue("$id", Id(jobId)); await using var r = await q.ExecuteReaderAsync(cancellationToken); return await r.ReadAsync(cancellationToken) ? ReadJob(r) : null; }
+
+    public async ValueTask<IReadOnlyList<PlatformJobListItemV1>> ListAsync(PlatformJobStatusV1? status, int limit, CancellationToken cancellationToken)
+    {
+        await using var c = await OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "SELECT job_id,job_type,status,created_at,scheduled_at,started_at,completed_at,attempt_count,max_attempts,executor,error_summary FROM platform_jobs WHERE ($status IS NULL OR status=$status) ORDER BY created_at DESC LIMIT $limit"; q.Parameters.AddWithValue("$status", status is null ? DBNull.Value : (int)status); q.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 200));
+        var result = new List<PlatformJobListItemV1>(); await using var r = await q.ExecuteReaderAsync(cancellationToken); while (await r.ReadAsync(cancellationToken)) result.Add(new(Guid.Parse(r.GetString(0)), r.GetString(1), (PlatformJobStatusV1)r.GetInt32(2), Parse(r.GetString(3)), Parse(r.GetString(4)), NullableDate(r,5), NullableDate(r,6), r.GetInt32(7), r.GetInt32(8), r.GetString(9), r.IsDBNull(10) ? null : r.GetString(10))); return result;
+    }
+    public async ValueTask<IReadOnlyList<PlatformJobAttemptV1>> GetAttemptsAsync(Guid jobId, CancellationToken cancellationToken)
+    { await using var c = await OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "SELECT attempt_id,job_id,attempt_number,started_at,completed_at,outcome,error_summary,executor FROM platform_job_attempts WHERE job_id=$id ORDER BY attempt_number"; q.Parameters.AddWithValue("$id", Id(jobId)); var list = new List<PlatformJobAttemptV1>(); await using var r = await q.ExecuteReaderAsync(cancellationToken); while (await r.ReadAsync(cancellationToken)) list.Add(new(Guid.Parse(r.GetString(0)), Guid.Parse(r.GetString(1)), r.GetInt32(2), Parse(r.GetString(3)), NullableDate(r,4), r.IsDBNull(5) ? PlatformJobAttemptOutcomeV1.Running : (PlatformJobAttemptOutcomeV1)r.GetInt32(5), r.IsDBNull(6) ? null : r.GetString(6), r.GetString(7))); return list; }
+
+    public async ValueTask<PlatformJobV1?> AcquireNextAsync(DateTimeOffset now, TimeSpan lease, CancellationToken cancellationToken)
+    {
+        await using var c = await OpenAsync(cancellationToken); await using var tx = c.BeginTransaction(deferred: false);
+        string? id = null; int previousAttempt = 0;
+        await using (var cancelAttempt = c.CreateCommand())
+        {
+            cancelAttempt.Transaction = tx; cancelAttempt.CommandText = "UPDATE platform_job_attempts SET completed_at=$now,outcome=$cancelled,error_summary='Cancellation was requested before the execution lease expired.' WHERE completed_at IS NULL AND job_id IN (SELECT job_id FROM platform_jobs WHERE status=$running AND lease_expires_at<=$now AND cancel_requested=1)"; cancelAttempt.Parameters.AddWithValue("$now", Dt(now)); cancelAttempt.Parameters.AddWithValue("$cancelled", (int)PlatformJobAttemptOutcomeV1.Cancelled); cancelAttempt.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); await cancelAttempt.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await using (var cancelJob = c.CreateCommand())
+        {
+            cancelJob.Transaction = tx; cancelJob.CommandText = "UPDATE platform_jobs SET status=$cancelled,completed_at=$now,lease_expires_at=NULL WHERE status=$running AND lease_expires_at<=$now AND cancel_requested=1"; cancelJob.Parameters.AddWithValue("$cancelled", (int)PlatformJobStatusV1.Cancelled); cancelJob.Parameters.AddWithValue("$now", Dt(now)); cancelJob.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); await cancelJob.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await using (var expire = c.CreateCommand())
+        {
+            expire.Transaction = tx; expire.CommandText = "UPDATE platform_job_attempts SET completed_at=$now,outcome=$recovered,error_summary='Executor lease expired after the configured maximum attempts.' WHERE completed_at IS NULL AND job_id IN (SELECT job_id FROM platform_jobs WHERE status=$running AND lease_expires_at<=$now AND attempt_count>=max_attempts)"; expire.Parameters.AddWithValue("$now", Dt(now)); expire.Parameters.AddWithValue("$recovered", (int)PlatformJobAttemptOutcomeV1.Recovered); expire.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); await expire.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await using (var expire = c.CreateCommand())
+        {
+            expire.Transaction = tx; expire.CommandText = "UPDATE platform_jobs SET status=$dead,completed_at=$now,lease_expires_at=NULL,error_summary='Execution lease expired after the configured maximum attempts.',terminal_audit_recorded=0 WHERE status=$running AND lease_expires_at<=$now AND attempt_count>=max_attempts"; expire.Parameters.AddWithValue("$dead", (int)PlatformJobStatusV1.DeadLettered); expire.Parameters.AddWithValue("$now", Dt(now)); expire.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); await expire.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await using (var q = c.CreateCommand())
+        {
+            q.Transaction = tx; q.CommandText = "SELECT job_id,attempt_count FROM platform_jobs WHERE ((status=$pending AND scheduled_at<=$now) OR (status=$running AND lease_expires_at<=$now)) AND attempt_count<max_attempts ORDER BY scheduled_at,created_at LIMIT 1"; q.Parameters.AddWithValue("$pending", (int)PlatformJobStatusV1.Pending); q.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); q.Parameters.AddWithValue("$now", Dt(now)); await using var r = await q.ExecuteReaderAsync(cancellationToken); if (await r.ReadAsync(cancellationToken)) { id = r.GetString(0); previousAttempt = r.GetInt32(1); }
+        }
+        if (id is null) { await tx.CommitAsync(cancellationToken); return null; }
+        if (previousAttempt > 0)
+        {
+            await using var recover = c.CreateCommand(); recover.Transaction = tx; recover.CommandText = "UPDATE platform_job_attempts SET completed_at=$now,outcome=$outcome,error_summary='Executor lease expired; outcome may have occurred before recovery.' WHERE job_id=$id AND attempt_number=$number AND completed_at IS NULL"; recover.Parameters.AddWithValue("$now", Dt(now)); recover.Parameters.AddWithValue("$outcome", (int)PlatformJobAttemptOutcomeV1.Recovered); recover.Parameters.AddWithValue("$id", id); recover.Parameters.AddWithValue("$number", previousAttempt); await recover.ExecuteNonQueryAsync(cancellationToken);
+        }
+        var attempt = previousAttempt + 1;
+        await using (var update = c.CreateCommand()) { update.Transaction = tx; update.CommandText = "UPDATE platform_jobs SET status=$running,attempt_count=$attempt,started_at=$now,completed_at=NULL,error_summary=NULL,lease_expires_at=$lease,cancel_requested=0 WHERE job_id=$id"; update.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); update.Parameters.AddWithValue("$attempt", attempt); update.Parameters.AddWithValue("$now", Dt(now)); update.Parameters.AddWithValue("$lease", Dt(now + lease)); update.Parameters.AddWithValue("$id", id); await update.ExecuteNonQueryAsync(cancellationToken); }
+        await using (var insert = c.CreateCommand()) { insert.Transaction = tx; insert.CommandText = "INSERT INTO platform_job_attempts(attempt_id,job_id,attempt_number,started_at,executor) VALUES($aid,$id,$number,$now,'local')"; insert.Parameters.AddWithValue("$aid", Id(Guid.NewGuid())); insert.Parameters.AddWithValue("$id", id); insert.Parameters.AddWithValue("$number", attempt); insert.Parameters.AddWithValue("$now", Dt(now)); await insert.ExecuteNonQueryAsync(cancellationToken); }
+        await using var read = c.CreateCommand(); read.Transaction = tx; read.CommandText = "SELECT * FROM platform_jobs WHERE job_id=$id"; read.Parameters.AddWithValue("$id", id); await using var reader = await read.ExecuteReaderAsync(cancellationToken); var job = await reader.ReadAsync(cancellationToken) ? ReadJob(reader) : null; await reader.DisposeAsync(); await tx.CommitAsync(cancellationToken); return job;
+    }
+
+    public async ValueTask<bool> ExtendLeaseAsync(Guid jobId, DateTimeOffset expiresAt, CancellationToken cancellationToken)
+    { await using var c = await OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "UPDATE platform_jobs SET lease_expires_at=$lease WHERE job_id=$id AND status=$running"; q.Parameters.AddWithValue("$lease", Dt(expiresAt)); q.Parameters.AddWithValue("$id", Id(jobId)); q.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); return await q.ExecuteNonQueryAsync(cancellationToken) == 1; }
+    public async ValueTask<bool> CompleteAsync(Guid jobId, int attempt, string? resultJson, CancellationToken cancellationToken) => await FinishAsync(jobId, attempt, PlatformJobStatusV1.Succeeded, PlatformJobAttemptOutcomeV1.Succeeded, null, resultJson, cancellationToken);
+    public async ValueTask FailAsync(Guid jobId, int attempt, PlatformJobAttemptOutcomeV1 outcome, string errorSummary, DateTimeOffset nextAttemptAt, CancellationToken cancellationToken)
+    { var status = outcome == PlatformJobAttemptOutcomeV1.Cancelled ? PlatformJobStatusV1.Cancelled : outcome == PlatformJobAttemptOutcomeV1.Recovered ? PlatformJobStatusV1.Pending : nextAttemptAt == DateTimeOffset.MaxValue ? PlatformJobStatusV1.Failed : PlatformJobStatusV1.Pending; _ = await FinishAsync(jobId, attempt, status, outcome, errorSummary, null, cancellationToken, nextAttemptAt); }
+    private async ValueTask<bool> FinishAsync(Guid jobId, int attempt, PlatformJobStatusV1 desired, PlatformJobAttemptOutcomeV1 outcome, string? error, string? result, CancellationToken ct, DateTimeOffset? next = null)
+    {
+        await using var c = await OpenAsync(ct); await using var tx = c.BeginTransaction(deferred: false); int max;
+        await using (var read = c.CreateCommand()) { read.Transaction = tx; read.CommandText = "SELECT max_attempts FROM platform_jobs WHERE job_id=$id AND status=$running AND attempt_count=$attempt"; read.Parameters.AddWithValue("$id", Id(jobId)); read.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); read.Parameters.AddWithValue("$attempt", attempt); var v = await read.ExecuteScalarAsync(ct); if (v is null) { await tx.RollbackAsync(ct); return false; } max = Convert.ToInt32(v, CultureInfo.InvariantCulture); }
+        var final = desired == PlatformJobStatusV1.Pending && attempt >= max ? PlatformJobStatusV1.DeadLettered : desired; var completed = DateTimeOffset.UtcNow;
+        int changed;
+        await using (var q = c.CreateCommand()) { q.Transaction = tx; q.CommandText = "UPDATE platform_jobs SET status=$status,completed_at=$completed,scheduled_at=$scheduled,result_json=$result,error_summary=$error,lease_expires_at=NULL,cancel_requested=0,terminal_audit_recorded=CASE WHEN $status IN ($failed,$dead) THEN 0 ELSE terminal_audit_recorded END WHERE job_id=$id AND status=$running AND attempt_count=$attempt AND ($outcome<>$success OR cancel_requested=0)"; q.Parameters.AddWithValue("$status", (int)final); q.Parameters.AddWithValue("$failed", (int)PlatformJobStatusV1.Failed); q.Parameters.AddWithValue("$dead", (int)PlatformJobStatusV1.DeadLettered); q.Parameters.AddWithValue("$completed", final == PlatformJobStatusV1.Pending ? DBNull.Value : Dt(completed)); q.Parameters.AddWithValue("$scheduled", Dt(final == PlatformJobStatusV1.Pending ? next ?? completed : completed)); q.Parameters.AddWithValue("$result", Db(result)); q.Parameters.AddWithValue("$error", Db(error)); q.Parameters.AddWithValue("$id", Id(jobId)); q.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); q.Parameters.AddWithValue("$attempt", attempt); q.Parameters.AddWithValue("$outcome", (int)outcome); q.Parameters.AddWithValue("$success", (int)PlatformJobAttemptOutcomeV1.Succeeded); changed = await q.ExecuteNonQueryAsync(ct); }
+        if (changed == 0) { await tx.RollbackAsync(ct); return false; }
+        await using (var q = c.CreateCommand()) { q.Transaction = tx; q.CommandText = "UPDATE platform_job_attempts SET completed_at=$completed,outcome=$outcome,error_summary=$error WHERE job_id=$id AND attempt_number=$attempt AND completed_at IS NULL"; q.Parameters.AddWithValue("$completed", Dt(completed)); q.Parameters.AddWithValue("$outcome", (int)outcome); q.Parameters.AddWithValue("$error", Db(error)); q.Parameters.AddWithValue("$id", Id(jobId)); q.Parameters.AddWithValue("$attempt", attempt); await q.ExecuteNonQueryAsync(ct); }
+        await tx.CommitAsync(ct); return true;
+    }
+    public async ValueTask<bool> RequestCancelAsync(Guid jobId, CancellationToken cancellationToken)
+    { await using var c = await OpenAsync(cancellationToken); await using var tx = c.BeginTransaction(deferred: false); var now = Dt(DateTimeOffset.UtcNow); await using var q = c.CreateCommand(); q.Transaction = tx; q.CommandText = "UPDATE platform_jobs SET status=CASE WHEN status=$pending THEN $cancelled ELSE status END,completed_at=CASE WHEN status=$pending THEN $now ELSE completed_at END,cancel_requested=CASE WHEN status=$running THEN 1 ELSE cancel_requested END WHERE job_id=$id AND status IN ($pending,$running)"; q.Parameters.AddWithValue("$pending", (int)PlatformJobStatusV1.Pending); q.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); q.Parameters.AddWithValue("$cancelled", (int)PlatformJobStatusV1.Cancelled); q.Parameters.AddWithValue("$now", now); q.Parameters.AddWithValue("$id", Id(jobId)); var changed = await q.ExecuteNonQueryAsync(cancellationToken) == 1; await tx.CommitAsync(cancellationToken); return changed; }
+    public async ValueTask<bool> IsCancellationRequestedAsync(Guid jobId, CancellationToken cancellationToken)
+    { await using var c = await OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "SELECT cancel_requested FROM platform_jobs WHERE job_id=$id AND status=$running"; q.Parameters.AddWithValue("$id", Id(jobId)); q.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); return Convert.ToInt32(await q.ExecuteScalarAsync(cancellationToken) ?? 0, CultureInfo.InvariantCulture) != 0; }
+    public async ValueTask<bool> RequeueAsync(Guid jobId, CancellationToken cancellationToken)
+    { await using var c = await OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "UPDATE platform_jobs SET status=$pending,scheduled_at=$now,completed_at=NULL,error_summary=NULL,max_attempts=MAX(max_attempts,attempt_count+1),terminal_audit_recorded=0 WHERE job_id=$id AND status IN ($failed,$dead)"; q.Parameters.AddWithValue("$pending", (int)PlatformJobStatusV1.Pending); q.Parameters.AddWithValue("$now", Dt(DateTimeOffset.UtcNow)); q.Parameters.AddWithValue("$id", Id(jobId)); q.Parameters.AddWithValue("$failed", (int)PlatformJobStatusV1.Failed); q.Parameters.AddWithValue("$dead", (int)PlatformJobStatusV1.DeadLettered); return await q.ExecuteNonQueryAsync(cancellationToken) == 1; }
+    public async ValueTask<IReadOnlyList<PlatformJobV1>> ListPendingTerminalAuditsAsync(int limit, CancellationToken cancellationToken)
+    { await using var c = await OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "SELECT * FROM platform_jobs WHERE status IN ($failed,$dead) AND terminal_audit_recorded=0 ORDER BY completed_at LIMIT $limit"; q.Parameters.AddWithValue("$failed", (int)PlatformJobStatusV1.Failed); q.Parameters.AddWithValue("$dead", (int)PlatformJobStatusV1.DeadLettered); q.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 200)); var result = new List<PlatformJobV1>(); await using var r = await q.ExecuteReaderAsync(cancellationToken); while (await r.ReadAsync(cancellationToken)) result.Add(ReadJob(r)); return result; }
+    public async ValueTask MarkTerminalAuditRecordedAsync(Guid jobId, CancellationToken cancellationToken)
+    { await using var c = await OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "UPDATE platform_jobs SET terminal_audit_recorded=1 WHERE job_id=$id AND status IN ($failed,$dead)"; q.Parameters.AddWithValue("$id", Id(jobId)); q.Parameters.AddWithValue("$failed", (int)PlatformJobStatusV1.Failed); q.Parameters.AddWithValue("$dead", (int)PlatformJobStatusV1.DeadLettered); await q.ExecuteNonQueryAsync(cancellationToken); }
+    public async ValueTask<PlatformJobHealthV1> GetHealthAsync(bool dispatcherActive, CancellationToken cancellationToken)
+    { await using var c = await OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "SELECT SUM(status=$pending),SUM(status=$running),SUM(status=$succeeded),SUM(status=$failed),SUM(status=$cancelled),SUM(status=$dead) FROM platform_jobs"; q.Parameters.AddWithValue("$pending", (int)PlatformJobStatusV1.Pending); q.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); q.Parameters.AddWithValue("$succeeded", (int)PlatformJobStatusV1.Succeeded); q.Parameters.AddWithValue("$failed", (int)PlatformJobStatusV1.Failed); q.Parameters.AddWithValue("$cancelled", (int)PlatformJobStatusV1.Cancelled); q.Parameters.AddWithValue("$dead", (int)PlatformJobStatusV1.DeadLettered); await using var r = await q.ExecuteReaderAsync(cancellationToken); await r.ReadAsync(cancellationToken); static long Count(SqliteDataReader row, int index) => row.IsDBNull(index) ? 0 : row.GetInt64(index); return new(true, dispatcherActive, Count(r,0), Count(r,1), Count(r,2), Count(r,3), Count(r,4), Count(r,5)); }
+
+    private async ValueTask<SqliteConnection> OpenAsync(CancellationToken ct) { var c = new SqliteConnection(connectionString); await c.OpenAsync(ct); return c; }
+    private static PlatformJobV1 ReadJob(SqliteDataReader r) => new(Guid.Parse(r.GetString(0)),r.GetString(1),(PlatformJobStatusV1)r.GetInt32(2),Parse(r.GetString(3)),Parse(r.GetString(4)),NullableDate(r,5),NullableDate(r,6),r.GetInt32(7),r.GetInt32(8),r.IsDBNull(9)?null:r.GetInt32(9),r.IsDBNull(10)?null:r.GetString(10),r.IsDBNull(11)?null:r.GetString(11),r.IsDBNull(12)?null:r.GetString(12),r.GetString(13),r.IsDBNull(14)?null:r.GetString(14),r.IsDBNull(15)?null:r.GetString(15),r.GetString(16),NullableDate(r,17));
+    private static DateTimeOffset? NullableDate(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : Parse(r.GetString(i));
+    private static DateTimeOffset Parse(string value) => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+    private static string Dt(DateTimeOffset value) => value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
+    private static string Id(Guid value) => value.ToString("D");
+    private static object Db(object? value) => value ?? DBNull.Value;
+}

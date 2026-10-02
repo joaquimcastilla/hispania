@@ -34,6 +34,7 @@
     <ProjectReference Include="..\..\infrastructure\persistence\inventory-sqlite\Hispania.Inventory.Persistence.Sqlite.csproj" />
     <ProjectReference Include="..\..\contracts\inventory\Hispania.Inventory.Contracts.csproj" />
     <ProjectReference Include="..\..\contracts\platform\Hispania.Platform.Contracts.csproj" />
+    <ProjectReference Include="..\..\application\platform\jobs\Hispania.Platform.Jobs.Application.csproj" />
     <ProjectReference Include="..\..\application\identity\Hispania.Identity.Application.csproj" />
     <ProjectReference Include="..\..\application\authorization\Hispania.Authorization.Application.csproj" />
     <ProjectReference Include="..\..\infrastructure\platform\persistence-sqlite\Hispania.Platform.Persistence.Sqlite.csproj" />

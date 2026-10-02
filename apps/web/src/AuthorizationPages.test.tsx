@@ -74,6 +74,26 @@ describe("Web authentication and protected routes", () => {
     expect(screen.queryByRole("button", { name: "Reproducir" })).not.toBeInTheDocument();
   });
 
+  it("protects Platform Jobs with session RBAC, displays safe metadata, and loads attempt history", async () => {
+    window.sessionStorage.setItem("hispania.identity.session", "opaque-session-token");
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input); requests.push(url);
+      if (url === "/api/identity/me") return response({ user, session, effectivePermissions: ["platform.jobs.read"] });
+      if (url === "/api/platform/jobs?limit=200") return response([{ jobId: "job-1", jobType: "platform.test.hash", status: "Succeeded", createdAt: "2026-10-02T10:00:00Z", scheduledAt: "2026-10-02T10:00:00Z", attemptCount: 1, maxAttempts: 3, executor: "local" }]);
+      if (url === "/api/platform/jobs/job-1/attempts") return response([{ attemptNumber: 1, startedAt: "2026-10-02T10:00:00Z", completedAt: "2026-10-02T10:00:01Z", outcome: "Succeeded", executor: "local" }]);
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+    window.history.replaceState({}, "", "/admin/jobs"); render(<App />);
+    expect(await screen.findByRole("heading", { name: "Background Jobs" })).toBeInTheDocument();
+    expect(await screen.findByText("platform.test.hash")).toBeInTheDocument();
+    expect(screen.getByText("local")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Intentos" }));
+    expect(await screen.findByText(/#1 · Succeeded · local/)).toBeInTheDocument();
+    expect(requests).toContain("/api/platform/jobs/job-1/attempts");
+  });
+
   it("does not treat platform.admin as an implicit Media or Inventory grant", async () => {
     window.sessionStorage.setItem("hispania.identity.session", "opaque-session-token");
     const requests: string[] = [];

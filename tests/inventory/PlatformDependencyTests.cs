@@ -10,6 +10,8 @@ using Hispania.Transcoding.FFmpeg;
 using Hispania.Library.Persistence.Sqlite;
 using Hispania.Platform.Contracts.Events;
 using Hispania.Platform.Contracts.Audit;
+using Hispania.Platform.Contracts.Jobs;
+using Hispania.Platform.Jobs.Application;
 using Hispania.Platform.Persistence.Sqlite;
 using Hispania.Authorization.Application;
 using Hispania.Runtime;
@@ -23,6 +25,8 @@ public sealed class PlatformDependencyTests
     public void PlatformAndInventoryAssembliesHaveNoCrossDomainImplementationReferences()
     {
         AssertNoForbiddenReferences(typeof(IPlatformEvent).Assembly, "Media", "Inventory", "Store");
+        AssertNoForbiddenReferences(typeof(IPlatformJobServiceV1).Assembly, "Media", "Inventory");
+        AssertNoForbiddenReferences(typeof(PlatformJobService).Assembly, "Media", "Inventory");
         AssertNoForbiddenReferences(typeof(IDurablePlatformEventBusV1).Assembly, "Media", "Inventory", "Store");
         AssertNoForbiddenReferences(typeof(SqliteDurablePlatformEventBus).Assembly, "Media", "Inventory", "Store");
         Assert.Contains(typeof(InventoryService).Assembly.GetReferencedAssemblies(), reference => reference.Name == typeof(IDurablePlatformEventBusV1).Assembly.GetName().Name);
@@ -69,7 +73,9 @@ public sealed class PlatformDependencyTests
         Assert.DoesNotContain("Inventory", assetsProject, StringComparison.OrdinalIgnoreCase);
         var worker = System.Reflection.Assembly.LoadFrom(Path.Combine(root, "apps", "worker-agent", "bin", configuration, "net10.0", "Hispania.WorkerAgent.dll"));
         AssertNoForbiddenReferences(worker, "FFmpeg", "Playback", "Inventory", "Media");
+        AssertNoForbiddenReferences(worker, "Platform.Jobs.Application");
         AssertNoForbiddenReferences(typeof(PersistentPlatformAssetStore).Assembly, "FFmpeg", "Playback", "Inventory", "Media", "Store");
+        AssertNoForbiddenReferences(typeof(SqlitePlatformJobStore).Assembly, "Media", "Inventory");
         Assert.DoesNotContain(typeof(IPlatformAuditWriter).GetMethods(), method => method.Name != "WriteAsync");
         Assert.DoesNotContain(typeof(IPlatformAuditReader).GetMethods(), method => method.Name != "QueryAsync");
 
@@ -87,6 +93,7 @@ public sealed class PlatformDependencyTests
             Assert.DoesNotContain("playback", path, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("transcoding-ffmpeg", path, StringComparison.OrdinalIgnoreCase);
         }
+        Assert.Contains(filter.RootElement.GetProperty("solution").GetProperty("projects").EnumerateArray(), project => project.GetString() == "application/platform/jobs/Hispania.Platform.Jobs.Application.csproj");
     }
 
     private static void AssertNoForbiddenReferences(System.Reflection.Assembly assembly, params string[] forbidden)

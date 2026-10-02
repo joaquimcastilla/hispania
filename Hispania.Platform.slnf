@@ -5,6 +5,7 @@
       "contracts/platform/Hispania.Platform.Contracts.csproj",
       "application/identity/Hispania.Identity.Application.csproj",
       "application/authorization/Hispania.Authorization.Application.csproj",
+      "application/platform/jobs/Hispania.Platform.Jobs.Application.csproj",
       "contracts/module-system/Hispania.ModuleSystem.Contracts.csproj",
       "core/kernel/Hispania.Kernel.csproj",
       "core/runtime/Hispania.Runtime.csproj",

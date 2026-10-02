@@ -344,6 +344,10 @@ Exports distinguish assigned, executed, completed, errors, timeouts, cancellatio
 
 New capabilities must opt in only after review. Shadow mode requires a read-only public operation and restricted read-only dependencies that can be verified; a native module declaration alone cannot constrain hidden file, network, database, or process effects. Scanners, migrations, shared persistence, and metadata writers are not eligible. Do not interpret shadow differences as defects without functional comparison rules. See ADR-0028 for the boundary and limitations.
 
+## Platform Background Jobs (Phase 13.5)
+
+Platform Jobs are durable commands/work, separate from Events (facts). Contracts and handlers use stable registered JobType IDs and bounded JSON; Platform persistence stores Jobs and attempt history in its own `jobs.sqlite`. The server currently registers the local `platform.test.hash` handler. A SQLite acquisition transaction and renewable lease coordinate local execution; handler code runs outside the transaction. Jobs support absolute scheduling, backoff/retry, cancellation requests, per-Job timeout, attempt history, idempotent creation keys, and stale Running recovery with at-least-once semantics. The server exposes session-RBAC admin APIs at `/api/platform/jobs` and the Web page `/admin/jobs`. WorkerAgent does not reference the Jobs implementation; a future adapter may connect through contracts. Payloads are omitted from admin list/detail and audit. Retention is not automatic. See [ADR-0034](adr/ADR-0034-platform-background-jobs.md) for failure status semantics and operational limits.
+
 El runtime debe poder evolucionar hacia múltiples implementaciones activas:
 
 ```text
