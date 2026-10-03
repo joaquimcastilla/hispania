@@ -34,6 +34,7 @@ public sealed class StorageProviderTests
             Assert.Equal(3, first.Metadata.Size);
             await Assert.ThrowsAsync<InvalidDataException>(async () => await provider.WriteAsync(new MemoryStream(new byte[9]), 8));
             Assert.Empty(Directory.EnumerateFiles(root, "*.partial", SearchOption.AllDirectories));
+            Assert.Empty(Directory.EnumerateFiles(root, "*.partial", SearchOption.TopDirectoryOnly));
 
             var concurrent = await Task.WhenAll(Enumerable.Range(0, 12).Select(index => provider.WriteAsync(new MemoryStream([(byte)index]), 8).AsTask()));
             Assert.Equal(12, concurrent.Select(item => item.Handle.Value).Distinct(StringComparer.Ordinal).Count());
@@ -134,6 +135,45 @@ public sealed class StorageProviderTests
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }
 
+    [Fact]
+    public async Task FailedMetadataSaveCompensatesByDeletingWrittenContent()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "hispania-storage-write-compensation-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var fileProvider = new FilesystemStorageProviderV1(root);
+            var store = new PersistentPlatformAssetStore(
+                new StorageProviderRegistryV1("filesystem", [fileProvider]), new FailingMetadataRepository(), 1024);
+            await Assert.ThrowsAsync<InvalidOperationException>(async () => await store.StoreAsync(
+                AssetType.Binary, "application/octet-stream", new MemoryStream([1, 2, 3]), new("test", "owner"), new("owner")));
+            Assert.Empty(Directory.EnumerateFiles(root, "*.blob", SearchOption.TopDirectoryOnly));
+            Assert.Empty(Directory.EnumerateFiles(root, "*.partial", SearchOption.TopDirectoryOnly));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task FailedContentDeleteLeavesAnOrphanAfterMetadataRemoval()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "hispania-storage-delete-compensation-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var contentRoot = Path.Combine(root, "objects");
+            var fileProvider = new FilesystemStorageProviderV1(contentRoot);
+            var metadata = new SqliteAssetMetadataRepository(Path.Combine(root, "assets.sqlite"));
+            var store = new PersistentPlatformAssetStore(
+                new StorageProviderRegistryV1("filesystem", [new DeleteFailingProvider(fileProvider)]), metadata, 1024);
+            var asset = await store.StoreAsync(AssetType.Binary, "application/octet-stream", new MemoryStream([4, 5, 6]), new("test", "owner"), new("owner"));
+            await Assert.ThrowsAsync<IOException>(async () => await store.DeleteAsync(asset.Id));
+            Assert.Null(await store.GetMetadataAsync(asset.Id));
+            Assert.Single(Directory.EnumerateFiles(contentRoot, "*.blob", SearchOption.TopDirectoryOnly));
+            await using var content = await fileProvider.OpenReadAsync(new StorageObjectHandle(asset.ContentHandle));
+            Assert.NotNull(content);
+            Assert.Equal(3, content!.Length);
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
     private sealed class TestStorageProvider : IStorageProviderV1
     {
         public string ProviderId => "memory";
@@ -143,5 +183,23 @@ public sealed class StorageProviderTests
         public ValueTask<bool> ExistsAsync(StorageObjectHandle handle, CancellationToken cancellationToken = default) => ValueTask.FromResult(false);
         public ValueTask<StorageObjectMetadata?> GetMetadataAsync(StorageObjectHandle handle, CancellationToken cancellationToken = default) => ValueTask.FromResult<StorageObjectMetadata?>(null);
         public ValueTask<StorageProviderHealth> CheckHealthAsync(CancellationToken cancellationToken = default) => ValueTask.FromResult(new StorageProviderHealth(true));
+    }
+
+    private sealed class DeleteFailingProvider(FilesystemStorageProviderV1 inner) : IStorageProviderV1
+    {
+        public string ProviderId => inner.ProviderId;
+        public ValueTask<(StorageObjectHandle Handle, StorageObjectMetadata Metadata)> WriteAsync(Stream content, long maximumBytes, CancellationToken cancellationToken = default) => inner.WriteAsync(content, maximumBytes, cancellationToken);
+        public ValueTask<Stream?> OpenReadAsync(StorageObjectHandle handle, CancellationToken cancellationToken = default) => inner.OpenReadAsync(handle, cancellationToken);
+        public ValueTask<bool> DeleteAsync(StorageObjectHandle handle, CancellationToken cancellationToken = default) => throw new IOException("Simulated storage delete failure.");
+        public ValueTask<bool> ExistsAsync(StorageObjectHandle handle, CancellationToken cancellationToken = default) => inner.ExistsAsync(handle, cancellationToken);
+        public ValueTask<StorageObjectMetadata?> GetMetadataAsync(StorageObjectHandle handle, CancellationToken cancellationToken = default) => inner.GetMetadataAsync(handle, cancellationToken);
+        public ValueTask<StorageProviderHealth> CheckHealthAsync(CancellationToken cancellationToken = default) => inner.CheckHealthAsync(cancellationToken);
+    }
+
+    private sealed class FailingMetadataRepository : IPlatformAssetMetadataRepository
+    {
+        public ValueTask SaveAsync(AssetMetadata metadata, CancellationToken cancellationToken = default) => ValueTask.FromException(new InvalidOperationException("Simulated metadata save failure."));
+        public ValueTask<AssetMetadata?> GetAsync(AssetId id, CancellationToken cancellationToken = default) => ValueTask.FromResult<AssetMetadata?>(null);
+        public ValueTask<bool> DeleteAsync(AssetId id, CancellationToken cancellationToken = default) => ValueTask.FromResult(false);
     }
 }
