@@ -13,16 +13,26 @@ public sealed class DistributedPlatformJobExecutor(IDistributedWorkCoordinatorV1
     public const string HashJobType = PlatformTestHashHandlerV1.TypeId;
     public const string HashCapabilityId = "platform.jobs.hash";
     public const string HashCapabilityVersion = "1.0";
+    public const string DelayJobType = PlatformTestDelayHandlerV1.TypeId;
+    public const string DelayCapabilityId = "platform.jobs.delay";
+    public const string DelayCapabilityVersion = "1.0";
     private static readonly DistributedCapabilityV1 HashCapability = new(HashCapabilityId, HashCapabilityVersion);
+    private static readonly DistributedCapabilityV1 DelayCapability = new(DelayCapabilityId, DelayCapabilityVersion);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly TimeSpan poll = pollInterval ?? TimeSpan.FromMilliseconds(50);
     private readonly TimeSpan preferredWait = preferredWait ?? TimeSpan.FromMilliseconds(750);
     private readonly ConcurrentDictionary<Guid, string> active = new();
 
-    public string? GetCapability(string jobType) => jobType == HashJobType ? $"{HashCapabilityId}@{HashCapabilityVersion}" : null;
+    private static DistributedCapabilityV1? CapabilityFor(string jobType) => jobType switch
+    {
+        HashJobType => HashCapability,
+        DelayJobType => DelayCapability,
+        _ => null
+    };
+    public string? GetCapability(string jobType) => CapabilityFor(jobType) is { } capability ? $"{capability.ContractId}@{capability.ContractVersion}" : null;
     public bool IsAvailable(string jobType)
     {
-        var capability = jobType == HashJobType ? HashCapability : null;
+        var capability = CapabilityFor(jobType);
         if (capability is null) return false;
         var now = DateTimeOffset.UtcNow;
         var workers = coordinator.ListWorkers().Where(worker => worker.Authorized && worker.Enabled && worker.Connected &&
@@ -34,9 +44,13 @@ public sealed class DistributedPlatformJobExecutor(IDistributedWorkCoordinatorV1
     }
 
     public async ValueTask<PlatformRemoteJobExecutionV1?> ExecuteAsync(PlatformJobV1 job, int attemptNumber, CancellationToken cancellationToken)
+        => await ExecuteAsync(job, attemptNumber, static (_, _) => ValueTask.CompletedTask, cancellationToken).ConfigureAwait(false);
+
+    public async ValueTask<PlatformRemoteJobExecutionV1?> ExecuteAsync(PlatformJobV1 job, int attemptNumber,
+        Func<PlatformRemoteJobExecutionV1, CancellationToken, ValueTask> onStarted, CancellationToken cancellationToken)
     {
-        var capability = HashCapability;
-        if (job.JobType != HashJobType) return null;
+        var capability = CapabilityFor(job.JobType);
+        if (capability is null) return null;
         if (!IsAvailable(job.JobType) && job.ExecutionPolicy == PlatformJobExecutionPolicyV1.RemotePreferred) return null;
         while (!IsAvailable(job.JobType)) await Task.Delay(poll, cancellationToken).ConfigureAwait(false);
         var remoteId = $"{job.JobId:N}-{attemptNumber}";
@@ -46,6 +60,7 @@ public sealed class DistributedPlatformJobExecutor(IDistributedWorkCoordinatorV1
         coordinator.Queue(request, allowRemote: true);
         active[job.JobId] = remoteId;
         var due = DateTimeOffset.UtcNow + preferredWait;
+        var reportedStart = false;
         try
         {
             while (true)
@@ -59,6 +74,11 @@ public sealed class DistributedPlatformJobExecutor(IDistributedWorkCoordinatorV1
                         ?? throw new InvalidDataException("Worker returned invalid Platform Job result metadata.");
                     return new(result, snapshot.NodeId ?? throw new InvalidDataException("Completed remote request has no worker identity."),
                         GetCapability(job.JobType)!, snapshot.Generation, $"{remoteId}:{snapshot.Generation}");
+                }
+                if (!reportedStart && snapshot.State is (DistributedJobStateV1.Assigned or DistributedJobStateV1.Running) && snapshot.NodeId is { } nodeId && snapshot.Generation > 0)
+                {
+                    await onStarted(new(null, nodeId, GetCapability(job.JobType)!, snapshot.Generation, $"{remoteId}:{snapshot.Generation}"), cancellationToken).ConfigureAwait(false);
+                    reportedStart = true;
                 }
                 if (snapshot.State is DistributedJobStateV1.Failed or DistributedJobStateV1.Uncertain)
                 {
@@ -89,7 +109,7 @@ public sealed class DistributedPlatformJobExecutor(IDistributedWorkCoordinatorV1
 /// <summary>Trusted, explicitly installed Platform test capability provider for the generic WorkerAgent.</summary>
 public sealed class PlatformJobsCapabilityProviderV1 : IDistributedWorkerCapabilityProviderV1
 {
-    public IReadOnlyCollection<IDistributedCapabilityHandlerV1> CreateHandlers(DistributedWorkerCapabilityContextV1 context) => [new HashJobCapabilityHandler()];
+    public IReadOnlyCollection<IDistributedCapabilityHandlerV1> CreateHandlers(DistributedWorkerCapabilityContextV1 context) => [new HashJobCapabilityHandler(), new DelayJobCapabilityHandler()];
 
     private sealed class HashJobCapabilityHandler : IDistributedCapabilityHandlerV1
     {
@@ -108,6 +128,26 @@ public sealed class PlatformJobsCapabilityProviderV1 : IDistributedWorkerCapabil
             var typed = JsonSerializer.Deserialize<PlatformTestHashPayloadV1>(payload, JsonOptions)
                 ?? throw new InvalidDataException("Platform Job capability payload is invalid.");
             var result = await handler.ExecuteAsync(typed, cancellationToken).ConfigureAwait(false);
+            return JsonSerializer.SerializeToElement(result, JsonOptions);
+        }
+    }
+
+    private sealed class DelayJobCapabilityHandler : IDistributedCapabilityHandlerV1
+    {
+        private static readonly DistributedCapabilityV1 Capability = new(DistributedPlatformJobExecutor.DelayCapabilityId, DistributedPlatformJobExecutor.DelayCapabilityVersion);
+        private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+        public IReadOnlyCollection<DistributedCapabilityV1> Capabilities { get; } = [Capability];
+        public async ValueTask<JsonElement> ExecuteAsync(DistributedJobRequestV1 request, long generation, CancellationToken cancellationToken)
+        {
+            if (request.ContractId != Capability.ContractId || request.ContractVersion != Capability.ContractVersion || request.Operation != "Execute")
+                throw new InvalidDataException("Unsupported Platform test delay operation.");
+            if (!request.Payload.TryGetProperty("payloadJson", out var raw) || raw.ValueKind != JsonValueKind.String)
+                throw new InvalidDataException("Platform test delay payload is invalid.");
+            var payloadJson = raw.GetString() ?? throw new InvalidDataException("Platform test delay payload is empty.");
+            if (System.Text.Encoding.UTF8.GetByteCount(payloadJson) > 4096) throw new InvalidDataException("Platform test delay payload exceeds the configured limit.");
+            var payload = JsonSerializer.Deserialize<PlatformTestDelayPayloadV1>(payloadJson, JsonOptions)
+                ?? throw new InvalidDataException("Platform test delay payload is invalid.");
+            var result = await new PlatformTestDelayHandlerV1().ExecuteAsync(payload, cancellationToken).ConfigureAwait(false);
             return JsonSerializer.SerializeToElement(result, JsonOptions);
         }
     }

@@ -137,7 +137,11 @@ public sealed class LocalPlatformJobDispatcher(IPlatformJobStoreV1 store, IPlatf
             if (job.ExecutionPolicy != PlatformJobExecutionPolicyV1.LocalOnly && remote?.GetCapability(job.JobType) is not null &&
                 (job.ExecutionPolicy == PlatformJobExecutionPolicyV1.RemoteOnly || remote.IsAvailable(job.JobType)))
             {
-                var remoteExecution = await remote.ExecuteAsync(job, job.AttemptCount, ct).ConfigureAwait(false);
+                var remoteExecution = await remote.ExecuteAsync(job, job.AttemptCount, async (progress, progressToken) =>
+                {
+                    _ = await store.SetExecutionDetailsAsync(job.JobId, job.AttemptCount, "remote", progress.WorkerId,
+                        progress.Capability, progress.Generation, progress.LeaseId, progressToken).ConfigureAwait(false);
+                }, ct).ConfigureAwait(false);
                 if (remoteExecution is null)
                 {
                     if (job.ExecutionPolicy == PlatformJobExecutionPolicyV1.RemoteOnly) throw new RemoteWorkerUnavailableException();

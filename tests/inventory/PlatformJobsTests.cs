@@ -158,6 +158,7 @@ public sealed class PlatformJobsTests
             var cancelled = await service.CreateAsync(new(PlatformTestHashHandlerV1.TypeId, "{}", ExecutionPolicy: PlatformJobExecutionPolicyV1.RemoteOnly));
             await remote.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.True(await service.CancelAsync(cancelled.Job.JobId));
+            Assert.False(await store.ExtendLeaseAsync(cancelled.Job.JobId, DateTimeOffset.UtcNow.AddMinutes(1), default));
             await EventuallyAsync(async () => (await service.GetAsync(cancelled.Job.JobId))?.Status == PlatformJobStatusV1.Cancelled);
             Assert.Equal(PlatformJobAttemptOutcomeV1.Cancelled, Assert.Single(await service.GetAttemptsAsync(cancelled.Job.JobId)).Outcome);
 

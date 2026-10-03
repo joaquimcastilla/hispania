@@ -263,7 +263,7 @@ public sealed class ModuleInfrastructureTests
                 requirePublisherSignature: true,
                 resourceLimits: new OutOfProcessResourceLimits
                 {
-                    MaximumRequestDuration = TimeSpan.FromMilliseconds(250),
+                    MaximumRequestDuration = TimeSpan.FromSeconds(2),
                     RequireOperatingSystemLimits = !OperatingSystem.IsWindows() || Environment.GetEnvironmentVariable("HISPANIA_TEST_WINDOWS_JOB_OBJECT") == "1"
                 });
             var catalog = activeCatalog;

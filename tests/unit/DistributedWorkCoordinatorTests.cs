@@ -41,6 +41,30 @@ public sealed class DistributedWorkCoordinatorTests
     }
 
     [Fact]
+    public void LeaseEligibilityRequiresAuthorizationCapabilityConnectionFreshHeartbeatAndCapacity()
+    {
+        var coordinator = new DistributedWorkCoordinator();
+        var limited = Inventory with { MaximumConcurrentJobs = 1 };
+        coordinator.AuthorizeWorker("worker-a", [Ffmpeg], CertificateThumbprint);
+        Assert.True(coordinator.RegisterWorker("worker-a", CertificateThumbprint, limited));
+        var now = DateTimeOffset.UtcNow;
+
+        Assert.Null(coordinator.Assign(Request("missing-capability", retrySafe: true) with { ContractId = "unregistered.capability" }, now, TimeSpan.FromSeconds(10), true));
+        var first = coordinator.Assign(Request("capacity-one", retrySafe: true), now, TimeSpan.FromSeconds(10), true);
+        Assert.NotNull(first);
+        Assert.Null(coordinator.Assign(Request("capacity-two", retrySafe: true), now, TimeSpan.FromSeconds(10), true));
+
+        coordinator.DisconnectWorker("worker-a", CertificateThumbprint);
+        Assert.Null(coordinator.Assign(Request("disconnected", retrySafe: true), now, TimeSpan.FromSeconds(10), true));
+        Assert.True(coordinator.RegisterWorker("worker-a", CertificateThumbprint, limited));
+        coordinator.ExpireLeases(now.AddSeconds(31));
+        Assert.Null(coordinator.Assign(Request("stale-heartbeat", retrySafe: true), now.AddSeconds(31), TimeSpan.FromSeconds(10), true));
+
+        coordinator.RevokeWorker("worker-a");
+        Assert.Null(coordinator.Assign(Request("revoked", retrySafe: true), now.AddSeconds(32), TimeSpan.FromSeconds(10), true));
+    }
+
+    [Fact]
     public async Task TwoAuthorizedWorkersCannotLeaseSameGenerationAndFailoverFencesLateResult()
     {
         var coordinator = RegisteredCoordinator();

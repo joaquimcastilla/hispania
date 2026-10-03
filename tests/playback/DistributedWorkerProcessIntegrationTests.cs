@@ -54,7 +54,8 @@ public sealed class DistributedWorkerProcessIntegrationTests
         var greetingCapability = new DistributedCapabilityV1(CapabilityId, CapabilityVersion);
         var ffmpegCapability = new DistributedCapabilityV1(DistributedFfmpegJobV1.ContractId, DistributedFfmpegJobV1.ContractVersion);
         var platformHashCapability = new DistributedCapabilityV1(DistributedPlatformJobExecutor.HashCapabilityId, DistributedPlatformJobExecutor.HashCapabilityVersion);
-        var capabilities = new[] { greetingCapability, ffmpegCapability, platformHashCapability };
+        var platformDelayCapability = new DistributedCapabilityV1(DistributedPlatformJobExecutor.DelayCapabilityId, DistributedPlatformJobExecutor.DelayCapabilityVersion);
+        var capabilities = new[] { greetingCapability, ffmpegCapability, platformHashCapability, platformDelayCapability };
         var clientThumbprint = Convert.ToHexString(SHA256.HashData(clientCertificate.RawData));
         coordinator.AuthorizeWorker(NodeId, capabilities, clientThumbprint);
         var builder = WebApplication.CreateBuilder();
@@ -130,7 +131,7 @@ public sealed class DistributedWorkerProcessIntegrationTests
             Assert.DoesNotContain(ffmpegCapability, genericWorker.Inventory!.Capabilities);
 
             var jobsStore = new SqlitePlatformJobStore(Path.Combine(root, "jobs.sqlite"));
-            var jobsRegistry = new PlatformJobHandlerRegistryV1().Register(new PlatformTestHashHandlerV1());
+            var jobsRegistry = new PlatformJobHandlerRegistryV1().Register(new PlatformTestHashHandlerV1()).Register(new PlatformTestDelayHandlerV1());
             var jobsOptions = new PlatformJobOptionsV1(PollInterval: TimeSpan.FromMilliseconds(25), ExecutionLease: TimeSpan.FromSeconds(5));
             var remoteJobs = new DistributedPlatformJobExecutor(coordinator, TimeSpan.FromMilliseconds(25), TimeSpan.FromMilliseconds(250));
             using var jobDispatcher = new LocalPlatformJobDispatcher(jobsStore, jobsRegistry, jobsOptions,
@@ -148,11 +149,55 @@ public sealed class DistributedWorkerProcessIntegrationTests
                 Assert.True(remoteJobDone.Generation > 0);
                 var remoteAttempt = Assert.Single(await jobService.GetAttemptsAsync(remoteJob.Job.JobId));
                 Assert.Equal("remote", remoteAttempt.ExecutorKind); Assert.Equal(NodeId, remoteAttempt.WorkerId); Assert.NotNull(remoteAttempt.LeaseId);
+                Assert.Equal(DistributedPlatformJobExecutor.HashCapabilityId + "@" + DistributedPlatformJobExecutor.HashCapabilityVersion, remoteAttempt.Capability);
+                Assert.True(remoteAttempt.Generation > 0); Assert.NotEqual(default, remoteAttempt.StartedAt); Assert.NotNull(remoteAttempt.CompletedAt);
+
+                var cancelRemote = await jobService.CreateAsync(new(PlatformTestDelayHandlerV1.TypeId, "{\"durationSeconds\":20}",
+                    ExecutionPolicy: PlatformJobExecutionPolicyV1.RemoteOnly));
+                var cancelAttemptWhileRunning = await WaitForRemotePlatformAttemptAsync(jobService, coordinator, cancelRemote.Job.JobId, TimeSpan.FromSeconds(10));
+                Assert.Equal("remote", cancelAttemptWhileRunning.ExecutorKind); Assert.Equal(NodeId, cancelAttemptWhileRunning.WorkerId);
+                Assert.Equal(DistributedPlatformJobExecutor.DelayCapabilityId + "@" + DistributedPlatformJobExecutor.DelayCapabilityVersion, cancelAttemptWhileRunning.Capability);
+                Assert.True(cancelAttemptWhileRunning.Generation > 0); Assert.NotNull(cancelAttemptWhileRunning.LeaseId);
+                Assert.True(await jobService.CancelAsync(cancelRemote.Job.JobId));
+                await WaitForPlatformJobAsync(jobService, cancelRemote.Job.JobId, PlatformJobStatusV1.Cancelled, TimeSpan.FromSeconds(10));
+                var cancelledAttempt = Assert.Single(await jobService.GetAttemptsAsync(cancelRemote.Job.JobId));
+                Assert.Equal(PlatformJobAttemptOutcomeV1.Cancelled, cancelledAttempt.Outcome); Assert.NotNull(cancelledAttempt.CompletedAt);
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                Assert.Equal(PlatformJobStatusV1.Cancelled, (await jobService.GetAsync(cancelRemote.Job.JobId))!.Status);
+
+                var timeoutRemote = await jobService.CreateAsync(new(PlatformTestDelayHandlerV1.TypeId, "{\"durationSeconds\":8}", MaxAttempts: 2,
+                    Timeout: TimeSpan.FromSeconds(3), ExecutionPolicy: PlatformJobExecutionPolicyV1.RemoteOnly));
+                await WaitForPlatformJobAsync(jobService, timeoutRemote.Job.JobId, PlatformJobStatusV1.DeadLettered, TimeSpan.FromSeconds(20));
+                var timeoutAttempts = await jobService.GetAttemptsAsync(timeoutRemote.Job.JobId);
+                Assert.Equal(2, timeoutAttempts.Count); Assert.All(timeoutAttempts, attempt => Assert.Equal(PlatformJobAttemptOutcomeV1.TimedOut, attempt.Outcome));
+                Assert.All(timeoutAttempts, attempt => { Assert.Equal("remote", attempt.ExecutorKind); Assert.Equal(NodeId, attempt.WorkerId); Assert.NotNull(attempt.Generation); Assert.NotNull(attempt.LeaseId); });
 
                 var preferredRemote = await jobService.CreateAsync(new(PlatformTestHashHandlerV1.TypeId,
                     "{\"text\":\"preferred-remote\",\"algorithm\":\"sha256\"}", ExecutionPolicy: PlatformJobExecutionPolicyV1.RemotePreferred));
                 var preferredRemoteDone = await WaitForPlatformJobAsync(jobService, preferredRemote.Job.JobId, PlatformJobStatusV1.Succeeded, TimeSpan.FromSeconds(10));
                 Assert.Equal("remote", preferredRemoteDone.Executor); Assert.Equal(NodeId, preferredRemoteDone.WorkerId);
+
+                var localOnly = await jobService.CreateAsync(new(PlatformTestHashHandlerV1.TypeId,
+                    "{\"text\":\"local-only\",\"algorithm\":\"sha256\"}", ExecutionPolicy: PlatformJobExecutionPolicyV1.LocalOnly));
+                var localOnlyDone = await WaitForPlatformJobAsync(jobService, localOnly.Job.JobId, PlatformJobStatusV1.Succeeded, TimeSpan.FromSeconds(10));
+                Assert.Equal("local", localOnlyDone.Executor); Assert.Null(localOnlyDone.WorkerId);
+
+                var crashRemote = await jobService.CreateAsync(new(PlatformTestDelayHandlerV1.TypeId, "{\"durationSeconds\":4}",
+                    ExecutionPolicy: PlatformJobExecutionPolicyV1.RemoteOnly));
+                var crashRemoteId = $"{crashRemote.Job.JobId:N}-1";
+                var firstGeneration = await WaitForJobAsync(coordinator, crashRemoteId, job => job.State == DistributedJobStateV1.Running,
+                    TimeSpan.FromSeconds(10), () => { lock (workerOutput) return workerOutput.ToString(); });
+                worker!.Kill(entireProcessTree: true); await worker.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)); worker.Dispose(); worker = null;
+                Assert.True(coordinator.DisconnectWorker(NodeId, clientThumbprint));
+                await WaitForJobAsync(coordinator, crashRemoteId, job => job.State == DistributedJobStateV1.Pending,
+                    TimeSpan.FromSeconds(15), () => "waiting for expired worker lease");
+                worker = StartWorker(processStart, workerOutput);
+                var crashRecovered = await WaitForJobAsync(coordinator, crashRemoteId,
+                    job => job.State == DistributedJobStateV1.Completed && job.Generation > firstGeneration.Generation,
+                    TimeSpan.FromSeconds(15), () => { lock (workerOutput) return workerOutput.ToString(); });
+                Assert.Equal(NodeId, crashRecovered.NodeId);
+                var crashRemoteDone = await WaitForPlatformJobAsync(jobService, crashRemote.Job.JobId, PlatformJobStatusV1.Succeeded, TimeSpan.FromSeconds(10));
+                Assert.Equal("remote", crashRemoteDone.Executor); Assert.True(crashRemoteDone.Generation > firstGeneration.Generation);
 
                 worker!.Kill(entireProcessTree: true); await worker.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)); worker.Dispose(); worker = null;
                 Assert.True(coordinator.DisconnectWorker(NodeId, clientThumbprint));
@@ -323,6 +368,21 @@ public sealed class DistributedWorkerProcessIntegrationTests
         }
         var last = await jobs.GetAsync(id);
         throw new TimeoutException($"Platform Job did not reach {status}; current status is {last?.Status} ({last?.ErrorMetadata}).");
+    }
+
+    private static async Task<PlatformJobAttemptV1> WaitForRemotePlatformAttemptAsync(PlatformJobService jobs, DistributedWorkCoordinator coordinator, Guid id, TimeSpan timeout)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var attempt = (await jobs.GetAttemptsAsync(id)).SingleOrDefault();
+            var remoteId = $"{id:N}-1";
+            var coordinatorJob = coordinator.ListJobs().SingleOrDefault(job => job.Request.JobId == remoteId);
+            if (attempt is { ExecutorKind: "remote", WorkerId: not null, Generation: > 0, LeaseId: not null } &&
+                coordinatorJob is { State: DistributedJobStateV1.Running }) return attempt;
+            await Task.Delay(50);
+        }
+        throw new TimeoutException("Remote Platform Job attempt did not persist its worker lease metadata.");
     }
 
     private static async Task DeleteDirectoryWithRetryAsync(string path)

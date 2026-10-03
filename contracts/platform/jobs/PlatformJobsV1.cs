@@ -78,6 +78,9 @@ public interface IPlatformRemoteJobExecutorV1
     string? GetCapability(string jobType);
     bool IsAvailable(string jobType);
     ValueTask<PlatformRemoteJobExecutionV1?> ExecuteAsync(PlatformJobV1 job, int attemptNumber, CancellationToken cancellationToken);
+    ValueTask<PlatformRemoteJobExecutionV1?> ExecuteAsync(PlatformJobV1 job, int attemptNumber,
+        Func<PlatformRemoteJobExecutionV1, CancellationToken, ValueTask> onStarted, CancellationToken cancellationToken) =>
+        ExecuteAsync(job, attemptNumber, cancellationToken);
     bool Cancel(Guid jobId);
 }
 
@@ -121,5 +124,19 @@ public sealed class PlatformTestHashHandlerV1 : IPlatformJobHandlerV1<PlatformTe
             _ => throw new InvalidDataException("Unsupported hash algorithm.")
         };
         return ValueTask.FromResult<PlatformJobResultMetadataV1?>(new("text/plain", null, new Dictionary<string, string> { ["hash"] = hash }));
+    }
+}
+
+/// <summary>Bounded cooperative delay used only to exercise remote cancellation and timeout paths.</summary>
+public sealed record PlatformTestDelayPayloadV1(int DurationSeconds);
+public sealed class PlatformTestDelayHandlerV1 : IPlatformJobHandlerV1<PlatformTestDelayPayloadV1>
+{
+    public const string TypeId = "platform.test.delay";
+    public string JobType => TypeId;
+    public async ValueTask<PlatformJobResultMetadataV1?> ExecuteAsync(PlatformTestDelayPayloadV1 payload, CancellationToken cancellationToken)
+    {
+        if (payload.DurationSeconds is < 1 or > 30) throw new InvalidDataException("Test delay must be between 1 and 30 seconds.");
+        await Task.Delay(TimeSpan.FromSeconds(payload.DurationSeconds), cancellationToken).ConfigureAwait(false);
+        return new("text/plain", null, new Dictionary<string, string> { ["completed"] = "true" });
     }
 }

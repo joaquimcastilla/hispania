@@ -90,7 +90,7 @@ public sealed class SqlitePlatformJobStore : IPlatformJobStoreV1
         AcquireNextAsync(now, lease, Enum.GetValues<PlatformJobExecutionPolicyV1>(), cancellationToken);
 
     public async ValueTask<bool> ExtendLeaseAsync(Guid jobId, DateTimeOffset expiresAt, CancellationToken cancellationToken)
-    { await using var c = await OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "UPDATE platform_jobs SET lease_expires_at=$lease WHERE job_id=$id AND status=$running"; q.Parameters.AddWithValue("$lease", Dt(expiresAt)); q.Parameters.AddWithValue("$id", Id(jobId)); q.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); return await q.ExecuteNonQueryAsync(cancellationToken) == 1; }
+    { await using var c = await OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "UPDATE platform_jobs SET lease_expires_at=$lease WHERE job_id=$id AND status=$running AND cancel_requested=0"; q.Parameters.AddWithValue("$lease", Dt(expiresAt)); q.Parameters.AddWithValue("$id", Id(jobId)); q.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); return await q.ExecuteNonQueryAsync(cancellationToken) == 1; }
     public async ValueTask<bool> CompleteAsync(Guid jobId, int attempt, string? resultJson, CancellationToken cancellationToken) => await FinishAsync(jobId, attempt, PlatformJobStatusV1.Succeeded, PlatformJobAttemptOutcomeV1.Succeeded, null, resultJson, cancellationToken);
     public async ValueTask<bool> SetExecutionDetailsAsync(Guid jobId, int attempt, string executorKind, string? workerId, string? capability, long? generation, string? leaseId, CancellationToken cancellationToken)
     {
