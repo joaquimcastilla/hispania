@@ -371,3 +371,7 @@ The ASP.NET endpoint filter centralizes `Session` validation and permission chec
 ## Domain authorization boundary
 
 Phase 13.3 keeps authorization enforcement at the HTTP composition root. Inventory publishes `inventory.read` and `inventory.write`; Media publishes `media.library.read`, `media.playback.use` and `media.admin`. The server applies the reusable Platform permission filter to domain routes, while domain contracts/application projects do not reference the Authorization implementation. Platform Authorization remains independent of Media and Inventory. See [ARCHITECTURE.md](ARCHITECTURE.md#phase-133-domain-authorization-integration) and [ADR-0032](adr/ADR-0032-platform-authorization-and-web-auth.md) for the permission catalog and the explicit legacy/public-route exceptions.
+
+## Platform Jobs and remote capabilities (Phase 13.6)
+
+Jobs Contracts and Application do not reference WorkerAgent implementation. A host-side adapter maps explicitly registered JobTypes to versioned Runtime capabilities and submits bounded payloads to the existing WorkerAgent coordinator protocol. `LocalOnly`, `RemotePreferred`, and `RemoteOnly` affect executor selection, not Job status. Jobs SQLite owns durable attempt/result acceptance; coordinator generations fence remote leases and Jobs attempt-number compare-and-set rejects late results. Remote execution is at-least-once. WorkerAgent only runs operator-installed trusted providers and does not own durable Jobs. See [ADR-0035](adr/ADR-0035-platform-remote-job-execution.md).

@@ -148,6 +148,7 @@ public sealed class DistributedWorkerAgent : IAsyncDisposable
     private void StartJob(DistributedLeasedJobV1 job, CancellationToken cancellationToken)
     {
         var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (job.Request.TimeoutSeconds is > 0) linked.CancelAfter(TimeSpan.FromSeconds(job.Request.TimeoutSeconds.Value));
         if (!active.TryAdd(job.Lease.JobId, (linked, Task.CompletedTask))) { linked.Dispose(); return; }
         var task = Task.Run(() => ExecuteJobAsync(job, linked), CancellationToken.None);
         active.TryUpdate(job.Lease.JobId, (linked, task), (linked, Task.CompletedTask));

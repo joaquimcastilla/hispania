@@ -352,7 +352,7 @@ public sealed class DistributedWorkCoordinator : IDistributedWorkCoordinatorV1
     private static bool SameRequest(DistributedJobRequestV1 left, DistributedJobRequestV1 right) =>
         left.JobId == right.JobId && left.ContractId == right.ContractId && left.ContractVersion == right.ContractVersion && left.Operation == right.Operation &&
         left.Payload.GetRawText() == right.Payload.GetRawText() && left.HasExternalSideEffects == right.HasExternalSideEffects &&
-        left.RetrySafe == right.RetrySafe && left.CorrelationId == right.CorrelationId;
+        left.RetrySafe == right.RetrySafe && left.CorrelationId == right.CorrelationId && left.TimeoutSeconds == right.TimeoutSeconds;
 
     private static string NormalizeThumbprint(string thumbprint) => thumbprint.Replace(":", string.Empty, StringComparison.Ordinal).Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
     private static bool TryNormalizeThumbprint(string? thumbprint, out string normalized)
@@ -375,6 +375,7 @@ public sealed class DistributedWorkCoordinator : IDistributedWorkCoordinatorV1
         ValidateId(request.JobId, nameof(request.JobId));
         if (string.IsNullOrWhiteSpace(request.ContractId) || request.ContractId.Length > 256 || string.IsNullOrWhiteSpace(request.ContractVersion) || request.ContractVersion.Length > 64 || string.IsNullOrWhiteSpace(request.Operation) || request.Operation.Length > 128)
             throw new ArgumentException("A bounded contract ID and version are required.", nameof(request));
+        if (request.TimeoutSeconds is <= 0 or > 86400) throw new ArgumentException("Distributed request timeout is outside the supported range.", nameof(request));
         if (JsonSerializer.SerializeToUtf8Bytes(request.Payload).Length > 1024 * 1024) throw new ArgumentException("Job payload exceeds the 1 MiB limit.", nameof(request));
     }
 

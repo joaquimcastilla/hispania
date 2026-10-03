@@ -6,17 +6,22 @@ namespace Hispania.Platform.Contracts.Jobs;
 
 public enum PlatformJobStatusV1 { Pending, Running, Succeeded, Failed, Cancelled, DeadLettered }
 public enum PlatformJobAttemptOutcomeV1 { Succeeded, Failed, Cancelled, TimedOut, Recovered, Running }
+public enum PlatformJobExecutionPolicyV1 { LocalOnly, RemotePreferred, RemoteOnly }
 
 public sealed record PlatformJobV1(Guid JobId, string JobType, PlatformJobStatusV1 Status, DateTimeOffset CreatedAt,
     DateTimeOffset ScheduledAt, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt, int AttemptCount,
     int MaxAttempts, int? TimeoutSeconds, string? CorrelationId, string? CausationId, string? IdempotencyKey,
     string PayloadJson, string? ResultMetadataJson, string? ErrorMetadata, string Executor,
-    DateTimeOffset? LeaseExpiresAt);
+    DateTimeOffset? LeaseExpiresAt, PlatformJobExecutionPolicyV1 ExecutionPolicy = PlatformJobExecutionPolicyV1.LocalOnly,
+    string? WorkerId = null, string? Capability = null, long? Generation = null, string? LeaseId = null);
 public sealed record PlatformJobListItemV1(Guid JobId, string JobType, PlatformJobStatusV1 Status,
     DateTimeOffset CreatedAt, DateTimeOffset ScheduledAt, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
-    int AttemptCount, int MaxAttempts, string Executor, string? ErrorSummary);
+    int AttemptCount, int MaxAttempts, string Executor, string? ErrorSummary,
+    PlatformJobExecutionPolicyV1 ExecutionPolicy = PlatformJobExecutionPolicyV1.LocalOnly, string? WorkerId = null,
+    string? Capability = null, long? Generation = null);
 public sealed record PlatformJobAttemptV1(Guid AttemptId, Guid JobId, int AttemptNumber, DateTimeOffset StartedAt,
-    DateTimeOffset? CompletedAt, PlatformJobAttemptOutcomeV1 Outcome, string? ErrorSummary, string Executor);
+    DateTimeOffset? CompletedAt, PlatformJobAttemptOutcomeV1 Outcome, string? ErrorSummary, string Executor,
+    string ExecutorKind = "local", string? WorkerId = null, string? Capability = null, long? Generation = null, string? LeaseId = null);
 public sealed record PlatformJobResultMetadataV1(string? ContentType = null, string? OpaqueResultRef = null,
     IReadOnlyDictionary<string, string>? Metadata = null);
 public sealed record PlatformJobOptionsV1(int MaximumPayloadBytes = 262144, int MaximumResultMetadataBytes = 8192,
@@ -36,7 +41,9 @@ public sealed record PlatformJobOptionsV1(int MaximumPayloadBytes = 262144, int 
 }
 public sealed record CreatePlatformJobV1(string JobType, string PayloadJson, DateTimeOffset? ScheduledAt = null,
     int? MaxAttempts = null, TimeSpan? Timeout = null, string? CorrelationId = null, string? CausationId = null,
-    string? IdempotencyKey = null, string? RequestedBy = null);
+    string? IdempotencyKey = null, string? RequestedBy = null, PlatformJobExecutionPolicyV1 ExecutionPolicy = PlatformJobExecutionPolicyV1.LocalOnly);
+public sealed record PlatformRemoteJobExecutionV1(PlatformJobResultMetadataV1? Result, string WorkerId,
+    string Capability, long Generation, string LeaseId);
 public sealed record PlatformJobCreateResultV1(PlatformJobV1 Job, bool Duplicate);
 public sealed record PlatformJobHealthV1(bool StoreAccessible, bool DispatcherActive, long Pending, long Running,
     long Succeeded, long Failed, long Cancelled, long DeadLettered);
@@ -63,6 +70,15 @@ public interface IPlatformJobHandlerRegistryV1
 {
     bool Contains(string jobType);
     ValueTask<PlatformJobResultMetadataV1?> ExecuteAsync(string jobType, string payloadJson, CancellationToken cancellationToken);
+}
+
+/// <summary>Public bridge to an explicitly allowlisted remote capability; the implementation belongs to the host adapter.</summary>
+public interface IPlatformRemoteJobExecutorV1
+{
+    string? GetCapability(string jobType);
+    bool IsAvailable(string jobType);
+    ValueTask<PlatformRemoteJobExecutionV1?> ExecuteAsync(PlatformJobV1 job, int attemptNumber, CancellationToken cancellationToken);
+    bool Cancel(Guid jobId);
 }
 
 /// <summary>Explicit allowlisted registry; durable data never chooses a CLR type.</summary>

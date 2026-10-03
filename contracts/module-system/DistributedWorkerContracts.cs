@@ -29,7 +29,8 @@ public sealed record DistributedJobRequestV1(
     JsonElement Payload,
     bool HasExternalSideEffects = false,
     bool RetrySafe = false,
-    string? CorrelationId = null);
+    string? CorrelationId = null,
+    int? TimeoutSeconds = null);
 
 public sealed record DistributedJobLeaseV1(
     string JobId,

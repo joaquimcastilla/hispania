@@ -13,8 +13,10 @@ using Hispania.Platform.Contracts.Audit;
 using Hispania.Platform.Contracts.Jobs;
 using Hispania.Platform.Jobs.Application;
 using Hispania.Platform.Persistence.Sqlite;
+using Hispania.Platform.WorkerAgentJobs;
 using Hispania.Authorization.Application;
 using Hispania.Runtime;
+using Hispania.ModuleSystem.Contracts;
 using Xunit;
 
 namespace Hispania.Inventory.Tests;
@@ -27,6 +29,9 @@ public sealed class PlatformDependencyTests
         AssertNoForbiddenReferences(typeof(IPlatformEvent).Assembly, "Media", "Inventory", "Store");
         AssertNoForbiddenReferences(typeof(IPlatformJobServiceV1).Assembly, "Media", "Inventory");
         AssertNoForbiddenReferences(typeof(PlatformJobService).Assembly, "Media", "Inventory");
+        AssertNoForbiddenReferences(typeof(DistributedPlatformJobExecutor).Assembly, "Media", "Inventory", "Platform.Persistence", "Jobs.Application");
+        Assert.Contains(typeof(DistributedPlatformJobExecutor).Assembly.GetReferencedAssemblies(), reference => reference.Name == typeof(IDistributedWorkCoordinatorV1).Assembly.GetName().Name);
+        AssertNoForbiddenReferences(typeof(DistributedPlatformJobExecutor).Assembly, "Hispania.WorkerAgent", "Hispania.Server");
         AssertNoForbiddenReferences(typeof(IDurablePlatformEventBusV1).Assembly, "Media", "Inventory", "Store");
         AssertNoForbiddenReferences(typeof(SqliteDurablePlatformEventBus).Assembly, "Media", "Inventory", "Store");
         Assert.Contains(typeof(InventoryService).Assembly.GetReferencedAssemblies(), reference => reference.Name == typeof(IDurablePlatformEventBusV1).Assembly.GetName().Name);

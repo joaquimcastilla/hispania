@@ -18,6 +18,10 @@ using Hispania.Runtime;
 using Hispania.Transcoding.FFmpeg;
 using Hispania.Transcoding.Worker.Contracts;
 using Hispania.Server;
+using Hispania.Platform.Contracts.Jobs;
+using Hispania.Platform.Jobs.Application;
+using Hispania.Platform.Persistence.Sqlite;
+using Hispania.Platform.WorkerAgentJobs;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -49,7 +53,8 @@ public sealed class DistributedWorkerProcessIntegrationTests
         var coordinator = new DistributedWorkCoordinator();
         var greetingCapability = new DistributedCapabilityV1(CapabilityId, CapabilityVersion);
         var ffmpegCapability = new DistributedCapabilityV1(DistributedFfmpegJobV1.ContractId, DistributedFfmpegJobV1.ContractVersion);
-        var capabilities = new[] { greetingCapability, ffmpegCapability };
+        var platformHashCapability = new DistributedCapabilityV1(DistributedPlatformJobExecutor.HashCapabilityId, DistributedPlatformJobExecutor.HashCapabilityVersion);
+        var capabilities = new[] { greetingCapability, ffmpegCapability, platformHashCapability };
         var clientThumbprint = Convert.ToHexString(SHA256.HashData(clientCertificate.RawData));
         coordinator.AuthorizeWorker(NodeId, capabilities, clientThumbprint);
         var builder = WebApplication.CreateBuilder();
@@ -108,6 +113,7 @@ public sealed class DistributedWorkerProcessIntegrationTests
             processStart.Environment["DistributedWorker__LeaseSeconds"] = "5";
             processStart.Environment["DistributedWorker__HeartbeatSeconds"] = "1";
             processStart.Environment["DistributedWorker__PollMilliseconds"] = "50";
+            processStart.Environment["DistributedWorker__CapabilityProviderAssemblies__0"] = typeof(PlatformJobsCapabilityProviderV1).Assembly.Location;
             processStart.Environment["DistributedWorker__MaximumConcurrentJobs"] = "1";
             processStart.Environment["Modules__WorkerExtensionIds__0"] = CapabilityId;
             processStart.Environment["Modules__ExtensionsPath"] = extensionRoot;
@@ -122,6 +128,47 @@ public sealed class DistributedWorkerProcessIntegrationTests
             Assert.Equal("http-trace-1", firstCompleted.Request.CorrelationId);
             var genericWorker = Assert.Single(coordinator.ListWorkers());
             Assert.DoesNotContain(ffmpegCapability, genericWorker.Inventory!.Capabilities);
+
+            var jobsStore = new SqlitePlatformJobStore(Path.Combine(root, "jobs.sqlite"));
+            var jobsRegistry = new PlatformJobHandlerRegistryV1().Register(new PlatformTestHashHandlerV1());
+            var jobsOptions = new PlatformJobOptionsV1(PollInterval: TimeSpan.FromMilliseconds(25), ExecutionLease: TimeSpan.FromSeconds(5));
+            var remoteJobs = new DistributedPlatformJobExecutor(coordinator, TimeSpan.FromMilliseconds(25), TimeSpan.FromMilliseconds(250));
+            using var jobDispatcher = new LocalPlatformJobDispatcher(jobsStore, jobsRegistry, jobsOptions,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<LocalPlatformJobDispatcher>.Instance, remote: remoteJobs);
+            var jobService = new PlatformJobService(jobsStore, jobsRegistry, jobsOptions, execution: jobDispatcher, remote: remoteJobs);
+            await jobDispatcher.StartAsync(CancellationToken.None);
+            try
+            {
+                var remoteJob = await jobService.CreateAsync(new(PlatformTestHashHandlerV1.TypeId,
+                    "{\"text\":\"remote-proof\",\"algorithm\":\"sha256\"}", CorrelationId: "platform-job-trace",
+                    ExecutionPolicy: PlatformJobExecutionPolicyV1.RemoteOnly));
+                var remoteJobDone = await WaitForPlatformJobAsync(jobService, remoteJob.Job.JobId, PlatformJobStatusV1.Succeeded, TimeSpan.FromSeconds(15));
+                Assert.Equal("remote", remoteJobDone.Executor); Assert.Equal(NodeId, remoteJobDone.WorkerId);
+                Assert.Equal(DistributedPlatformJobExecutor.HashCapabilityId + "@" + DistributedPlatformJobExecutor.HashCapabilityVersion, remoteJobDone.Capability);
+                Assert.True(remoteJobDone.Generation > 0);
+                var remoteAttempt = Assert.Single(await jobService.GetAttemptsAsync(remoteJob.Job.JobId));
+                Assert.Equal("remote", remoteAttempt.ExecutorKind); Assert.Equal(NodeId, remoteAttempt.WorkerId); Assert.NotNull(remoteAttempt.LeaseId);
+
+                var preferredRemote = await jobService.CreateAsync(new(PlatformTestHashHandlerV1.TypeId,
+                    "{\"text\":\"preferred-remote\",\"algorithm\":\"sha256\"}", ExecutionPolicy: PlatformJobExecutionPolicyV1.RemotePreferred));
+                var preferredRemoteDone = await WaitForPlatformJobAsync(jobService, preferredRemote.Job.JobId, PlatformJobStatusV1.Succeeded, TimeSpan.FromSeconds(10));
+                Assert.Equal("remote", preferredRemoteDone.Executor); Assert.Equal(NodeId, preferredRemoteDone.WorkerId);
+
+                worker!.Kill(entireProcessTree: true); await worker.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)); worker.Dispose(); worker = null;
+                Assert.True(coordinator.DisconnectWorker(NodeId, clientThumbprint));
+                var waitingRemote = await jobService.CreateAsync(new(PlatformTestHashHandlerV1.TypeId, "{\"text\":\"wait\",\"algorithm\":\"sha256\"}", ExecutionPolicy: PlatformJobExecutionPolicyV1.RemoteOnly));
+                await Task.Delay(300);
+                Assert.Equal(PlatformJobStatusV1.Pending, (await jobService.GetAsync(waitingRemote.Job.JobId))!.Status);
+                Assert.Empty(await jobService.GetAttemptsAsync(waitingRemote.Job.JobId));
+                var fallback = await jobService.CreateAsync(new(PlatformTestHashHandlerV1.TypeId, "{\"text\":\"fallback\",\"algorithm\":\"sha256\"}", ExecutionPolicy: PlatformJobExecutionPolicyV1.RemotePreferred));
+                var fallbackDone = await WaitForPlatformJobAsync(jobService, fallback.Job.JobId, PlatformJobStatusV1.Succeeded, TimeSpan.FromSeconds(5));
+                Assert.Equal("local", fallbackDone.Executor);
+                worker = StartWorker(processStart, workerOutput);
+                await WaitForWorkerCapabilityAsync(coordinator, platformHashCapability, TimeSpan.FromSeconds(10));
+                var resumed = await WaitForPlatformJobAsync(jobService, waitingRemote.Job.JobId, PlatformJobStatusV1.Succeeded, TimeSpan.FromSeconds(15));
+                Assert.Equal("remote", resumed.Executor); Assert.Equal(1, resumed.AttemptCount);
+            }
+            finally { await jobDispatcher.StopAsync(CancellationToken.None); }
             worker!.Kill(entireProcessTree: true);
             await worker.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
             worker.Dispose(); worker = null;
@@ -263,6 +310,19 @@ public sealed class DistributedWorkerProcessIntegrationTests
                 Assert.Empty(Directory.EnumerateFiles(directory, pattern));
             await Task.Delay(25);
         }
+    }
+
+    private static async Task<PlatformJobV1> WaitForPlatformJobAsync(PlatformJobService jobs, Guid id, PlatformJobStatusV1 status, TimeSpan timeout)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var current = await jobs.GetAsync(id);
+            if (current?.Status == status) return current;
+            await Task.Delay(25);
+        }
+        var last = await jobs.GetAsync(id);
+        throw new TimeoutException($"Platform Job did not reach {status}; current status is {last?.Status} ({last?.ErrorMetadata}).");
     }
 
     private static async Task DeleteDirectoryWithRetryAsync(string path)

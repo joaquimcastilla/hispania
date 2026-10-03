@@ -41,6 +41,35 @@ public sealed class DistributedWorkCoordinatorTests
     }
 
     [Fact]
+    public async Task TwoAuthorizedWorkersCannotLeaseSameGenerationAndFailoverFencesLateResult()
+    {
+        var coordinator = RegisteredCoordinator();
+        coordinator.AuthorizeWorker("worker-b", [Ffmpeg], new string('2', 64));
+        Assert.True(coordinator.RegisterWorker("worker-b", new string('2', 64), Inventory));
+        var now = DateTimeOffset.UtcNow;
+        var request = Request("two-workers", retrySafe: true);
+        coordinator.Queue(request, allowRemote: true);
+        var firstA = Task.Run(() => coordinator.LeaseNext("worker-a", now, TimeSpan.FromSeconds(10)));
+        var firstB = Task.Run(() => coordinator.LeaseNext("worker-b", now, TimeSpan.FromSeconds(10)));
+        var firstLeases = await Task.WhenAll(firstA, firstB);
+        var first = Assert.Single(firstLeases, static lease => lease is not null)!;
+        Assert.True(coordinator.Start(first.Lease.NodeId, first.Lease.JobId, first.Lease.Generation));
+
+        Assert.Equal(1, coordinator.ExpireLeases(now.AddSeconds(11)));
+        Assert.True(coordinator.RegisterWorker("worker-a", CertificateThumbprint, Inventory));
+        Assert.True(coordinator.RegisterWorker("worker-b", new string('2', 64), Inventory));
+        var secondA = Task.Run(() => coordinator.LeaseNext("worker-a", now.AddSeconds(12), TimeSpan.FromSeconds(10)));
+        var secondB = Task.Run(() => coordinator.LeaseNext("worker-b", now.AddSeconds(12), TimeSpan.FromSeconds(10)));
+        var secondLeases = await Task.WhenAll(secondA, secondB);
+        var second = Assert.Single(secondLeases, static lease => lease is not null)!;
+        Assert.True(second.Lease.Generation > first.Lease.Generation);
+        Assert.True(coordinator.Start(second.Lease.NodeId, second.Lease.JobId, second.Lease.Generation));
+        Assert.True(coordinator.Complete(second.Lease.NodeId, second.Lease.JobId, second.Lease.Generation, JsonSerializer.SerializeToElement("current")));
+        Assert.False(coordinator.Complete(first.Lease.NodeId, first.Lease.JobId, first.Lease.Generation, JsonSerializer.SerializeToElement("late")));
+        Assert.Equal("current", coordinator.ListJobs().Single().Result?.GetString());
+    }
+
+    [Fact]
     public void LeaseExpiryMarksNonIdempotentWorkUncertainAndNeverSelectsSideEffects()
     {
         var coordinator = RegisteredCoordinator();

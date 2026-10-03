@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>Hispania.Platform.WorkerAgentJobs</AssemblyName><RootNamespace>Hispania.Platform.WorkerAgentJobs</RootNamespace></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\contracts\platform\Hispania.Platform.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\core\runtime\Hispania.Runtime.csproj" />
+  </ItemGroup>
+</Project>

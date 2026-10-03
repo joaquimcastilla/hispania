@@ -17,17 +17,21 @@ public static class PlatformJobEndpoints
                 if (!Enum.TryParse<PlatformJobStatusV1>(status, true, out var value)) return Results.BadRequest(new { error = "invalid_status" });
                 parsed = value;
             }
-            return Results.Ok(await jobs.ListAsync(parsed, limit ?? 100, ct));
+            var rows = await jobs.ListAsync(parsed, limit ?? 100, ct);
+            return Results.Ok(rows.Select(job => new { job.JobId, job.JobType, Status = job.Status.ToString(), job.CreatedAt, job.ScheduledAt,
+                job.StartedAt, job.CompletedAt, job.AttemptCount, job.MaxAttempts, job.Executor, job.ErrorSummary,
+                ExecutionPolicy = job.ExecutionPolicy.ToString(), job.WorkerId, job.Capability, job.Generation }));
         }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.JobsRead, allowLegacyAdminBearer: false));
         group.MapPost("", async (CreateJobRequest request, HttpContext http, IPlatformJobServiceV1 jobs, CancellationToken ct) =>
         {
             try
             {
                 if (request.Payload.ValueKind == JsonValueKind.Undefined) return Results.BadRequest(new { error = "payload_required" });
+                if (!Enum.TryParse<PlatformJobExecutionPolicyV1>(request.ExecutionPolicy ?? nameof(PlatformJobExecutionPolicyV1.LocalOnly), true, out var executionPolicy)) return Results.BadRequest(new { error = "invalid_execution_policy" });
                 var payload = request.Payload.GetRawText();
                 var created = await jobs.CreateAsync(new(request.JobType, payload, request.ScheduledAt, request.MaxAttempts,
                     request.TimeoutSeconds is null ? null : TimeSpan.FromSeconds(request.TimeoutSeconds.Value),
-                    Correlation(http), request.CausationId, request.IdempotencyKey, AuthorizationEndpointFilters.AuthenticatedUserId(http)?.Value.ToString("D")), ct);
+                    Correlation(http), request.CausationId, request.IdempotencyKey, AuthorizationEndpointFilters.AuthenticatedUserId(http)?.Value.ToString("D"), executionPolicy), ct);
                 var response = View(created.Job);
                 return created.Duplicate ? Results.Ok(response) : Results.Accepted($"/api/platform/jobs/{created.Job.JobId:D}", response);
             }
@@ -55,9 +59,10 @@ public static class PlatformJobEndpoints
     {
         job.JobId, job.JobType, Status = job.Status.ToString(), job.CreatedAt, job.ScheduledAt, job.StartedAt,
         job.CompletedAt, job.AttemptCount, job.MaxAttempts, job.TimeoutSeconds, job.CorrelationId, job.CausationId,
-        job.ResultMetadataJson, job.ErrorMetadata, job.Executor, job.LeaseExpiresAt
+        job.ResultMetadataJson, job.ErrorMetadata, job.Executor, job.LeaseExpiresAt,
+        ExecutionPolicy = job.ExecutionPolicy.ToString(), job.WorkerId, job.Capability, job.Generation, job.LeaseId
     };
     private static string? Correlation(HttpContext http) => http.Request.Headers["X-Correlation-ID"].FirstOrDefault() ?? System.Diagnostics.Activity.Current?.TraceId.ToString();
     public sealed record CreateJobRequest(string JobType, JsonElement Payload, DateTimeOffset? ScheduledAt = null,
-        int? MaxAttempts = null, int? TimeoutSeconds = null, string? CausationId = null, string? IdempotencyKey = null);
+        int? MaxAttempts = null, int? TimeoutSeconds = null, string? CausationId = null, string? IdempotencyKey = null, string? ExecutionPolicy = null);
 }

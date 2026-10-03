@@ -43,6 +43,19 @@ public sealed class PlatformJobsTests
     }
 
     [Fact]
+    public async Task RemoteOnlyJobWaitsUntilRemoteExecutorIsEligibleForAcquisition()
+    {
+        using var temp = new JobTemp(); var store = new SqlitePlatformJobStore(temp.File("jobs.sqlite")); var now = DateTimeOffset.UtcNow;
+        var job = new PlatformJobV1(Guid.NewGuid(), PlatformTestHashHandlerV1.TypeId, PlatformJobStatusV1.Pending,
+            now, now, null, null, 0, 3, null, "trace-remote-only", null, null,
+            "{\"text\":\"abc\",\"algorithm\":\"sha256\"}", null, null, "local", null, PlatformJobExecutionPolicyV1.RemoteOnly);
+        await store.CreateAsync(job, default);
+        Assert.Null(await store.AcquireNextAsync(now, TimeSpan.FromSeconds(5), [PlatformJobExecutionPolicyV1.LocalOnly, PlatformJobExecutionPolicyV1.RemotePreferred], default));
+        Assert.Equal(PlatformJobStatusV1.Pending, (await store.GetAsync(job.JobId, default))!.Status);
+        Assert.NotNull(await store.AcquireNextAsync(now, TimeSpan.FromSeconds(5), [PlatformJobExecutionPolicyV1.RemoteOnly], default));
+    }
+
+    [Fact]
     public async Task CompetingSqliteExecutorsAcquireAJobOnlyOnce()
     {
         using var temp = new JobTemp(); var path = temp.File("jobs.sqlite");
@@ -67,6 +80,8 @@ public sealed class PlatformJobsTests
         Assert.Collection(attempts, a => Assert.Equal(PlatformJobAttemptOutcomeV1.Recovered, a.Outcome), a => Assert.Null(a.CompletedAt));
         await afterRestart.CompleteAsync(created.Job.JobId, 2, "{}", default);
         Assert.Equal(PlatformJobStatusV1.Succeeded, (await afterRestart.GetAsync(created.Job.JobId, default))!.Status);
+        Assert.False(await afterRestart.CompleteAsync(created.Job.JobId, 1, "{\"late\":true}", default));
+        Assert.Equal("{}", (await afterRestart.GetAsync(created.Job.JobId, default))!.ResultMetadataJson);
     }
 
     [Fact]
@@ -130,6 +145,30 @@ public sealed class PlatformJobsTests
         finally { await dispatcher.StopAsync(CancellationToken.None); }
     }
 
+    [Fact]
+    public async Task RemoteOnlyCancellationAndTimeoutStayOwnedByPlatformJobStore()
+    {
+        using var temp = new JobTemp(); var store = new SqlitePlatformJobStore(temp.File("jobs.sqlite")); var remote = new BlockingRemoteJobExecutor();
+        var registry = Registry(); var options = new PlatformJobOptionsV1(MaximumAttempts: 1, PollInterval: TimeSpan.FromMilliseconds(5), ExecutionLease: TimeSpan.FromSeconds(2));
+        using var dispatcher = new LocalPlatformJobDispatcher(store, registry, options, NullLogger<LocalPlatformJobDispatcher>.Instance, remote: remote);
+        var service = new PlatformJobService(store, registry, options, execution: dispatcher, remote: remote);
+        await dispatcher.StartAsync(default);
+        try
+        {
+            var cancelled = await service.CreateAsync(new(PlatformTestHashHandlerV1.TypeId, "{}", ExecutionPolicy: PlatformJobExecutionPolicyV1.RemoteOnly));
+            await remote.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(await service.CancelAsync(cancelled.Job.JobId));
+            await EventuallyAsync(async () => (await service.GetAsync(cancelled.Job.JobId))?.Status == PlatformJobStatusV1.Cancelled);
+            Assert.Equal(PlatformJobAttemptOutcomeV1.Cancelled, Assert.Single(await service.GetAttemptsAsync(cancelled.Job.JobId)).Outcome);
+
+            var timedOut = await service.CreateAsync(new(PlatformTestHashHandlerV1.TypeId, "{}", MaxAttempts: 1,
+                Timeout: TimeSpan.FromMilliseconds(200), ExecutionPolicy: PlatformJobExecutionPolicyV1.RemoteOnly));
+            await EventuallyAsync(async () => (await service.GetAsync(timedOut.Job.JobId))?.Status == PlatformJobStatusV1.DeadLettered);
+            Assert.Equal(PlatformJobAttemptOutcomeV1.TimedOut, Assert.Single(await service.GetAttemptsAsync(timedOut.Job.JobId)).Outcome);
+        }
+        finally { await dispatcher.StopAsync(CancellationToken.None); }
+    }
+
     private static PlatformJobService Service(IPlatformJobStoreV1 store) => new(store, Registry(), new PlatformJobOptionsV1());
     private static PlatformJobHandlerRegistryV1 Registry() => new PlatformJobHandlerRegistryV1().Register(new PlatformTestHashHandlerV1());
     private static CreatePlatformJobV1 HashRequest(int maxAttempts = 3) => new(PlatformTestHashHandlerV1.TypeId, "{\"text\":\"abc\",\"algorithm\":\"sha256\"}", MaxAttempts: maxAttempts);
@@ -150,6 +189,15 @@ public sealed class PlatformJobsTests
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public async ValueTask<PlatformJobResultMetadataV1?> ExecuteAsync(Dictionary<string, string> payload, CancellationToken cancellationToken)
         { Started.TrySetResult(); await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); return null; }
+    }
+    private sealed class BlockingRemoteJobExecutor : IPlatformRemoteJobExecutorV1
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public string? GetCapability(string jobType) => jobType == PlatformTestHashHandlerV1.TypeId ? "platform.jobs.hash@1.0" : null;
+        public bool IsAvailable(string jobType) => jobType == PlatformTestHashHandlerV1.TypeId;
+        public async ValueTask<PlatformRemoteJobExecutionV1?> ExecuteAsync(PlatformJobV1 job, int attemptNumber, CancellationToken cancellationToken)
+        { Started.TrySetResult(); await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); return null; }
+        public bool Cancel(Guid jobId) => true;
     }
     private sealed class JobTemp : IDisposable
     {
