@@ -4,7 +4,7 @@
 
 `Hispania.Platform.Contracts` contains cross-domain mechanisms and public abstractions. It must not reference Media or Inventory. `Hispania.Runtime` implements generic runtime facilities; domain behavior remains in its owning suite. Media is currently expressed through `core/domain`, `contracts/{library,metadata,playback}`, and their application services and adapters. See [ADR-0030](adr/ADR-0030-platform-generalization-and-domain-suites.md) for dependency boundaries and validation.
 
-The first platform contracts cover versioned in-process events, audit records, opaque asset references, and Identity. Identity owns users, credentials, and sessions in a dedicated SQLite store; it uses PBKDF2 password hashes and hashed opaque session tokens. Its HTTP routes are a Phase 13.1 demonstration and coexist with the legacy admin bearer. General authorization is deferred to Phase 13.2; see [ADR-0031](adr/ADR-0031-platform-identity-foundation.md). `LocalPlatformEventBus` remains volatile, sequential in-process dispatch; durable delivery is a separate at-least-once Platform contract and SQLite store. Asset interfaces do not reveal physical paths; storage and authorization implementations are still host responsibilities.
+The first platform contracts cover versioned in-process events, audit records, opaque asset references, Identity, and Storage V1. Identity owns users, credentials, and sessions in a dedicated SQLite store; it uses PBKDF2 password hashes and hashed opaque session tokens. `LocalPlatformEventBus` remains volatile, sequential in-process dispatch; durable delivery is a separate at-least-once Platform contract and SQLite store. Platform Assets resolve opaque Storage handles through the explicitly composed provider registry; the filesystem provider owns path derivation and never returns paths. See [ADR-0036](adr/ADR-0036-platform-storage-provider-abstraction.md).
 
 Inventory is composed as a second suite: `contracts/inventory` -> `application/inventory` -> Inventory-owned `infrastructure/persistence/inventory-sqlite`. Its SQLite file/tables are separate from Library, and only Inventory tables have relational constraints. Inventory keeps opaque Platform `AssetId` references and publishes versioned events; the server composes queries and Assets for `/erp/inventory`. This is an ERP foundation and second-domain proof, not a complete ERP. `Hispania.Platform.slnf` builds Platform contracts, runtime, generic WorkerAgent, and Platform persistence without Media, Playback, FFmpeg, or Inventory implementation.
 
@@ -364,7 +364,8 @@ HISPANIA Platform
 Inventory stores opaque asset references only. `apps/server` composes Inventory, Platform Assets, and the optional Media video capability. Platform stores asset metadata in its own SQLite database and bytes under a separate content root; Audit has a separate append-only SQLite database. Media library data remains under its existing persistence provider. The solution filter builds Platform contracts/runtime/host, generic WorkerAgent and Platform persistence without Inventory or Media implementations.
 
 ```text
-Inventory item → AssetRef → Platform Assets → (if video/mp4 and public) Media asset stream capability
+Inventory item → AssetRef → Platform Assets → Storage handle → selected Storage provider
+Platform Assets → (if video/mp4 and public) Media asset stream capability
 ```
 
 Server and WorkerAgent are composition roots. They assemble public contracts with concrete adapters and providers; domain projects may reference Platform contracts but cannot reference peer-domain implementations. FFmpeg is discovered by WorkerAgent through the generic Runtime provider interface and configured provider assembly list.

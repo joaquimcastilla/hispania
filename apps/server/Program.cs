@@ -16,6 +16,9 @@ using Hispania.Inventory.Application;
 using Hispania.Inventory.Contracts;
 using Hispania.Inventory.Persistence.Sqlite;
 using Hispania.Platform.Contracts.Assets;
+using Hispania.Platform.Contracts.Storage;
+using Hispania.Platform.Storage.Application;
+using Hispania.Platform.Storage.Filesystem;
 using Hispania.Platform.Contracts.Audit;
 using Hispania.Platform.Contracts.Events;
 using Hispania.Platform.Contracts.Jobs;
@@ -57,6 +60,10 @@ builder.Services.AddSingleton(sp => new Hispania.Platform.Contracts.Events.Durab
 builder.Services.AddSingleton<InventoryStockEventObserver>();
 builder.Services.AddSingleton<IPlatformEventPublisher, DurablePlatformEventPublisher>();
 builder.Services.AddHostedService<DurablePlatformEventDispatcher>();
+var storageRoot = builder.Configuration["Storage:Providers:Filesystem:Root"] ?? builder.Configuration["Platform:Assets:ContentPath"] ?? Path.Combine(platformDataPath, "assets");
+var storageDefaultProvider = builder.Configuration["Storage:DefaultProvider"] ?? "filesystem";
+builder.Services.AddSingleton<IStorageProviderV1>(_ => new FilesystemStorageProviderV1(storageRoot));
+builder.Services.AddSingleton<IStorageProviderResolverV1>(sp => new StorageProviderRegistryV1(storageDefaultProvider, sp.GetServices<IStorageProviderV1>()));
 var jobOptions = new PlatformJobOptionsV1(
     builder.Configuration.GetValue("Platform:Jobs:MaximumPayloadBytes", 262144),
     builder.Configuration.GetValue("Platform:Jobs:MaximumResultMetadataBytes", 8192),
@@ -76,7 +83,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<LocalPlatformJobDi
 builder.Services.AddSingleton<IPlatformJobServiceV1, PlatformJobService>();
 builder.Services.AddPlatformSqlitePersistence(
     builder.Configuration["Platform:Assets:MetadataPath"] ?? Path.Combine(platformDataPath, "assets.sqlite"),
-    builder.Configuration["Platform:Assets:ContentPath"] ?? Path.Combine(platformDataPath, "assets"),
+    storageRoot,
     builder.Configuration["Platform:Audit:Path"] ?? Path.Combine(platformDataPath, "audit.sqlite"),
     builder.Configuration.GetValue("Platform:Assets:MaximumBytes", 100L * 1024 * 1024));
 var identityLifetime = TimeSpan.FromMinutes(builder.Configuration.GetValue("Identity:SessionLifetimeMinutes", 720));

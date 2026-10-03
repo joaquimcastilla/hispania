@@ -23,7 +23,8 @@ public sealed record AssetMetadata(
     string ContentHandle = "",
     AssetStatus Status = AssetStatus.Ready,
     DateTimeOffset CreatedAtUtc = default,
-    DateTimeOffset UpdatedAtUtc = default);
+    DateTimeOffset UpdatedAtUtc = default,
+    string ProviderId = "");
 
 public sealed record AssetReference(AssetId Id);
 
@@ -33,13 +34,6 @@ public interface IPlatformAssetStore
     ValueTask<AssetMetadata?> GetMetadataAsync(AssetId id, CancellationToken cancellationToken = default);
     ValueTask<Stream?> OpenReadAsync(AssetId id, CancellationToken cancellationToken = default);
     ValueTask<bool> DeleteAsync(AssetId id, CancellationToken cancellationToken = default);
-}
-
-public interface IPlatformAssetContentProvider
-{
-    ValueTask<string> StoreAsync(Stream content, long maximumBytes, CancellationToken cancellationToken = default);
-    ValueTask<Stream?> OpenReadAsync(string handle, CancellationToken cancellationToken = default);
-    ValueTask DeleteAsync(string handle, CancellationToken cancellationToken = default);
 }
 
 public interface IPlatformAssetMetadataRepository

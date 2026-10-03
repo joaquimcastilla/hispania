@@ -3,6 +3,7 @@ using System.Text;
 using Hispania.Platform.Contracts.Assets;
 using Hispania.Platform.Contracts.Audit;
 using Hispania.Platform.Contracts.Authorization;
+using Hispania.Platform.Contracts.Storage;
 
 namespace Hispania.Server;
 
@@ -38,13 +39,18 @@ public static class PlatformEndpoints
         {
             var asset = await assets.GetMetadataAsync(new(id), ct); if (asset is null) return Results.NotFound();
             if (!asset.AccessPolicy.PublicRead && !await IsAdminAsync(http, config, ct)) return Results.Unauthorized();
-            var stream = await assets.OpenReadAsync(new(id), ct); return stream is null ? Results.NotFound() : Results.Stream(stream, asset.MimeType, enableRangeProcessing: true);
+            try { var stream = await assets.OpenReadAsync(new(id), ct); return stream is null ? Results.NotFound() : Results.Stream(stream, asset.MimeType, enableRangeProcessing: true); }
+            catch (StorageProviderNotFoundException) { return Results.Problem("The asset storage provider is unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable); }
         });
         group.MapDelete("/{id:guid}", async (Guid id, HttpContext http, IPlatformAssetStore assets, IPlatformAuditWriter audit, CancellationToken ct) =>
         {
-            var deleted = await assets.DeleteAsync(new(id), ct);
-            if (deleted) await audit.WriteAsync(new(DateTimeOffset.UtcNow, "admin", Correlation(http), "platform.assets", "asset-deleted", "asset", id.ToString("D"), "success", new Dictionary<string, string>()), ct);
-            return deleted ? Results.NoContent() : Results.NotFound();
+            try
+            {
+                var deleted = await assets.DeleteAsync(new(id), ct);
+                if (deleted) await audit.WriteAsync(new(DateTimeOffset.UtcNow, "admin", Correlation(http), "platform.assets", "asset-deleted", "asset", id.ToString("D"), "success", new Dictionary<string, string>()), ct);
+                return deleted ? Results.NoContent() : Results.NotFound();
+            }
+            catch (StorageProviderNotFoundException) { return Results.Problem("The asset storage provider is unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable); }
         }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.AssetsWrite));
         return endpoints;
     }
@@ -72,8 +78,8 @@ public static class PlatformEndpoints
         {
             var asset = await assets.GetMetadataAsync(new(id), ct);
             if (asset is null || asset.Type != AssetType.Video || !asset.MimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)) return Results.NotFound();
-            var stream = await assets.OpenReadAsync(new(id), ct);
-            return stream is null ? Results.NotFound() : Results.Stream(stream, asset.MimeType, enableRangeProcessing: true);
+            try { var stream = await assets.OpenReadAsync(new(id), ct); return stream is null ? Results.NotFound() : Results.Stream(stream, asset.MimeType, enableRangeProcessing: true); }
+            catch (StorageProviderNotFoundException) { return Results.Problem("The asset storage provider is unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable); }
         }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(Hispania.Library.Contracts.MediaPermissionIds.PlaybackUse, allowLegacyAdminBearer: false));
         return endpoints;
     }
