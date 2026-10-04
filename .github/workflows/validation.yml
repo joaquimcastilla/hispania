@@ -53,6 +53,18 @@ jobs:
         run: dotnet build Hispania.Platform.slnf
       - name: Require Inventory, persistence, API restart, and architecture coverage
         run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj
+      - name: Require Platform Admin RBAC, safe projections, expiry and partial-failure recovery
+        shell: pwsh
+        run: |
+          dotnet test tests/inventory/Hispania.Inventory.Tests.csproj --no-build --filter FullyQualifiedName~PlatformAdminProjectionsRequireSessionPermissionsAndExcludePrivateMetadata --logger "trx;LogFileName=required-platform-admin.trx"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $trx = [xml](Get-Content -Raw tests/inventory/TestResults/required-platform-admin.trx -ErrorAction Stop)
+          $results = @($trx.TestRun.Results.UnitTestResult)
+          if (@($results | Where-Object { $_.testName -like '*PlatformAdminProjectionsRequireSessionPermissionsAndExcludePrivateMetadata*' -and $_.outcome -eq 'Passed' }).Count -ne 1) { throw 'Platform Admin integration test must be discovered and pass.' }
+          if (@($results | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'Platform Admin tests must pass without skips.' }
+      - name: Require Platform Admin Web permissions and Modern/Classic parity
+        run: npm test -- src/AdminShell.test.tsx src/AuthorizationPages.test.tsx src/ObservabilityPage.test.tsx --reporter=verbose
+        working-directory: apps/web
       - name: Require Observability correlation, tracing, concurrent metrics, health and administrative RBAC
         shell: pwsh
         run: |
@@ -151,6 +163,18 @@ jobs:
         run: dotnet build Hispania.Platform.slnf
       - name: Require Inventory, persistence, API restart, and architecture coverage
         run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj
+      - name: Require Platform Admin RBAC, safe projections, expiry and partial-failure recovery
+        shell: pwsh
+        run: |
+          dotnet test tests/inventory/Hispania.Inventory.Tests.csproj --no-build --filter FullyQualifiedName~PlatformAdminProjectionsRequireSessionPermissionsAndExcludePrivateMetadata --logger "trx;LogFileName=required-platform-admin.trx"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $trx = [xml](Get-Content -Raw tests/inventory/TestResults/required-platform-admin.trx -ErrorAction Stop)
+          $results = @($trx.TestRun.Results.UnitTestResult)
+          if (@($results | Where-Object { $_.testName -like '*PlatformAdminProjectionsRequireSessionPermissionsAndExcludePrivateMetadata*' -and $_.outcome -eq 'Passed' }).Count -ne 1) { throw 'Platform Admin integration test must be discovered and pass.' }
+          if (@($results | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'Platform Admin tests must pass without skips.' }
+      - name: Require Platform Admin Web permissions and Modern/Classic parity
+        run: npm test -- src/AdminShell.test.tsx src/AuthorizationPages.test.tsx src/ObservabilityPage.test.tsx --reporter=verbose
+        working-directory: apps/web
       - name: Require Observability correlation, tracing, concurrent metrics, health and administrative RBAC
         shell: pwsh
         run: |

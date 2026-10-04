@@ -50,6 +50,32 @@ public sealed partial class ServerProcessRestartTests
             Assert.Equal("Healthy", overviewJson.RootElement.GetProperty("storageStatus").GetString());
             Assert.True(overviewJson.RootElement.GetProperty("modules").GetProperty("total").GetInt32() > 0);
 
+            // Fault injection stays in test fixtures; the production projection only uses contracts.
+            foreach (var subsystem in new[] { "Events", "Jobs" })
+            {
+                async Task RenameStoreTableAsync(bool unavailable)
+                {
+                    if (subsystem == "Events") { await RenameDeliveryTableAsync(root, unavailable); return; }
+                    await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "platform", "jobs.sqlite") }.ToString());
+                    await connection.OpenAsync(); await using var command = connection.CreateCommand();
+                    command.CommandText = unavailable ? "ALTER TABLE platform_jobs RENAME TO unavailable_jobs" : "ALTER TABLE unavailable_jobs RENAME TO platform_jobs";
+                    await command.ExecuteNonQueryAsync();
+                }
+                await RenameStoreTableAsync(true);
+                try
+                {
+                    using var degraded = await SendAsync(HttpMethod.Get, paths[0]); degraded.EnsureSuccessStatusCode();
+                    var degradedText = await degraded.Content.ReadAsStringAsync(); using var degradedJson = JsonDocument.Parse(degradedText);
+                    Assert.Equal("Unhealthy", degradedJson.RootElement.GetProperty("status").GetString());
+                    Assert.Equal(JsonValueKind.Null, degradedJson.RootElement.GetProperty(subsystem == "Jobs" ? "pendingJobs" : "deadLetterEvents").ValueKind);
+                    Assert.Equal("Healthy", degradedJson.RootElement.GetProperty("storageStatus").GetString());
+                    Assert.DoesNotContain("SqliteException", degradedText, StringComparison.Ordinal); Assert.DoesNotContain(root, degradedText, StringComparison.Ordinal);
+                }
+                finally { await RenameStoreTableAsync(false); }
+                using var recovered = await SendAsync(HttpMethod.Get, paths[0]); recovered.EnsureSuccessStatusCode();
+                using var recoveredJson = JsonDocument.Parse(await recovered.Content.ReadAsStringAsync()); Assert.Equal("Healthy", recoveredJson.RootElement.GetProperty("status").GetString());
+            }
+
             using var upload = new HttpRequestMessage(HttpMethod.Post, "/api/assets") { Content = new StringContent("private-content") };
             upload.Headers.Authorization = new("Session", session); upload.Content.Headers.ContentType = new("text/plain");
             upload.Headers.Add("X-Asset-Type", "Document"); upload.Headers.Add("X-Asset-Domain", "private-domain"); upload.Headers.Add("X-Asset-Owner", "private-owner");
@@ -81,6 +107,41 @@ public sealed partial class ServerProcessRestartTests
             using var partial = await SendAsync(HttpMethod.Get, paths[0], token: observerToken); partial.EnsureSuccessStatusCode(); using var partialJson = JsonDocument.Parse(await partial.Content.ReadAsStringAsync());
             Assert.Equal(JsonValueKind.Null, partialJson.RootElement.GetProperty("activeUsers").ValueKind); Assert.Equal(JsonValueKind.Null, partialJson.RootElement.GetProperty("modules").ValueKind);
             using var deniedAction = await SendAsync(HttpMethod.Post, "/api/platform/admin/modules/unknown/activate", token: observerToken); Assert.Equal(HttpStatusCode.Forbidden, deniedAction.StatusCode);
+            using var scheduled = await SendAsync(HttpMethod.Post, "/api/platform/jobs", new { jobType = "platform.test.hash", payload = new { text = "private scheduled job", algorithm = "sha256" }, scheduledAt = DateTimeOffset.UtcNow.AddHours(1) }); scheduled.EnsureSuccessStatusCode();
+            using var scheduledJson = JsonDocument.Parse(await scheduled.Content.ReadAsStringAsync()); var jobId = scheduledJson.RootElement.GetProperty("jobId").GetGuid();
+            foreach (var area in new[] { "jobs", "events", "users" })
+            {
+                var username = "Read" + area;
+                using var readerUserResponse = await SendAsync(HttpMethod.Post, "/api/identity/users", new { username, displayName = username, password = "isolated read-only test passphrase" }); readerUserResponse.EnsureSuccessStatusCode();
+                using var readerUserJson = JsonDocument.Parse(await readerUserResponse.Content.ReadAsStringAsync()); var readerId = readerUserJson.RootElement.GetProperty("id").GetProperty("value").GetGuid();
+                using var readerRoleResponse = await SendAsync(HttpMethod.Post, "/api/authorization/roles", new { name = "read-" + area, description = "Isolated read-only role" }); readerRoleResponse.EnsureSuccessStatusCode();
+                using var readerRoleJson = JsonDocument.Parse(await readerRoleResponse.Content.ReadAsStringAsync()); var readerRoleId = readerRoleJson.RootElement.GetProperty("id").GetProperty("value").GetGuid();
+                using var readPermission = await SendAsync(HttpMethod.Put, $"/api/authorization/roles/{readerRoleId:D}/permissions/platform.{area}.read"); readPermission.EnsureSuccessStatusCode();
+                using var readAssignment = await SendAsync(HttpMethod.Post, $"/api/authorization/users/{readerId:D}/roles/{readerRoleId:D}"); readAssignment.EnsureSuccessStatusCode();
+                using var readerLogin = await client.PostAsJsonAsync("/api/identity/login", new { username, password = "isolated read-only test passphrase" }); readerLogin.EnsureSuccessStatusCode();
+                using var readerLoginJson = JsonDocument.Parse(await readerLogin.Content.ReadAsStringAsync()); var readerToken = readerLoginJson.RootElement.GetProperty("sessionToken").GetString()!;
+                var readPath = area == "jobs" ? "/api/platform/jobs" : area == "events" ? "/internal/admin/events/deliveries" : "/api/authorization/users";
+                using var read = await SendAsync(HttpMethod.Get, readPath, token: readerToken); read.EnsureSuccessStatusCode();
+                var readText = await read.Content.ReadAsStringAsync(); Assert.DoesNotContain("payloadJson", readText, StringComparison.OrdinalIgnoreCase); Assert.DoesNotContain("passwordHash", readText, StringComparison.OrdinalIgnoreCase); Assert.DoesNotContain(readerToken, readText, StringComparison.Ordinal);
+                if (area == "jobs")
+                {
+                    foreach (var suffix in new[] { "", "/attempts" }) { using var detail = await SendAsync(HttpMethod.Get, $"/api/platform/jobs/{jobId:D}{suffix}", token: readerToken); detail.EnsureSuccessStatusCode(); }
+                    foreach (var operation in new[] { "cancel", "retry" }) { using var denied = await SendAsync(HttpMethod.Post, $"/api/platform/jobs/{jobId:D}/{operation}", token: readerToken); Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode); }
+                }
+                else if (area == "events")
+                {
+                    using var denied = await SendAsync(HttpMethod.Post, $"/internal/admin/events/deliveries/{Guid.NewGuid():D}/replay", token: readerToken); Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+                    // Raw payload/attempt APIs retain their pre-existing manage guard; read uses delivery metadata.
+                    using var payloadDenied = await SendAsync(HttpMethod.Get, $"/internal/admin/events/{Guid.NewGuid():D}", token: readerToken); Assert.Equal(HttpStatusCode.Forbidden, payloadDenied.StatusCode);
+                }
+                else
+                {
+                    using var detail = await SendAsync(HttpMethod.Get, $"/api/authorization/users/{userId:D}/roles", token: readerToken); detail.EnsureSuccessStatusCode();
+                    using var denied = await SendAsync(HttpMethod.Patch, $"/api/authorization/users/{observerId:D}/status", new { enabled = false }, readerToken); Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+                }
+                using var moduleDenied = await SendAsync(HttpMethod.Get, paths[1], token: readerToken); Assert.Equal(HttpStatusCode.Forbidden, moduleDenied.StatusCode);
+                using var overviewDenied = await SendAsync(HttpMethod.Get, paths[0], token: readerToken); Assert.Equal(HttpStatusCode.Forbidden, overviewDenied.StatusCode);
+            }
             using var revoked = await SendAsync(HttpMethod.Post, "/api/identity/logout", token: observerToken); revoked.EnsureSuccessStatusCode();
             using var expired = await SendAsync(HttpMethod.Get, paths[0], token: observerToken); Assert.Equal(HttpStatusCode.Unauthorized, expired.StatusCode);
             foreach (var text in new[] { overviewText, assetText, moduleText })

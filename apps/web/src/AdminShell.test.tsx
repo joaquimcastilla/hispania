@@ -29,6 +29,42 @@ it("opens only Jobs for a partial administrator entering /admin", async () => {
   expect(nav.getAllByRole("link")).toHaveLength(1); expect(nav.getByRole("link", { name: "Jobs" })).toHaveAttribute("aria-current", "page");
   expect(window.location.pathname).toBe("/admin/jobs"); expect(fetch.mock.calls.filter(call => String(call[0]) === "/api/identity/me")).toHaveLength(1);
 });
+it.each([
+  ["modern", "platform.events.read", "Eventos", "/admin/events", "Entregas de eventos"],
+  ["classic", "platform.events.read", "Eventos", "/admin/events", "Entregas de eventos"],
+  ["modern", "platform.users.read", "Usuarios", "/admin/users", "Usuarios"],
+  ["classic", "platform.users.read", "Usuarios", "/admin/users", "Usuarios"],
+] as const)("isolates %s %s navigation and controls", async (variant, permission, label, path, heading) => {
+  const fetch = setup("/admin", [permission]); render(<App variant={variant} />);
+  expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
+  const nav = within(screen.getByRole("navigation", { name: "Administración" }));
+  expect(nav.getAllByRole("link")).toHaveLength(1); expect(nav.getByRole("link", { name: label })).toHaveAttribute("aria-current", "page");
+  expect(window.location.pathname).toBe(path);
+  for (const name of ["Reproducir", "Habilitar", "Deshabilitar", "Crear", "Cancelar", "Reintentar"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+  expect(fetch.mock.calls.filter(call => String(call[0]) === "/api/identity/me")).toHaveLength(1);
+  expect(fetch.mock.calls.some(call => String(call[0]) === "/api/authorization/roles")).toBe(false);
+});
+it.each([false, true])("gates event attempts/replay and filters retrying deliveries (%s)", async manage => {
+  const fetch = setup("/admin/events", ["platform.events.read", ...(manage ? ["platform.events.manage"] : [])], path => {
+    if (path.endsWith("/attempts")) return response([{ attemptNumber: 1, outcome: "DeadLettered", finishedAt: "2026-10-04T12:00:00Z", error: "private event failure" }]);
+    if (path.endsWith("/replay")) return response(null, 202);
+    return response([{ deliveryId: "delivery1", eventId: "event1", eventType: "test.event", subscriberId: "subscriber", status: "DeadLettered", attemptCount: 1, lastError: "private event failure" }]);
+  });
+  render(<App />); await screen.findByText("test.event"); const actor = userEvent.setup();
+  if (manage) {
+    await actor.click(screen.getByRole("button", { name: "Intentos" })); expect(await screen.findByText(/#1 · DeadLettered/)).toBeInTheDocument();
+    await actor.click(screen.getByRole("button", { name: "Reproducir" })); await waitFor(() => expect(fetch.mock.calls.some(call => String(call[0]).endsWith("/replay"))).toBe(true));
+  } else { expect(screen.queryByRole("button", { name: "Reproducir" })).not.toBeInTheDocument(); expect(screen.queryByRole("button", { name: "Intentos" })).not.toBeInTheDocument(); }
+  expect(screen.queryByText("private event failure")).not.toBeInTheDocument();
+  await actor.selectOptions(screen.getByLabelText("Estado de entrega"), "Retrying");
+  await waitFor(() => expect(fetch.mock.calls.some(call => String(call[0]) === "/internal/admin/events/deliveries?limit=200&status=Pending")).toBe(true));
+});
+it.each([false, true])("gates user status mutations independently from reading (%s)", async write => {
+  const fetch = setup("/admin/users", ["platform.users.read", ...(write ? ["platform.users.write"] : [])], () => response([{ user: { id: { value: "user1" }, username: "user1", displayName: "User One", status: "Enabled" }, roles: [{ id: { value: "role1" }, name: "reader" }] }]));
+  render(<App />); await screen.findByText("User One");
+  if (write) { await userEvent.setup().click(screen.getByRole("button", { name: "Deshabilitar" })); await waitFor(() => expect(fetch.mock.calls.some(call => String(call[0]) === "/api/authorization/users/user1/status" && (call[1] as RequestInit).method === "PATCH")).toBe(true)); }
+  else { expect(screen.queryByRole("button", { name: "Deshabilitar" })).not.toBeInTheDocument(); expect(screen.queryByRole("button", { name: /Quitar rol/ })).not.toBeInTheDocument(); }
+});
 it("offers an Admin entry when an operator has no domain landing-page grant", async () => {
   setup("/", ["platform.jobs.read"]); render(<App />);
   expect(await screen.findByRole("link", { name: "Admin" })).toHaveAttribute("href", "/admin/jobs");
@@ -60,6 +96,15 @@ it("clears an expired session and preserves the return route at login", async ()
   setup("/admin/jobs", ["platform.jobs.read"], () => response({}, 401)); render(<App />);
   expect(await screen.findByRole("heading", { name: "Iniciar sesión" })).toBeInTheDocument(); expect(window.sessionStorage.getItem("hispania.identity.session")).toBeNull();
   expect(window.location.pathname).toBe("/login"); expect(new URLSearchParams(window.location.search).get("returnTo")).toBe("/admin/jobs");
+});
+it("removes previously loaded administrative data after a refresh returns 401", async () => {
+  let revoked = false;
+  setup("/admin/jobs", ["platform.jobs.read"], () => revoked ? response({}, 401) : response([{ jobId: "job1", jobType: "loaded-admin-data", status: "Pending", createdAt: "2026-10-04", scheduledAt: "2026-10-04", attemptCount: 0, maxAttempts: 3, executor: "local" }]));
+  render(<App />); expect(await screen.findByText("loaded-admin-data")).toBeInTheDocument(); revoked = true;
+  await userEvent.setup().click(screen.getByRole("button", { name: "Actualizar" }));
+  expect(await screen.findByRole("heading", { name: "Iniciar sesión" })).toBeInTheDocument();
+  expect(screen.queryByText("loaded-admin-data")).not.toBeInTheDocument(); expect(screen.queryByRole("navigation", { name: "Administración" })).not.toBeInTheDocument();
+  expect(window.sessionStorage.getItem("hispania.identity.session")).toBeNull();
 });
 it("shows safe asset metadata and uses the existing audited delete API", async () => {
   const fetch = setup("/admin/assets", ["platform.assets.write"], (path, init) => init?.method === "DELETE" ? response(null, 204) : response({ id: "asset1", type: "Video", mimeType: "video/mp4", size: 12, provider: "filesystem", createdAtUtc: "2026-10-04", updatedAtUtc: "2026-10-04", contentHandle: "private-path" }));
