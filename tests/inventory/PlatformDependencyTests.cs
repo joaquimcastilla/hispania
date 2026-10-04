@@ -26,6 +26,30 @@ namespace Hispania.Inventory.Tests;
 
 public sealed class PlatformDependencyTests
 {
+    private static readonly string[] ForbiddenPlatformImplementations = ["Media", "Inventory", "Playback", "Library", "Metadata", "FFmpeg", "Server"];
+    [Fact]
+    public void EveryPlatformProjectReferenceClosureExcludesDomainImplementations()
+    {
+        var root = FindRepositoryRoot();
+        using var filter = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "Hispania.Platform.slnf")));
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in filter.RootElement.GetProperty("solution").GetProperty("projects").EnumerateArray())
+            Visit(Path.GetFullPath(Path.Combine(root, project.GetString()!)));
+        Assert.True(visited.Count >= 17, "The complete Platform project graph must be inspected.");
+
+        void Visit(string project)
+        {
+            if (!visited.Add(project)) return;
+            var relative = Path.GetRelativePath(root, project).Replace('\\', '/');
+            Assert.DoesNotContain(ForbiddenPlatformImplementations,
+                forbidden => Path.GetFileName(project).Contains(forbidden, StringComparison.OrdinalIgnoreCase));
+            Assert.False(relative.StartsWith("tests/", StringComparison.OrdinalIgnoreCase));
+            var xml = System.Xml.Linq.XDocument.Load(project);
+            foreach (var reference in xml.Descendants("ProjectReference"))
+                Visit(Path.GetFullPath(Path.Combine(Path.GetDirectoryName(project)!, reference.Attribute("Include")!.Value.Replace('\\', Path.DirectorySeparatorChar))));
+        }
+    }
+
     [Fact]
     public void PlatformAndInventoryAssembliesHaveNoCrossDomainImplementationReferences()
     {

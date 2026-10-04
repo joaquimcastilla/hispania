@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented for Phase 13.2; local validation passed; CI pending.
+Implemented for Phase 13.2; included in the Linux/Windows regression validated at Phase 13.9 SHA `bff1bd26edb857b36f172b7b7687c7879ddf73ff` (Validation #37226191897). Phase 13 closure evidence is recorded separately.
 
 ## Context
 

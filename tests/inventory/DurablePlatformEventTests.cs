@@ -7,6 +7,30 @@ namespace Hispania.Inventory.Tests;
 public sealed class DurablePlatformEventTests
 {
     [Fact]
+    public async Task ConcurrentPublishAndDispatchKeepOneAcquisitionPerDeliveryAndSqliteIntegrity()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "hispania-event-concurrency-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var bus = new SqliteDurablePlatformEventBus(Path.Combine(root, "events.sqlite"));
+            var calls = new System.Collections.Concurrent.ConcurrentDictionary<Guid, int>();
+            bus.DeliveryHandler = (envelope, _, _) => { calls.AddOrUpdate(envelope.EventId, 1, (_, count) => count + 1); return ValueTask.CompletedTask; };
+            await Task.WhenAll(Enumerable.Range(0, 32).Select(index => Task.Run(async () =>
+                await bus.PublishAsync(new SampleEvent(index.ToString(System.Globalization.CultureInfo.InvariantCulture)), "concurrency", ["consumer.concurrent"]))));
+            await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Run(async () => await bus.DispatchOnceAsync())));
+            Assert.Equal(32, calls.Count); Assert.All(calls.Values, count => Assert.Equal(1, count));
+            var deliveries = await bus.ListDeliveriesAsync(limit: 100);
+            Assert.Equal(32, deliveries.Count);
+            Assert.All(deliveries, row => { Assert.Equal(DurableDeliveryStatus.Delivered, row.Status); Assert.Equal(1, row.AttemptCount); });
+            using var db = new Microsoft.Data.Sqlite.SqliteConnection(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "events.sqlite"), Pooling = false }.ToString());
+            db.Open(); using var command = db.CreateCommand(); command.CommandText = "PRAGMA integrity_check";
+            Assert.Equal("ok", command.ExecuteScalar());
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
     public async Task PublishSurvivesReopenAndSubscribersHaveIndependentDeliveryState()
     {
         var path = Path.Combine(Path.GetTempPath(), $"hispania-durable-events-{Guid.NewGuid():N}.sqlite");

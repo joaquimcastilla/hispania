@@ -53,6 +53,9 @@ jobs:
         run: dotnet build Hispania.Platform.slnf
       - name: Require Inventory, persistence, API restart, and architecture coverage
         run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj
+      - name: Require Phase 13 closure, real crash recovery, safe errors and 20 concurrency repetitions
+        shell: pwsh
+        run: ./tools/test-phase13-closure.ps1 -ResultsDirectory (Join-Path $env:RUNNER_TEMP 'phase13-closure')
       - name: Require Platform Admin RBAC, safe projections, expiry and partial-failure recovery
         shell: pwsh
         run: |
@@ -165,6 +168,9 @@ jobs:
         run: dotnet build Hispania.Platform.slnf
       - name: Require Inventory, persistence, API restart, and architecture coverage
         run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj
+      - name: Require Phase 13 closure, real crash recovery, safe errors and 20 concurrency repetitions
+        shell: pwsh
+        run: ./tools/test-phase13-closure.ps1 -ResultsDirectory (Join-Path $env:RUNNER_TEMP 'phase13-closure')
       - name: Require Platform Admin RBAC, safe projections, expiry and partial-failure recovery
         shell: pwsh
         run: |

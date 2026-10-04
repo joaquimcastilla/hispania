@@ -6,7 +6,7 @@ Status: Accepted (Phase 13.5 V1).
 
 Platform owns a general durable Job mechanism. An Event is a fact that happened; a Job is work that should be performed. Durable Events and Jobs use separate contracts, dispatchers, SQLite files, tables, retry state, and administrative APIs. An Event may cause a Job through a future explicit contract integration; neither subsystem substitutes for the other.
 
-V1 executes only on the local Platform dispatcher. The server composition root explicitly registers trusted stable JobType identifiers to typed handlers. Persisted data never names CLR types, assemblies, commands, scripts, or executables. The demo `platform.test.hash` handler accepts text and only `sha256` or `sha512`, returning small result metadata. WorkerAgent has no Jobs implementation dependency; remote execution belongs to a later phase.
+At Phase 13.5, V1 executes only on the local Platform dispatcher; Phase 13.6 extends execution with the adapter and policies in [ADR-0035](ADR-0035-platform-remote-job-execution.md). The server composition root explicitly registers trusted stable JobType identifiers to typed handlers. Persisted data never names CLR types, assemblies, commands, scripts, or executables. The demo `platform.test.hash` handler accepts text and only `sha256` or `sha512`, returning small result metadata. WorkerAgent has no Jobs implementation dependency; remote execution was added in Phase 13.6 without changing Job store ownership.
 
 ## Contracts and state
 

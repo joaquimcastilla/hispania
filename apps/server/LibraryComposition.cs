@@ -75,10 +75,10 @@ public sealed class AutomaticMovieMetadataEnrichmentHostedService(MovieMetadataA
             return LastRun;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception exception)
+        catch (Exception)
         {
             LastRun = new MovieMetadataEnrichmentRunResult(0, 0, 1, []);
-            LogRunAborted(logger, exception);
+            LogRunAborted(logger, null);
             return LastRun;
         }
         finally
@@ -112,9 +112,9 @@ public sealed class AutomaticMovieMetadataEnrichmentHostedService(MovieMetadataA
             return LastManualRun;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception exception)
+        catch (Exception)
         {
-            LogRunAborted(logger, exception);
+            LogRunAborted(logger, null);
             throw;
         }
         finally
@@ -128,7 +128,7 @@ public sealed class AutomaticMovieMetadataEnrichmentHostedService(MovieMetadataA
     {
         try { await indexDocument.WriteAsync(cancellationToken); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception exception) { LogIndexWriteFailed(logger, exception); }
+        catch (Exception) { LogIndexWriteFailed(logger, null); }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

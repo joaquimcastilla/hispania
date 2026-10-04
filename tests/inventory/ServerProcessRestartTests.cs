@@ -93,6 +93,9 @@ public sealed partial class ServerProcessRestartTests
             var first = await AssertPersistentStateAsync(client, identityToken, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 5);
             await AssertAdminWritesAndAssociationAsync(client, adminToken, first.ItemId, serverDirectory);
             first = await AssertPersistentStateAsync(client, identityToken, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 8);
+            var closureJobId = await CreateClosureScheduledJobAsync(client, identityToken);
+            var closureEventIds = await ReadClosureEventIdsAsync(client, identityToken);
+            await AssertClosureHealthAsync(client, identityToken);
             await StopServerGracefullyAsync(server, client, shutdownToken);
             server.Dispose(); server = null;
 
@@ -102,6 +105,10 @@ public sealed partial class ServerProcessRestartTests
             var afterOrderlyRestart = await AssertPersistentStateAsync(client, identityToken, adminToken, expectedStock: 12, expectedMinimumAuditRecords: 8);
             Assert.Equal(first.ItemId, afterOrderlyRestart.ItemId);
             Assert.Equal(first.AssetIds.Order(), afterOrderlyRestart.AssetIds.Order());
+            Assert.Equal(closureEventIds, await ReadClosureEventIdsAsync(client, identityToken));
+            using (var persistedJob = await WaitForJobStatusAsync(client, identityToken, closureJobId, "Pending", TimeSpan.FromSeconds(10))) { }
+            await CancelClosureScheduledJobAsync(client, identityToken, closureJobId);
+            await AssertClosureHealthAsync(client, identityToken);
 
             await IssueOneUnitAsync(client, adminToken, afterOrderlyRestart.ItemId, afterOrderlyRestart.LocationId);
             _ = await AssertPersistentStateAsync(client, identityToken, adminToken, expectedStock: 11, expectedMinimumAuditRecords: 9);
@@ -119,6 +126,10 @@ public sealed partial class ServerProcessRestartTests
             await WaitUntilHealthyAsync(server, client);
             await AssertIdentitySessionAsync(client, identityToken, expectedStatus: HttpStatusCode.Unauthorized);
             var reauthenticatedToken = await LoginRestartUserForTokenAsync(client);
+            using (var persistedJob = await WaitForJobStatusAsync(client, reauthenticatedToken, closureJobId, "Cancelled", TimeSpan.FromSeconds(10))) { }
+            var afterCrashEventIds = await ReadClosureEventIdsAsync(client, reauthenticatedToken);
+            Assert.All(closureEventIds, id => Assert.Contains(id, afterCrashEventIds));
+            await AssertClosureHealthAsync(client, reauthenticatedToken);
             var afterAbruptRestart = await AssertPersistentStateAsync(client, reauthenticatedToken, adminToken, expectedStock: 11, expectedMinimumAuditRecords: 9);
             Assert.Equal(first.ItemId, afterAbruptRestart.ItemId);
             Assert.Equal(first.AssetIds.Order(), afterAbruptRestart.AssetIds.Order());

@@ -10,7 +10,7 @@ HISPANIA is a .NET modular application platform. Its Platform layer provides run
                  HISPANIA PLATFORM
 ┌────────────────────────────────────────────────┐
 │ Runtime · Modules · Supervisor · Extensions    │
-│ Workers · Events · Assets · Audit · Persistence │
+│ Identity · RBAC · Events · Jobs · Storage · Audit │
 │ Security / Trust · Health / Metrics             │
 └───────────────────────┬────────────────────────┘
                         │ public, versioned contracts
@@ -28,7 +28,7 @@ HISPANIA is a .NET modular application platform. Its Platform layer provides run
                └────────┬────────┘
                         ▼
                      WEB SHELL
-               Media UI · Inventory UI
+               Media UI · Inventory UI · Platform Admin
 
         Server host = composition root for suites
 ```
@@ -45,7 +45,7 @@ Future ERP, Store, Automation and Analytics are possible directions, not impleme
 
 ## Platform
 
-Implemented and demonstrated Platform mechanisms include versioned capabilities, module lifecycle and supervision, health checks, extensions, verified packages and host trust configuration, InProcess and OutOfProcess execution, generic WorkerAgent hosting, distributed workers, mTLS, leases, generations, fencing and recovery, Event Bus V1, opaque Assets, persistent Audit, persistence abstractions, metrics/hooks, and the Playback Planner's A/B/Shadow infrastructure where applicable.
+Implemented and demonstrated Platform mechanisms include versioned capabilities, module lifecycle and supervision, health checks, extensions, verified packages and host trust configuration, InProcess and OutOfProcess execution, generic WorkerAgent hosting, distributed workers, mTLS, leases, generations, fencing and recovery, persistent Identity/session authentication and RBAC, Durable Events, local/remote Background Jobs, opaque Assets with Storage Providers, persistent Audit, health/liveness/readiness, runtime metrics/tracing, consolidated Platform Admin, and the Playback Planner's A/B/Shadow infrastructure where applicable.
 
 The `Hispania.Platform.slnf` filter builds Platform contracts, runtime, generic WorkerAgent and Platform persistence without Media or Inventory implementations. This is a dependency-boundary build, not a claim that every domain service is independently deployable.
 
@@ -77,7 +77,7 @@ Inventory is the first non-Media domain. It includes Item, Warehouse, Location, 
 
 ## Web Shell
 
-The Web Shell has declarative route and navigation registration for Media and Inventory, with Modern and Classic builds. The server composes the domains. Frontend module loading is not dynamic yet. There is no general user/session and per-domain permission system; current administrative writes use a configured bearer token, while some read routes are public.
+The Web Shell has declarative route and navigation registration for Media and Inventory, with Modern and Classic builds. The server composes the domains. Frontend module loading is not dynamic yet. Identity sessions and RBAC protect domain and Admin routes, including direct URLs and isolated grants. Session expiry removes administrative data. A bounded legacy admin bearer remains on explicitly documented compatibility routes; it is not accepted by Jobs, Events, Observability, or the consolidated Admin projections. See the [Phase 13 security and closure audit](docs/PHASE-13-CLOSURE.md).
 
 ## Persistence and ownership
 
@@ -100,9 +100,9 @@ Each domain owns its data. Cross-store foreign keys are not used; domains exchan
 
 ## Security and trust boundaries
 
-The project implements package integrity checks, optional digital signatures and publisher trust, host authorization, worker node/capability authorization, mTLS, process separation and configured resource limits. These are controls with specific boundaries, not a general sandbox. InProcess modules inherit server privileges; an authorized remote worker can still be compromised. The current admin bearer token is not a complete Identity/RBAC system. Resource limits do not isolate hostile code.
+The project implements package integrity checks, optional digital signatures and publisher trust, host authorization, worker node/capability authorization, mTLS, process separation and configured resource limits. These are controls with specific boundaries, not a general sandbox. InProcess modules inherit server privileges; an authorized remote worker can still be compromised. Legacy admin bearer compatibility is separate from the implemented session/RBAC system and remains limited to explicit routes. Resource limits do not isolate hostile code.
 
-## Validation on `main`
+## Historical Phase 12 validation on `main`
 
 Validated SHA: [`2e16b039d0fb8a3223366f7af478353b68886af1`](https://github.com/joaquimcastilla/hispania/commit/2e16b039d0fb8a3223366f7af478353b68886af1) · GitHub Actions [Validation #36625775324](https://github.com/joaquimcastilla/hispania/actions/runs/36625775324).
 
@@ -122,6 +122,10 @@ Validated SHA: [`2e16b039d0fb8a3223366f7af478353b68886af1`](https://github.com/j
 
 The restart test launches real server processes, verifies persisted state after graceful restart, terminates a server abruptly, and checks committed state after recovery. The CI workflow also validates the complete build and suite on Linux and Windows.
 
+## Phase 13 validation
+
+Phase 13 adds Identity/RBAC, Durable Events, local/remote Jobs, Storage Providers, Observability and Platform Admin. Closure requires Linux/Windows Validation, PostgreSQL-live Linux, real process recovery, 20 concurrency repetitions, Platform-only independence and domain regression. See [closure evidence and limitations](docs/PHASE-13-CLOSURE.md) and the [release notes draft](docs/PHASE-13-RELEASE-NOTES-DRAFT.md). No Phase 13 tag or release is created by this change.
+
 ## Milestones
 
 - **Phase 11 — Distributed Workers:** distributed execution, mTLS, leases, fencing, remote FFmpeg and recovery. See the [Phase 11 tag](https://github.com/joaquimcastilla/hispania/tree/phase-11-complete).
@@ -131,16 +135,16 @@ The `phase-12-complete` tag is an immutable historical checkpoint at `d0ca0b51a8
 
 ## Current limitations
 
-- Event Bus V1 is local to the process and non-durable.
+- The immediate Event Bus is non-durable; the separate Durable Event Bus and Jobs are at-least-once, with no exactly-once or cross-store transaction guarantee.
 - Inventory is limited and does not constitute a full ERP.
-- Frontend module loading is not dynamic; general Identity/RBAC is not implemented.
-- Assets and Audit have initial providers; additional providers are future work.
+- Frontend module loading remains static. Identity/RBAC has no SSO or MFA.
+- Storage initially uses a filesystem provider; no remote object storage. Metrics are runtime-only, with no TSDB/exporter. Assets Admin lookup is by ID; universal module generation is unavailable.
 - Distributed coordination uses a single SQLite coordinator; no distributed PostgreSQL or multi-master.
 - There is no hostile-code sandbox, and A/B is not universal across domains.
 
 ## Future directions
 
-These are roadmap possibilities, not current functionality or an indication that Phase 13 has started: Identity/users/permissions; ERP core (organizations, product catalog, BOM, purchasing, manufacturing); Store/Web; Automation; a durable Event Bus; additional storage providers; and stronger process-isolation options.
+Possible future directions include ERP core (organizations, product catalog, BOM, purchasing, manufacturing), Store, Automation, additional storage providers, SSO/MFA, external telemetry and stronger process isolation. None is introduced by Phase 13 closure.
 
 ## Repository map and further reading
 

@@ -53,6 +53,6 @@ public sealed class MovieMetadataIndexStartupService(MovieMetadataIndexDocument 
         if (stoppingToken.IsCancellationRequested) return;
         try { await document.WriteAsync(stoppingToken); }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-        catch (Exception exception) { LogIndexWriteFailed(logger, exception); }
+        catch (Exception) { LogIndexWriteFailed(logger, null); }
     }
 }

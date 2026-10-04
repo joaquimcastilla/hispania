@@ -269,6 +269,7 @@ builder.Services.AddSingleton<IArchitectureDemonstrationService>(serviceProvider
         .Resolve<IArchitectureDemonstrationService>(selectedModuleId));
 
 var app = builder.Build();
+app.UsePlatformErrorBoundary();
 await SeedInventoryDemoAsync(app.Services);
 
 app.UseMiddleware<PlatformCorrelationMiddleware>();

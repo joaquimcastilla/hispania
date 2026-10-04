@@ -64,6 +64,12 @@ public sealed partial class ServerProcessRestartTests
                 await RenameStoreTableAsync(true);
                 try
                 {
+                    using (var live = await client.GetAsync("/api/health/live")) Assert.Equal(HttpStatusCode.OK, live.StatusCode);
+                    using (var ready = await client.GetAsync("/api/health/ready"))
+                    {
+                        Assert.Equal(HttpStatusCode.ServiceUnavailable, ready.StatusCode);
+                        Assert.DoesNotContain("sqlite", await ready.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+                    }
                     using var degraded = await SendAsync(HttpMethod.Get, paths[0]); degraded.EnsureSuccessStatusCode();
                     var degradedText = await degraded.Content.ReadAsStringAsync(); using var degradedJson = JsonDocument.Parse(degradedText);
                     Assert.Equal("Unhealthy", degradedJson.RootElement.GetProperty("status").GetString());
