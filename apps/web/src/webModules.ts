@@ -1,3 +1,4 @@
+export { adminRoutes, adminEntryPath, type AdminRoute } from "./adminRoutes";
 export type ShellSection = "home" | "movies" | "series" | "collections" | "music" | "dashboard" | "inventory";
 export type ShellRoute = { section: ShellSection; path: string; label: string; area: "media" | "erp" | "platform" };
 

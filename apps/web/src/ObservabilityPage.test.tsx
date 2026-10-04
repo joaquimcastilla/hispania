@@ -19,12 +19,16 @@ it("shows safe aggregate observability in the Classic shell using a Session", as
   window.history.replaceState({}, "", "/admin/observability");
   const fetch = vi.fn(async (input: RequestInfo | URL) => String(input) === "/api/identity/me"
     ? response({ user: { displayName: "Admin" }, effectivePermissions: ["platform.observability.read"] })
+    : String(input) === "/api/health/live" ? response({ status: "Healthy" })
+    : String(input) === "/api/health/ready" ? ({ ...response({ status: "Unhealthy" }), ok: false, status: 503 } as Response)
     : response({ health: { status: "Degraded", checkedAt: "2026-10-04T12:00:00Z", checks: [{ component: "Events", status: "Degraded", code: "dead_letters" }] }, jobs: { pending: 3, running: 1, failed: 0, deadLettered: 0 }, events: { pending: 2, processing: 0, retrying: 0, deadLettered: 1 }, storage: { provider: "filesystem" }, workers: [{ workerId: "worker-1", status: "Connected", lastHeartbeat: null, capabilities: [{ contractId: "platform.jobs.hash", contractVersion: "1.0" }], runningExecutions: 1 }], metrics: [{ name: "hispania.jobs.created", kind: "Counter", value: 3, count: 0 }] }));
   vi.stubGlobal("fetch", fetch); render(<App variant="classic" />);
   expect(await screen.findByRole("heading", { name: "Health: Degraded" })).toBeInTheDocument();
   expect(screen.getByText("worker-1")).toBeInTheDocument(); expect(screen.getByText("hispania.jobs.created")).toBeInTheDocument();
   expect(screen.getByText(/Los contadores se reinician/)).toBeInTheDocument();
   const calls = fetch.mock.calls as unknown as [RequestInfo | URL, RequestInit][];
-  expect(calls.at(-1)?.[0]).toBe("/api/platform/observability");
-  expect(new Headers(calls.at(-1)?.[1].headers).get("Authorization")).toBe("Session opaque-session");
+  const adminCall = calls.find(call => call[0] === "/api/platform/observability");
+  expect(adminCall).toBeDefined();
+  expect(new Headers(adminCall?.[1].headers).get("Authorization")).toBe("Session opaque-session");
+  expect(screen.getByText(/Liveness: Healthy; Readiness: Unhealthy/)).toBeInTheDocument();
 });

@@ -36,7 +36,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const headers = new Headers(init.headers);
     if (token) headers.set("Authorization", `Session ${token}`);
     if (init.body && !headers.has("content-type")) headers.set("content-type", "application/json");
-    return fetch(path, { ...init, headers });
+    return fetch(path, { ...init, headers }).then(response => {
+      if (response.status === 401 && window.sessionStorage.getItem(sessionStorageKey) === token) {
+        window.sessionStorage.removeItem(sessionStorageKey); setToken(null); setCurrentUser(null);
+      }
+      return response;
+    });
   }, [token]);
 
   const refresh = useCallback(async (sessionToken: string) => {

@@ -26,9 +26,9 @@ describe("Web authentication and protected routes", () => {
     await userActor.type(screen.getByLabelText("Contraseña"), "a long enough password");
     await userActor.click(screen.getByRole("button", { name: "Entrar" }));
     await waitFor(() => expect(window.location.pathname).toBe("/"));
-    expect(await screen.findByText("Admin")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Admin" })).toBeInTheDocument();
     expect(window.sessionStorage.getItem("hispania.identity.session")).toBe("opaque-session-token");
-    expect(screen.getByRole("link", { name: "Usuarios" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Admin" })).toBeVisible();
     expect(screen.queryByRole("link", { name: "Roles" })).not.toBeInTheDocument();
     await userActor.click(screen.getByRole("button", { name: "Cerrar sesión" }));
     await waitFor(() => expect(window.sessionStorage.getItem("hispania.identity.session")).toBeNull());

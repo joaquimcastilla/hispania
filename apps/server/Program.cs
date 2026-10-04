@@ -273,6 +273,7 @@ await SeedInventoryDemoAsync(app.Services);
 
 app.UseMiddleware<PlatformCorrelationMiddleware>();
 app.MapPlatformObservability();
+app.MapPlatformAdmin();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
