@@ -1,5 +1,11 @@
 # Architecture
 
+## Versioning and compatibility foundation (Phase 14)
+
+The integrated documentation baseline is HISPANIA 0.7.0, recorded only in root `version.json`; it does not renumber SDKs, assemblies, manifests, protocols or schemas. [VERSIONING](VERSIONING.md) distinguishes each axis; [COMPATIBILITY-POLICY](COMPATIBILITY-POLICY.md) requires explicit source/binary/wire/data/behavioral promises. Current public surfaces are experimental or Stable Candidate, with zero Public Stable declarations. See the [catalog](compatibility/CONTRACT-CATALOG.md), [support matrix](SUPPORT-MATRIX.md), [1.0 scope](PLATFORM-1.0-SCOPE.md) and [ADR-0039](adr/ADR-0039-versioning-and-compatibility-model.md).
+
+“Kernel” describes an architectural role implemented by `core/runtime`; `core/kernel/Hispania.Kernel.csproj` itself is currently an empty placeholder. Its later removal is proposed, without adding functionality or changing the solution in Phase 14. Version metadata/catalog/API evidence belongs to Platform tooling and adds no production dependency on Media or Inventory.
+
 ## Platform and domain suites (Phase 12)
 
 `Hispania.Platform.Contracts` contains cross-domain mechanisms and public abstractions. It must not reference Media or Inventory. `Hispania.Runtime` implements generic runtime facilities; domain behavior remains in its owning suite. Media is currently expressed through `core/domain`, `contracts/{library,metadata,playback}`, and their application services and adapters. See [ADR-0030](adr/ADR-0030-platform-generalization-and-domain-suites.md) for dependency boundaries and validation.

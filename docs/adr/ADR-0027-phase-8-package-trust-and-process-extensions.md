@@ -11,7 +11,7 @@ Phase 7 introduced inert `.hispania` packages with SHA-256 payload digests and t
 - Keep `InProcess` and `OutOfProcess` as explicit manifest/runtime choices. Existing packages continue to use their declared in-process runtime; migration to a process is never implicit.
 - Keep package install, publisher trust/authorization, activation and execution as separate decisions. Installing a package stores validated inert files. Activation requires both host policy approval and a supported runtime.
 - Sign a canonical manifest (excluding signature fields) and all payload digests with RSA-PSS-SHA256. Trust roots are operator-managed publisher IDs and support explicit revocation. SHA-256 remains the payload-integrity check. Trust administration endpoints update process memory; durable trust must be supplied through protected host configuration.
-- Define a public major-versioned request/response protocol with startup identity and protocol negotiation, capability inventory, correlation IDs, bounded frames, typed errors, cancellation, health checks and graceful shutdown. In-process and out-of-process capability adapters implement the same consumer contract.
+- Define a public generation-versioned request/response protocol with startup identity and protocol negotiation, capability inventory, correlation IDs, bounded frames, typed errors, cancellation, health checks and graceful shutdown. In-process and out-of-process capability adapters implement the same consumer contract. Generation V1 is not a Public Stable SemVer 1.0 declaration (ADR-0039).
 - Use a private local IPC channel (`NamedPipeServerStream`, backed by local pipe transport on supported platforms) with current-user access and a per-launch random authentication secret supplied through the child environment. Never bind extension IPC to a public network interface.
 - Make process start, timeout, cancellation, stop, exit detection, bounded restart/backoff and resource limits supervisor policy. A crash must degrade only that implementation and must not terminate the host or trigger an unbounded restart loop.
 - Treat process separation as fault/resource containment only. Security sandbox claims require separately restricted OS identity, filesystem, secrets, network and handles.
@@ -28,9 +28,9 @@ Trust endpoints are in-memory for the current server lifetime; configure trusted
 
 ## Consequences
 
-- The host consumes stable capability contracts independent of deployment mode.
+- The host consumes explicitly identified capability contracts independent of deployment mode; their Phase 14 stability classification is experimental or candidate, not implicitly Public Stable.
 - Third-party package identity can be evaluated independently from package integrity and host execution permission.
-- Each IPC protocol major version remains independently negotiable; incompatible extensions fail activation with a typed compatibility error.
+- Each IPC protocol generation remains independently negotiable; incompatible extensions fail activation with a typed compatibility error.
 - The initial protocol implementation must impose message and time limits before accepting extension traffic.
 - Existing packages are not silently migrated to OOP. Runtime choice remains explicit in each manifest.
 - Install, trust/authorization, and activation/execution remain independent decisions.

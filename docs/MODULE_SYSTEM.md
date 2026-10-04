@@ -1,5 +1,9 @@
 # Module System
 
+## Version semantics (Phase 14)
+
+Module implementation identity, exact capability contract identity, package format generation, manifest schema, host acceptance level and IPC wire generation are separate axes. V1 is a technical generation, not a stable 1.0 release. The legacy host value 1.0.0 is retained for manifest bounds; the distribution baseline 0.7.0 must not replace it mechanically. Passing host bounds does not establish binary/API compatibility. SDK/public contract stability and missing gates are recorded in [VERSIONING](VERSIONING.md), [COMPATIBILITY-POLICY](COMPATIBILITY-POLICY.md) and the [catalog](compatibility/CONTRACT-CATALOG.md). No Public Stable contract is declared by Phase 14.
+
 > **Current validation:** Phase 12 is integrated on `main`. GitHub Actions [Validation #36625775324](https://github.com/joaquimcastilla/hispania/actions/runs/36625775324) passed on Linux and Windows at `2e16b039d0fb8a3223366f7af478353b68886af1`. Historical phase notes below retain the test state at the time they were written; later Phase 11/12 coverage supersedes their pending-validation statements. See [ADR-0030](adr/ADR-0030-platform-generalization-and-domain-suites.md) for Phase 12 scope and results. Passing configured process-limit tests does not claim hostile-code sandboxing or prove every limit-exhaustion case.
 
 ## Platform contracts and events

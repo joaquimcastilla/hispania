@@ -49,6 +49,14 @@ jobs:
       - name: Require PostgreSQL integration configuration
         run: test -n "$HISPANIA_POSTGRES_TEST_CONNECTION"
       - run: dotnet build Hispania.CrossPlatform.slnf --no-restore
+      - name: Require Phase 14 catalog, distribution semantics and candidate API review
+        shell: pwsh
+        run: |
+          dotnet test tests/unit/Hispania.Runtime.Tests.csproj --filter FullyQualifiedName~VersioningFoundationTests --logger "trx;LogFileName=required-phase14-versioning.trx"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $trx = [xml](Get-Content -Raw tests/unit/TestResults/required-phase14-versioning.trx -ErrorAction Stop)
+          $results = @($trx.TestRun.Results.UnitTestResult)
+          if ($results.Count -ne 3 -or @($results | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'All three Phase 14 metadata/API gates must be discovered and pass without skips.' }
       - name: Require Platform-only dependency boundary
         run: dotnet build Hispania.Platform.slnf
       - name: Require Inventory, persistence, API restart, and architecture coverage
@@ -164,6 +172,14 @@ jobs:
       - run: dotnet build Hispania.CrossPlatform.slnf --no-restore
       - name: Build the complete solution on Windows
         run: dotnet build Hispania.sln
+      - name: Require Phase 14 catalog, distribution semantics and candidate API review
+        shell: pwsh
+        run: |
+          dotnet test tests/unit/Hispania.Runtime.Tests.csproj --filter FullyQualifiedName~VersioningFoundationTests --logger "trx;LogFileName=required-phase14-versioning.trx"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $trx = [xml](Get-Content -Raw tests/unit/TestResults/required-phase14-versioning.trx -ErrorAction Stop)
+          $results = @($trx.TestRun.Results.UnitTestResult)
+          if ($results.Count -ne 3 -or @($results | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'All three Phase 14 metadata/API gates must be discovered and pass without skips.' }
       - name: Require Platform-only dependency boundary
         run: dotnet build Hispania.Platform.slnf
       - name: Require Inventory, persistence, API restart, and architecture coverage

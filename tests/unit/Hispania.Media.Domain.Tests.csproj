@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="PlatformFoundationTests.cs" />
+    <Compile Remove="VersioningFoundationTests.cs" />
     <Compile Remove="ModuleInfrastructureTests.cs;VariantExperimentRouterTests.cs;DistributedWorkCoordinatorTests.cs;bin\**;obj\**" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
