@@ -156,15 +156,19 @@ public sealed class PlatformJobsTests
         try
         {
             var cancelled = await service.CreateAsync(new(PlatformTestHashHandlerV1.TypeId, "{}", ExecutionPolicy: PlatformJobExecutionPolicyV1.RemoteOnly));
-            await remote.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(cancelled.Job.JobId, await remote.StartedJobs.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(30)));
             Assert.True(await service.CancelAsync(cancelled.Job.JobId));
             Assert.False(await store.ExtendLeaseAsync(cancelled.Job.JobId, DateTimeOffset.UtcNow.AddMinutes(1), default));
-            await EventuallyAsync(async () => (await service.GetAsync(cancelled.Job.JobId))?.Status == PlatformJobStatusV1.Cancelled);
+            await EventuallyAsync(async () => (await service.GetAsync(cancelled.Job.JobId))?.Status == PlatformJobStatusV1.Cancelled, TimeSpan.FromSeconds(30));
             Assert.Equal(PlatformJobAttemptOutcomeV1.Cancelled, Assert.Single(await service.GetAttemptsAsync(cancelled.Job.JobId)).Outcome);
 
             var timedOut = await service.CreateAsync(new(PlatformTestHashHandlerV1.TypeId, "{}", MaxAttempts: 1,
-                Timeout: TimeSpan.FromMilliseconds(200), ExecutionPolicy: PlatformJobExecutionPolicyV1.RemoteOnly));
-            await EventuallyAsync(async () => (await service.GetAsync(timedOut.Job.JobId))?.Status == PlatformJobStatusV1.DeadLettered);
+                Timeout: TimeSpan.FromSeconds(1), ExecutionPolicy: PlatformJobExecutionPolicyV1.RemoteOnly));
+            Assert.Equal(1, timedOut.Job.TimeoutSeconds);
+            // Observe dispatch separately from terminal persistence; a loaded CI host may queue the
+            // second job after cancellation. Its execution timeout remains one second.
+            Assert.Equal(timedOut.Job.JobId, await remote.StartedJobs.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(30)));
+            await EventuallyAsync(async () => (await service.GetAsync(timedOut.Job.JobId))?.Status == PlatformJobStatusV1.DeadLettered, TimeSpan.FromSeconds(30));
             Assert.Equal(PlatformJobAttemptOutcomeV1.TimedOut, Assert.Single(await service.GetAttemptsAsync(timedOut.Job.JobId)).Outcome);
         }
         finally { await dispatcher.StopAsync(CancellationToken.None); }
@@ -174,8 +178,13 @@ public sealed class PlatformJobsTests
     private static PlatformJobHandlerRegistryV1 Registry() => new PlatformJobHandlerRegistryV1().Register(new PlatformTestHashHandlerV1());
     private static CreatePlatformJobV1 HashRequest(int maxAttempts = 3) => new(PlatformTestHashHandlerV1.TypeId, "{\"text\":\"abc\",\"algorithm\":\"sha256\"}", MaxAttempts: maxAttempts);
     private const string TimeoutHandlerTypeId = "platform.test.timeout";
-    private static async Task EventuallyAsync(Func<Task<bool>> predicate)
-    { var until = DateTimeOffset.UtcNow.AddSeconds(5); while (DateTimeOffset.UtcNow < until) { if (await predicate()) return; await Task.Delay(10); } Assert.True(await predicate(), "Expected durable job state was not reached."); }
+    private static async Task EventuallyAsync(Func<Task<bool>> predicate, TimeSpan? observationTimeout = null)
+    {
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        while (elapsed.Elapsed < (observationTimeout ?? TimeSpan.FromSeconds(5)))
+        { if (await predicate()) return; await Task.Delay(10); }
+        Assert.True(await predicate(), "Expected durable job state was not reached.");
+    }
 
     private sealed class RetryHandler(int failures) : IPlatformJobHandlerV1<Dictionary<string, string>>
     {
@@ -193,11 +202,11 @@ public sealed class PlatformJobsTests
     }
     private sealed class BlockingRemoteJobExecutor : IPlatformRemoteJobExecutorV1
     {
-        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public System.Threading.Channels.Channel<Guid> StartedJobs { get; } = System.Threading.Channels.Channel.CreateUnbounded<Guid>();
         public string? GetCapability(string jobType) => jobType == PlatformTestHashHandlerV1.TypeId ? "platform.jobs.hash@1.0" : null;
         public bool IsAvailable(string jobType) => jobType == PlatformTestHashHandlerV1.TypeId;
         public async ValueTask<PlatformRemoteJobExecutionV1?> ExecuteAsync(PlatformJobV1 job, int attemptNumber, CancellationToken cancellationToken)
-        { Started.TrySetResult(); await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); return null; }
+        { StartedJobs.Writer.TryWrite(job.JobId); await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); return null; }
         public bool Cancel(Guid jobId) => true;
     }
     private sealed class JobTemp : IDisposable
