@@ -10,8 +10,9 @@ HISPANIA is a .NET modular application platform. Its Platform layer provides run
                  HISPANIA PLATFORM
 ┌────────────────────────────────────────────────┐
 │ Runtime · Modules · Supervisor · Extensions    │
-│ Identity · RBAC · Events · Jobs · Storage · Audit │
-│ Security / Trust · Health / Metrics             │
+│ Identity · Authorization · Events · Jobs       │
+│ Storage · Assets · Audit · Observability        │
+│ WorkerAgent · Distributed Execution · Trust     │
 └───────────────────────┬────────────────────────┘
                         │ public, versioned contracts
                ┌────────┴────────┐
@@ -124,9 +125,34 @@ The restart test launches real server processes, verifies persisted state after 
 
 ## Phase 13 validation
 
-Phase 13 adds Identity/RBAC, Durable Events, local/remote Jobs, Storage Providers, Observability and Platform Admin. Closure requires Linux/Windows Validation, PostgreSQL-live Linux, real process recovery, 20 concurrency repetitions, Platform-only independence and domain regression. See [closure evidence and limitations](docs/PHASE-13-CLOSURE.md) and the [release notes draft](docs/PHASE-13-RELEASE-NOTES-DRAFT.md). No Phase 13 tag or release is created by this change.
+**Phase 13 — CLOSED — validated on Linux and Windows**
+
+Functional validated SHA: `75e10edd560e396a6e509a386d5aae5dd7928827`. [Validation #37230450104](https://github.com/joaquimcastilla/hispania/actions/runs/37230450104) completed successfully on Linux and Windows. The subsequent closure commit updates documentation only; `phase-13-complete` identifies that final checkpoint. Merge to `main` remains a separate task; Phase 14 has not started.
+
+| Validation evidence | Result |
+|---|---|
+| Linux CrossPlatform .NET | 485 passed, 0 failed, 0 skipped |
+| Windows full .NET | 542 passed, 0 failed, 1 existing PostgreSQL-live skip |
+| PostgreSQL-live | 1/1 on Linux; Persistence 66/66 |
+| Inventory/Platform regression | 53/53 on each OS |
+| Closure gate | 210/210 on each OS: 4 process/architecture cases, 6 safe-error cases, 200 stress passes |
+| Concurrency stress | 20 repetitions on each OS; no failures, skips or retry-to-green |
+| Playback / distributed WorkerAgent controls | 99/99 / 10/10 |
+| Observability | 17/17 |
+| Web / focused Admin Web | 74/74 / 39/39 on each OS |
+| Admin HTTP | 2/2 on each OS |
+| Platform-only / Modern / Classic builds | Passed on Linux and Windows |
+| FFmpeg / Planner lifecycle | 6/6 / 6/6 on each OS |
+| Windows Job Object | 1/1 |
+| Build warnings / errors / GitHub annotations | 0 / 0 / 0 |
+
+Counts overlap across focused gates and full suites; they must not be added into a unique-test total. Real server graceful/abrupt restart and killed executor recovery passed alongside mTLS WorkerAgent crash/restart, leases and fencing. Full CI log review found no real secret material. The sole Windows PostgreSQL-live skip is covered by the required Linux live test.
+
+See [closure evidence and limitations](docs/PHASE-13-CLOSURE.md), [definitive release notes](docs/PHASE-13-RELEASE-NOTES.md) and the [Phase 13 Release](https://github.com/joaquimcastilla/hispania/releases/tag/phase-13-complete).
 
 ## Milestones
+
+- **Phase 13 — Platform Maturity: CLOSED, validated on Linux and Windows.** Immutable checkpoint: `phase-13-complete`.
 
 - **Phase 11 — Distributed Workers:** distributed execution, mTLS, leases, fencing, remote FFmpeg and recovery. See the [Phase 11 tag](https://github.com/joaquimcastilla/hispania/tree/phase-11-complete).
 - **Phase 12 — Platform Generalization:** Media-independent Platform boundaries, persistent Assets and Audit, Event Bus V1, generic WorkerAgent, Inventory, Web Shell and Platform-only build. See the [Phase 12 release](https://github.com/joaquimcastilla/hispania/releases/tag/phase-12-complete).
@@ -139,7 +165,7 @@ The `phase-12-complete` tag is an immutable historical checkpoint at `d0ca0b51a8
 - Inventory is limited and does not constitute a full ERP.
 - Frontend module loading remains static. Identity/RBAC has no SSO or MFA.
 - Storage initially uses a filesystem provider; no remote object storage. Metrics are runtime-only, with no TSDB/exporter. Assets Admin lookup is by ID; universal module generation is unavailable.
-- Distributed coordination uses a single SQLite coordinator; no distributed PostgreSQL or multi-master.
+- Distributed coordination uses a single SQLite coordinator; no distributed PostgreSQL, multi-master, consensus or general distributed HA.
 - There is no hostile-code sandbox, and A/B is not universal across domains.
 
 ## Future directions

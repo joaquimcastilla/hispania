@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted closure design for Phase 13.10. Formal checkpoint requires final Linux/Windows CI and subsequent authorization for merge/tag/release.
+**Phase 13 — CLOSED — validated on Linux and Windows**
+
+Functional validated SHA: `75e10edd560e396a6e509a386d5aae5dd7928827`. [Validation #37230450104](https://github.com/joaquimcastilla/hispania/actions/runs/37230450104) completed successfully on Linux and Windows. The subsequent closure commit updates documentation only; `phase-13-complete` identifies that final checkpoint. Merge to `main` remains a separate task; Phase 14 has not started.
 
 ## Decision
 
@@ -16,6 +18,6 @@ Require one shared closure gate on Linux and Windows: process recovery, architec
 
 ## Consequences and limits
 
-The project gains closure evidence, coherent documentation and a release-note draft, not a new release or a claim of enterprise completeness. Remain explicit about at-least-once behavior, single coordinator, trusted-code boundaries, initial filesystem storage, runtime-only metrics, static frontend loading, partial legacy bearer/public diagnostics and limited Inventory. SSO/MFA, TSDB/exporters, remote object storage, Notifications, cron, multi-coordinator and ERP expansion require later decisions.
+The project gains a validated closure checkpoint, definitive release notes and an annotated tag/GitHub Release. This records the implemented foundation without claiming enterprise completeness. Merge to main remains separate. Remain explicit about at-least-once behavior, single coordinator, trusted-code boundaries, initial filesystem storage, runtime-only metrics, static frontend loading, partial legacy bearer/public diagnostics and limited Inventory. SSO/MFA, TSDB/exporters, remote object storage, Notifications, cron, multi-coordinator and ERP expansion require later decisions.
 
-See the [closure/security audit](../PHASE-13-CLOSURE.md), [complete project graph](../PHASE-13-DEPENDENCIES.md) and [draft release notes](../PHASE-13-RELEASE-NOTES-DRAFT.md). The final report links the exact validated SHA and CI run; no future green result is assumed here.
+See the [closure/security audit](../PHASE-13-CLOSURE.md), [complete project graph](../PHASE-13-DEPENDENCIES.md) and [definitive release notes](../PHASE-13-RELEASE-NOTES.md). Functional validation and the documentation-only checkpoint distinction are recorded above.

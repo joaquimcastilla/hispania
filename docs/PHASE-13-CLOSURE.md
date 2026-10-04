@@ -1,6 +1,27 @@
 # Phase 13 — Hardening and closure audit
 
-Base: Phase 13.9 SHA `bff1bd26edb857b36f172b7b7687c7879ddf73ff`, Linux/Windows Validation #37226191897. Branch: `feature/phase-13-10-hardening-closure`. This is a closure candidate: the final SHA must pass Validation on both operating systems before the final report declares readiness. Merge, tag, release and Phase 14 remain separate authorized actions.
+**Phase 13 — CLOSED — validated on Linux and Windows**
+
+Branch: `feature/phase-13-10-hardening-closure`. Functional validated SHA: `75e10edd560e396a6e509a386d5aae5dd7928827`. [Validation #37230450104](https://github.com/joaquimcastilla/hispania/actions/runs/37230450104) completed successfully on Linux and Windows. The subsequent closure commit updates documentation only; `phase-13-complete` identifies that final checkpoint. Merge to `main` remains a separate task; Phase 14 has not started.
+
+| Validation evidence | Result |
+|---|---|
+| Linux CrossPlatform .NET | 485 passed, 0 failed, 0 skipped |
+| Windows full .NET | 542 passed, 0 failed, 1 existing PostgreSQL-live skip |
+| PostgreSQL-live | 1/1 on Linux; Persistence 66/66 |
+| Inventory/Platform regression | 53/53 on each OS |
+| Closure gate | 210/210 on each OS: 4 process/architecture cases, 6 safe-error cases, 200 stress passes |
+| Concurrency stress | 20 repetitions on each OS; no failures, skips or retry-to-green |
+| Playback / distributed WorkerAgent controls | 99/99 / 10/10 |
+| Observability | 17/17 |
+| Web / focused Admin Web | 74/74 / 39/39 on each OS |
+| Admin HTTP | 2/2 on each OS |
+| Platform-only / Modern / Classic builds | Passed on Linux and Windows |
+| FFmpeg / Planner lifecycle | 6/6 / 6/6 on each OS |
+| Windows Job Object | 1/1 |
+| Build warnings / errors / GitHub annotations | 0 / 0 / 0 |
+
+Counts overlap across focused gates and full suites; they must not be added into a unique-test total. Real server graceful/abrupt restart and killed executor recovery passed alongside mTLS WorkerAgent crash/restart, leases and fencing. Full CI log review found no real secret material. The sole Windows PostgreSQL-live skip is covered by the required Linux live test.
 
 ## Ownership and dependency audit
 
@@ -122,13 +143,13 @@ Storage regression also covers opaque and legacy handles, traversal, symlink/rep
 
 Local candidate snapshot: .NET 542 passed, 0 failed, 1 pre-existing PostgreSQL-live skip; Inventory/Platform 53, Playback 99, Runtime 44, Web 74. Platform-only/full builds and Modern/Classic have zero build warnings/errors. The explicit closure gate has four process/architecture/concurrency tests plus six HTTP error cases and 20 stress iterations. These counts are a dated closure snapshot, not contractual constants.
 
-`.github/workflows/validation.yml` retains Linux/Windows, Platform-only, complete supported solution tests, Web/Modern/Classic, named Admin/Observability/FFmpeg/distributed gates and PostgreSQL-live Linux (migrations, constraints and Media persistence). Both jobs invoke one shared closure script, enforcing discovery and no skips. Linux's CrossPlatform filter excludes Inventory, which is tested separately; Windows tests the full solution. The only existing PostgreSQL-live skip is permitted where no PostgreSQL service is configured; Linux must execute it with ephemeral infrastructure. The final SHA/run/results and full CI secret scan belong in the final report; this document does not invent a future successful run.
+`.github/workflows/validation.yml` retains Linux/Windows, Platform-only, complete supported solution tests, Web/Modern/Classic, named Admin/Observability/FFmpeg/distributed gates and PostgreSQL-live Linux (migrations, constraints and Media persistence). Both jobs invoke one shared closure script, enforcing discovery and no skips. Linux's CrossPlatform filter excludes Inventory, which is tested separately; Windows tests the full solution. The only existing PostgreSQL-live skip is permitted where no PostgreSQL service is configured; Linux must execute it with ephemeral infrastructure. Final functional CI results and the full-log review are recorded above. The later documentation-only commit does not change the tested implementation.
 
-README, Architecture, Module System, Progress Log and ADR-0031 through ADR-0037 were reviewed. Historical phase-specific decisions remain historical; ADR-0034 now links the later remote extension, ADR-0032 no longer claims CI is pending, and README no longer denies implemented Identity/RBAC or Durable Events. ADR-0038 records closure decisions. [Release notes remain a draft](PHASE-13-RELEASE-NOTES-DRAFT.md).
+README, Architecture, Module System, Progress Log and ADR-0031 through ADR-0037 were reviewed. Historical phase-specific decisions remain historical; ADR-0034 now links the later remote extension, ADR-0032 no longer claims CI is pending, and README no longer denies implemented Identity/RBAC or Durable Events. ADR-0038 records closure decisions. [Definitive release notes](PHASE-13-RELEASE-NOTES.md) record the validated checkpoint.
 
 ## Final limitations
 
-At-least-once Events and Jobs; no exactly-once or cross-store atomicity; one coordinator; no hostile-code sandbox; trusted in-process code and trusted worker providers; runtime-only metrics without TSDB/exporter; initial filesystem provider without remote object storage; static frontend loading; partial legacy bearer compatibility and existing public diagnostics; no SSO/MFA, cron, Notifications or full ERP. No new provider, product/domain feature, dynamic module loading or Phase 14 work is part of closure.
+At-least-once Events and Jobs; no exactly-once or cross-store atomicity; one coordinator; no multi-master, consensus or general distributed HA; no hostile-code sandbox; trusted in-process code and trusted worker providers; runtime-only metrics without TSDB/exporter; initial filesystem provider without remote object storage; static frontend loading; partial legacy bearer compatibility and existing public diagnostics; no SSO/MFA, cron, Notifications or full ERP. No new provider, product/domain feature, dynamic module loading or Phase 14 work is part of closure.
 
 ## Final metric naming registry
 

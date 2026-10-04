@@ -500,3 +500,31 @@ Append only.
 - Cancelled the superseded candidate Validation #37229735254 before relying on it as closure evidence. The corrected SHA must receive its own complete Linux/Windows validation; no checkpoint, tag, release or merge is created.
 
 - Strengthened the existing Roles regression with competing normalized role creation and simultaneous duplicate assignment; requires exactly one new role/assignment and a database-authoritative duplicate result. The same named test participates in all 20 stress repetitions. Full solution after the public-health fix remained 542 passed / 0 failed / 1 existing PostgreSQL-live skip; the corrected closure gate is validated before publication.
+
+## 2026-10-04 — Phase 13 formal closure
+
+**Phase 13 — CLOSED — validated on Linux and Windows**
+
+Functional validated SHA: `75e10edd560e396a6e509a386d5aae5dd7928827`. [Validation #37230450104](https://github.com/joaquimcastilla/hispania/actions/runs/37230450104) completed successfully on Linux and Windows. The subsequent closure commit updates documentation only; `phase-13-complete` identifies that final checkpoint. Merge to `main` remains a separate task; Phase 14 has not started.
+
+| Validation evidence | Result |
+|---|---|
+| Linux CrossPlatform .NET | 485 passed, 0 failed, 0 skipped |
+| Windows full .NET | 542 passed, 0 failed, 1 existing PostgreSQL-live skip |
+| PostgreSQL-live | 1/1 on Linux; Persistence 66/66 |
+| Inventory/Platform regression | 53/53 on each OS |
+| Closure gate | 210/210 on each OS: 4 process/architecture cases, 6 safe-error cases, 200 stress passes |
+| Concurrency stress | 20 repetitions on each OS; no failures, skips or retry-to-green |
+| Playback / distributed WorkerAgent controls | 99/99 / 10/10 |
+| Observability | 17/17 |
+| Web / focused Admin Web | 74/74 / 39/39 on each OS |
+| Admin HTTP | 2/2 on each OS |
+| Platform-only / Modern / Classic builds | Passed on Linux and Windows |
+| FFmpeg / Planner lifecycle | 6/6 / 6/6 on each OS |
+| Windows Job Object | 1/1 |
+| Build warnings / errors / GitHub annotations | 0 / 0 / 0 |
+
+Counts overlap across focused gates and full suites; they must not be added into a unique-test total. Real server graceful/abrupt restart and killed executor recovery passed alongside mTLS WorkerAgent crash/restart, leases and fencing. Full CI log review found no real secret material. The sole Windows PostgreSQL-live skip is covered by the required Linux live test.
+
+- Reviewed README, Architecture, Module System, closure audit, release notes and ADR-0031 through ADR-0038. Preserved historical phase-specific decisions; corrected obsolete Inventory/public-read wording and candidate status. No functional code changes.
+- Closure documentation is committed as `docs: close phase 13 platform maturity`; the annotated `phase-13-complete` tag and non-prerelease GitHub Release are authorized on that final documentation checkpoint. Only the Phase 13.10 branch and this new tag are published. Main and Phase 11/12 checkpoints remain intact; no PR, merge, history rewrite, retrospective issues or Phase 14 work.
