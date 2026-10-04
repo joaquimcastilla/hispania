@@ -1,3 +1,5 @@
+using Hispania.Platform.Contracts.Observability;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -42,12 +44,15 @@ public sealed class PlatformJobService(IPlatformJobStoreV1 store, IPlatformJobHa
         if (request.IdempotencyKey is { Length: > 128 } || request.IdempotencyKey is not null && string.IsNullOrWhiteSpace(request.IdempotencyKey)) throw new ArgumentException("Idempotency key is invalid.", nameof(request));
         var maxAttempts = request.MaxAttempts ?? options.MaximumAttempts;
         if (maxAttempts is < 1 or > 100 || request.Timeout is { } timeout && (timeout <= TimeSpan.Zero || timeout > TimeSpan.FromDays(1))) throw new ArgumentOutOfRangeException(nameof(request));
+        var correlationId = request.CorrelationId ?? PlatformCorrelationV1.Current?.CorrelationId;
+        var causationId = request.CausationId ?? PlatformCorrelationV1.Current?.OperationId;
+        if (correlationId is not null && !PlatformCorrelationV1.IsValidId(correlationId) || causationId is not null && !PlatformCorrelationV1.IsValidId(causationId)) throw new ArgumentException("Invalid correlation metadata.", nameof(request));
         var now = DateTimeOffset.UtcNow;
         var job = new PlatformJobV1(Guid.NewGuid(), request.JobType, PlatformJobStatusV1.Pending, now,
             (request.ScheduledAt ?? now).ToUniversalTime(), null, null, 0, maxAttempts,
             request.Timeout is null ? null : (int)Math.Ceiling(request.Timeout.Value.TotalSeconds),
-            Limit(request.CorrelationId, 128), Limit(request.CausationId, 128), request.IdempotencyKey,
-            request.PayloadJson, null, null, "local", null, request.ExecutionPolicy);
+            correlationId, causationId, request.IdempotencyKey,
+            request.PayloadJson, null, null, "local", null, request.ExecutionPolicy, TraceParent: Activity.Current?.Id ?? PlatformCorrelationV1.Current?.TraceParent, TraceState: Activity.Current?.TraceStateString ?? PlatformCorrelationV1.Current?.TraceState);
         var result = await store.CreateAsync(job, cancellationToken).ConfigureAwait(false);
         if (!result.Duplicate) { metrics?.Created(); await WriteAuditAsync("created", result.Job, cancellationToken, request.RequestedBy).ConfigureAwait(false); }
         await RefreshMetricsAsync(cancellationToken).ConfigureAwait(false);
@@ -75,7 +80,6 @@ public sealed class PlatformJobService(IPlatformJobStoreV1 store, IPlatformJobHa
     { var health = await store.GetHealthAsync(execution?.IsActive ?? false, cancellationToken).ConfigureAwait(false); metrics?.Refresh(health); return health; }
     private async ValueTask RefreshMetricsAsync(CancellationToken ct) { if (metrics is not null) metrics.Refresh(await store.GetHealthAsync(execution?.IsActive ?? false, ct).ConfigureAwait(false)); }
     private ValueTask WriteAuditAsync(string action, PlatformJobV1 job, CancellationToken ct, string? actorId = null) => audit?.WriteAsync(new(DateTimeOffset.UtcNow, actorId, job.CorrelationId, "platform.jobs", $"job.{action}", "job", job.JobId.ToString("D"), "succeeded", new Dictionary<string, string> { ["jobType"] = job.JobType }), ct) ?? ValueTask.CompletedTask;
-    private static string? Limit(string? value, int max) => value is null ? null : value[..Math.Min(max, value.Length)];
 }
 
 public interface IPlatformJobExecutionControlV1 { bool IsActive { get; } bool Cancel(Guid jobId); }
@@ -85,7 +89,9 @@ public sealed class LocalPlatformJobDispatcher(IPlatformJobStoreV1 store, IPlatf
     IPlatformAuditWriter? audit = null, PlatformJobMetricsV1? metrics = null, IPlatformRemoteJobExecutorV1? remote = null) : Microsoft.Extensions.Hosting.BackgroundService, IPlatformJobExecutionControlV1
 {
     private static readonly Action<ILogger, Exception?> IterationFailed = LoggerMessage.Define(LogLevel.Error, new EventId(1350, "PlatformJobDispatcherIterationFailed"), "Platform job dispatcher iteration failed.");
-    private static readonly Action<ILogger, Guid, string, string, Exception?> JobFailed = LoggerMessage.Define<Guid, string, string>(LogLevel.Warning, new EventId(1351, "PlatformJobFailed"), "Platform job {JobId} ({JobType}) failed: {Error}");
+    private static readonly Action<ILogger, Guid, string, string, Exception?> JobFailed = LoggerMessage.Define<Guid, string, string>(LogLevel.Warning, new EventId(13803, "JobFailed"), "Platform job {JobId} ({JobType}) failed: {Error}");
+    private static readonly Action<ILogger, string, Guid, string, Exception?> JobStarted = LoggerMessage.Define<string, Guid, string>(LogLevel.Information, new EventId(13801, "JobStarted"), "{EventName}: job {ResourceId} outcome {Outcome}");
+    private static readonly Action<ILogger, string, Guid, string, double, Exception?> JobCompleted = LoggerMessage.Define<string, Guid, string, double>(LogLevel.Information, new EventId(13802, "JobCompleted"), "{EventName}: job {ResourceId} outcome {Outcome} duration {DurationMs}");
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CancellationTokenSource> running = new();
     public bool IsActive => !Stopping;
     private volatile bool Stopping;
@@ -116,13 +122,18 @@ public sealed class LocalPlatformJobDispatcher(IPlatformJobStoreV1 store, IPlatf
                 await RunAsync(job, stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception ex) { IterationFailed(logger, ex); await Task.Delay(options.EffectivePollInterval, stoppingToken).ConfigureAwait(false); }
+            catch (Exception) { IterationFailed(logger, null); await Task.Delay(options.EffectivePollInterval, stoppingToken).ConfigureAwait(false); }
         }
         Stopping = true;
     }
 
     private async Task RunAsync(PlatformJobV1 job, CancellationToken stoppingToken)
     {
+        using var correlation = PlatformCorrelationV1.Push(new(job.CorrelationId ?? job.JobId.ToString("N"), job.CausationId, job.JobId.ToString("D"), job.TraceParent, job.TraceState));
+        using var activity = PlatformTracingV1.Start("job.execute", ActivityKind.Consumer, job.TraceParent, job.TraceState);
+        var started = Stopwatch.GetTimestamp();
+        using var logScope = logger.BeginScope(new Dictionary<string, object?> { ["CorrelationId"] = PlatformCorrelationV1.Current?.CorrelationId, ["CausationId"] = job.CausationId, ["OperationId"] = job.JobId, ["Component"] = "Jobs", ["Operation"] = "Execute" });
+        JobStarted(logger, "JobStarted", job.JobId, "started", null);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         if (!running.TryAdd(job.JobId, linked)) return;
         if (await store.IsCancellationRequestedAsync(job.JobId, stoppingToken).ConfigureAwait(false)) linked.Cancel();
@@ -173,6 +184,7 @@ public sealed class LocalPlatformJobDispatcher(IPlatformJobStoreV1 store, IPlatf
                 metrics?.FencedResult();
                 await store.FailAsync(job.JobId, job.AttemptCount, PlatformJobAttemptOutcomeV1.Cancelled, "Job was cancelled.", DateTimeOffset.UtcNow, CancellationToken.None).ConfigureAwait(false);
             }
+            else JobCompleted(logger, "JobCompleted", job.JobId, "succeeded", Stopwatch.GetElapsedTime(started).TotalMilliseconds, null);
         }
         catch (OperationCanceledException)
         {
@@ -197,6 +209,7 @@ public sealed class LocalPlatformJobDispatcher(IPlatformJobStoreV1 store, IPlatf
         }
         finally
         {
+            metrics?.Duration(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             heartbeatStop.Cancel();
             try { await heartbeat.ConfigureAwait(false); } catch (OperationCanceledException) { }
             running.TryRemove(job.JobId, out _);
@@ -247,39 +260,22 @@ public sealed class LocalPlatformJobDispatcher(IPlatformJobStoreV1 store, IPlatf
 
 public sealed class RemoteWorkerUnavailableException : Exception { }
 
-public sealed class PlatformJobMetricsV1 : IDisposable
+public sealed class PlatformJobMetricsV1(IPlatformMetricsV1? metrics = null) : IDisposable
 {
-    private readonly System.Diagnostics.Metrics.Meter meter = new("Hispania.Platform.Jobs");
-    private readonly System.Diagnostics.Metrics.Counter<long> created;
-    private readonly System.Diagnostics.Metrics.Counter<long> retried;
-    private readonly System.Diagnostics.Metrics.Counter<long> localExecution;
-    private readonly System.Diagnostics.Metrics.Counter<long> remoteExecution;
-    private readonly System.Diagnostics.Metrics.Counter<long> remoteUnavailable;
-    private readonly System.Diagnostics.Metrics.Counter<long> remoteRetried;
-    private readonly System.Diagnostics.Metrics.Counter<long> fencedResults;
-    private readonly System.Diagnostics.Metrics.ObservableGauge<long>[] gauges;
-    private long pending, running, succeeded, failed, cancelled, deadLettered;
-    public PlatformJobMetricsV1()
+    public void Duration(double milliseconds) => metrics.BestEffort(sink => sink.Observe("hispania.jobs.duration", milliseconds));
+    public void Created() => Add("created");
+    public void Retried() => Add("retried");
+    public void LocalExecution() => Add("execution.local");
+    public void RemoteExecution() => Add("execution.remote");
+    public void RemoteUnavailable() => Add("remote.unavailable");
+    public void RemoteRetried() => Add("remote.retried");
+    public void FencedResult() => Add("remote.fenced_results");
+    private void Add(string suffix) => metrics.BestEffort(sink => sink.Increment("hispania.jobs." + suffix));
+    public void Refresh(PlatformJobHealthV1 snapshot) => metrics.BestEffort(sink =>
     {
-        created = meter.CreateCounter<long>("jobs.created"); retried = meter.CreateCounter<long>("jobs.retried");
-        localExecution = meter.CreateCounter<long>("jobs.execution.local"); remoteExecution = meter.CreateCounter<long>("jobs.execution.remote");
-        remoteUnavailable = meter.CreateCounter<long>("jobs.remote.unavailable"); remoteRetried = meter.CreateCounter<long>("jobs.remote.retried"); fencedResults = meter.CreateCounter<long>("jobs.remote.fenced_results");
-        gauges = [
-            meter.CreateObservableGauge("jobs.pending", () => Interlocked.Read(ref pending)),
-            meter.CreateObservableGauge("jobs.running", () => Interlocked.Read(ref running)),
-            meter.CreateObservableGauge("jobs.succeeded", () => Interlocked.Read(ref succeeded)),
-            meter.CreateObservableGauge("jobs.failed", () => Interlocked.Read(ref failed)),
-            meter.CreateObservableGauge("jobs.cancelled", () => Interlocked.Read(ref cancelled)),
-            meter.CreateObservableGauge("jobs.dead_lettered", () => Interlocked.Read(ref deadLettered))];
-    }
-    public void Created() => created.Add(1);
-    public void Retried() => retried.Add(1);
-    public void LocalExecution() => localExecution.Add(1);
-    public void RemoteExecution() => remoteExecution.Add(1);
-    public void RemoteUnavailable() => remoteUnavailable.Add(1);
-    public void RemoteRetried() => remoteRetried.Add(1);
-    public void FencedResult() => fencedResults.Add(1);
-    public void Refresh(PlatformJobHealthV1 snapshot)
-    { Interlocked.Exchange(ref pending, snapshot.Pending); Interlocked.Exchange(ref running, snapshot.Running); Interlocked.Exchange(ref succeeded, snapshot.Succeeded); Interlocked.Exchange(ref failed, snapshot.Failed); Interlocked.Exchange(ref cancelled, snapshot.Cancelled); Interlocked.Exchange(ref deadLettered, snapshot.DeadLettered); }
-    public void Dispose() => meter.Dispose();
+        sink.Gauge("hispania.jobs.pending", snapshot.Pending); sink.Gauge("hispania.jobs.running", snapshot.Running);
+        sink.Gauge("hispania.jobs.succeeded", snapshot.Succeeded); sink.Gauge("hispania.jobs.failed", snapshot.Failed);
+        sink.Gauge("hispania.jobs.cancelled", snapshot.Cancelled); sink.Gauge("hispania.jobs.dead_lettered", snapshot.DeadLettered);
+    });
+    public void Dispose() { }
 }

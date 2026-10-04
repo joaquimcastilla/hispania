@@ -33,7 +33,12 @@ using Hispania.Media.Domain.Sources;
 using Hispania.Transcoding.FFmpeg;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 
+using Hispania.Platform.Contracts.Observability;
+using Hispania.Platform.Observability.Application;
+
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddSingleton<IPlatformMetricsV1, PlatformMetricsV1>();
+builder.Services.AddPlatformObservability();
 builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https =>
 {
     // Workers may present their client certificate; Kestrel still validates its chain using
@@ -53,7 +58,7 @@ var durableEventBus = new SqliteDurablePlatformEventBus(
         builder.Configuration.GetValue("Platform:Events:MaximumPayloadBytes", 262144),
         builder.Configuration.GetValue("Platform:Events:MaximumAttempts", 5),
         TimeSpan.FromSeconds(builder.Configuration.GetValue("Platform:Events:RetryDelaySeconds", 2))));
-builder.Services.AddSingleton(durableEventBus);
+builder.Services.AddSingleton(sp => { durableEventBus.Metrics = sp.GetRequiredService<IPlatformMetricsV1>(); return durableEventBus; });
 builder.Services.AddSingleton<Hispania.Platform.Contracts.Events.IDurablePlatformEventBusV1>(sp => sp.GetRequiredService<SqliteDurablePlatformEventBus>());
 builder.Services.AddSingleton(sp => new Hispania.Platform.Contracts.Events.DurableEventHandlerRegistryV1()
     .Register<StockChangedV1>("inventory.stock-changed", 1, "platform.inventory.stock-observer", sp.GetRequiredService<InventoryStockEventObserver>()));
@@ -62,7 +67,7 @@ builder.Services.AddSingleton<IPlatformEventPublisher, DurablePlatformEventPubli
 builder.Services.AddHostedService<DurablePlatformEventDispatcher>();
 var storageRoot = builder.Configuration["Storage:Providers:Filesystem:Root"] ?? builder.Configuration["Platform:Assets:ContentPath"] ?? Path.Combine(platformDataPath, "assets");
 var storageDefaultProvider = builder.Configuration["Storage:DefaultProvider"] ?? "filesystem";
-builder.Services.AddSingleton<IStorageProviderV1>(_ => new FilesystemStorageProviderV1(storageRoot));
+builder.Services.AddSingleton<IStorageProviderV1>(_ => new ObservedStorageProviderV1(new FilesystemStorageProviderV1(storageRoot), _.GetRequiredService<IPlatformMetricsV1>()));
 builder.Services.AddSingleton<IStorageProviderResolverV1>(sp => new StorageProviderRegistryV1(storageDefaultProvider, sp.GetServices<IStorageProviderV1>()));
 var jobOptions = new PlatformJobOptionsV1(
     builder.Configuration.GetValue("Platform:Jobs:MaximumPayloadBytes", 262144),
@@ -75,7 +80,7 @@ jobOptions.Validate();
 builder.Services.AddSingleton(jobOptions);
 builder.Services.AddSingleton<PlatformJobMetricsV1>();
 builder.Services.AddSingleton<IPlatformJobHandlerRegistryV1>(_ => new PlatformJobHandlerRegistryV1().Register(new PlatformTestHashHandlerV1()));
-builder.Services.AddSingleton<IPlatformRemoteJobExecutorV1>(services => new DistributedPlatformJobExecutor(services.GetRequiredService<IDistributedWorkCoordinatorV1>()));
+builder.Services.AddSingleton<IPlatformRemoteJobExecutorV1>(services => new DistributedPlatformJobExecutor(services.GetRequiredService<IDistributedWorkCoordinatorV1>(), metrics: services.GetRequiredService<IPlatformMetricsV1>()));
 builder.Services.AddPlatformJobsSqlite(builder.Configuration["Platform:Jobs:Path"] ?? Path.Combine(platformDataPath, "jobs.sqlite"));
 builder.Services.AddSingleton<LocalPlatformJobDispatcher>();
 builder.Services.AddSingleton<IPlatformJobExecutionControlV1>(sp => sp.GetRequiredService<LocalPlatformJobDispatcher>());
@@ -242,6 +247,12 @@ builder.Services.AddSingleton<ITranscodedContentStore>(services => services.GetR
 builder.Services.AddSingleton<ICompatibleMediaTranscoderV1>(services => services.GetRequiredService<ICapabilityResolver>()
     .Resolve<ICompatibleMediaTranscoderV1>("hispania.playback.compatible-transcoder", new Version(1, 0), "hispania.transcoding.ffmpeg"));
 builder.Services.AddSingleton<LibraryReadiness>();
+// Domain composition contributes health without introducing a Platform -> Media dependency.
+builder.Services.AddSingleton<IPlatformHealthCheckV1>(sp => new DelegatePlatformHealthCheckV1("Media", _ =>
+{
+    var readiness = sp.GetRequiredService<LibraryReadiness>();
+    return ValueTask.FromResult(new PlatformHealthCheckResultV1("Media", readiness.IsReady ? PlatformHealthStatusV1.Healthy : PlatformHealthStatusV1.Degraded, readiness.IsReady ? "library_ready" : "library_starting"));
+}));
 builder.Services.AddHostedService<PersistenceStartupService>();
 builder.Services.AddHostedService<InitialLibraryScanService>();
 if (tmdbOptions.Enabled)
@@ -260,6 +271,8 @@ builder.Services.AddSingleton<IArchitectureDemonstrationService>(serviceProvider
 var app = builder.Build();
 await SeedInventoryDemoAsync(app.Services);
 
+app.UseMiddleware<PlatformCorrelationMiddleware>();
+app.MapPlatformObservability();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 

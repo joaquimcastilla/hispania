@@ -379,3 +379,9 @@ Phase 13.3 keeps authorization enforcement at the HTTP composition root. Invento
 ## Platform Jobs and remote capabilities (Phase 13.6)
 
 Jobs Contracts and Application do not reference WorkerAgent implementation. A host-side adapter maps explicitly registered JobTypes to versioned Runtime capabilities and submits bounded payloads to the existing WorkerAgent coordinator protocol. `LocalOnly`, `RemotePreferred`, and `RemoteOnly` affect executor selection, not Job status. Jobs SQLite owns durable attempt/result acceptance; coordinator generations fence remote leases and Jobs attempt-number compare-and-set rejects late results. Remote execution is at-least-once. WorkerAgent only runs operator-installed trusted providers and does not own durable Jobs. See [ADR-0035](adr/ADR-0035-platform-remote-job-execution.md).
+
+## Observability V1 (Phase 13.8)
+
+Modules may use Platform correlation/metrics/health contracts and the standard `Hispania.Platform` ActivitySource; Platform does not reference domain modules. Domain composition can register `IPlatformHealthCheckV1` implementations. Meter names are fixed by `PlatformMetricNamesV1` and expose no identifier labels. Microsoft.Extensions.Logging operation scopes carry safe correlation/component/operation fields; Audit remains a separate business/security contract.
+
+Distributed job envelopes add optional `CausationId`, `TraceParent` and `TraceState` beside their existing `CorrelationId`; the generic capability executor restores context before awaiting the handler. Only this metadata travels, never arbitrary HTTP headers. Durable Events and Jobs store optional trace parents using additive migrations. See [ADR-0037](adr/ADR-0037-platform-observability-foundation.md) for sampling, best-effort metrics, health semantics and restart limitations.

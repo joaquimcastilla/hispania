@@ -30,7 +30,7 @@ public sealed record DistributedJobRequestV1(
     bool HasExternalSideEffects = false,
     bool RetrySafe = false,
     string? CorrelationId = null,
-    int? TimeoutSeconds = null);
+    int? TimeoutSeconds = null, string? CausationId = null, string? TraceParent = null, string? TraceState = null);
 
 public sealed record DistributedJobLeaseV1(
     string JobId,

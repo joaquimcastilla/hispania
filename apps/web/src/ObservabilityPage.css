@@ -1,0 +1,7 @@
+.observability-page { max-width: 1120px; margin: 0 auto; padding: 2rem 1.25rem; }
+.observability-page h2 { margin-top: 2rem; }
+.observability-page table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+.observability-page caption { text-align: left; font-weight: 600; padding: .6rem 0; }
+.observability-page th, .observability-page td { text-align: left; padding: .65rem; border-bottom: 1px solid #39404a; overflow-wrap: anywhere; }
+.observability-page button { margin-left: 1rem; padding: .5rem 1rem; }
+@media (max-width: 650px) { .observability-page { padding: 1rem .5rem; } .observability-page th, .observability-page td { padding: .4rem; font-size: .8rem; } }

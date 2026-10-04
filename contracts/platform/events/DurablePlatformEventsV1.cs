@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Hispania.Platform.Contracts.Events;
 
 public sealed record PlatformEventEnvelopeV1(Guid EventId, string EventType, int Version, DateTimeOffset OccurredAt,
-    string? CorrelationId, string? CausationId, string Producer, string PayloadJson);
+    string? CorrelationId, string? CausationId, string Producer, string PayloadJson, string? TraceParent = null, string? TraceState = null);
 public enum DurableDeliveryStatus { Pending, Processing, Delivered, DeadLettered }
 public sealed record DurableDeliveryV1(Guid DeliveryId, Guid EventId, string SubscriberId, DurableDeliveryStatus Status,
     int AttemptCount, DateTimeOffset NextAttemptAt, string? LastError, DateTimeOffset? DeliveredAt, DateTimeOffset? DeadLetteredAt);
@@ -12,7 +12,7 @@ public sealed record DurableDeliveryViewV1(Guid DeliveryId, Guid EventId, string
     DateTimeOffset? DeliveredAt, DateTimeOffset? DeadLetteredAt);
 public sealed record DurableEventDetailV1(PlatformEventEnvelopeV1 Event, IReadOnlyList<DurableDeliveryV1> Deliveries);
 public sealed record DurableDeliveryAttemptV1(Guid AttemptId, Guid DeliveryId, int AttemptNumber, DateTimeOffset FinishedAt, DurableDeliveryStatus Outcome, string? Error);
-public sealed record DurableEventHealthV1(long Pending, long Processing, long Delivered, long DeadLettered, bool StoreAccessible);
+public sealed record DurableEventHealthV1(long Pending, long Processing, long Delivered, long DeadLettered, bool StoreAccessible, long Retrying = 0);
 public sealed record DurableEventOptionsV1(int MaximumPayloadBytes = 262144, int MaximumAttempts = 5,
     TimeSpan? RetryDelay = null, TimeSpan? ProcessingLease = null)
 {

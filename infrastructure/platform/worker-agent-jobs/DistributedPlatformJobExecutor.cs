@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using Hispania.Platform.Contracts.Observability;
+using System.Diagnostics;
 using System.Text.Json;
 using Hispania.ModuleSystem.Contracts;
 using Hispania.Platform.Contracts.Jobs;
@@ -8,7 +10,7 @@ namespace Hispania.Platform.WorkerAgentJobs;
 
 /// <summary>Host adapter over the existing single-coordinator worker protocol.</summary>
 public sealed class DistributedPlatformJobExecutor(IDistributedWorkCoordinatorV1 coordinator, TimeSpan? pollInterval = null,
-    TimeSpan? preferredWait = null) : IPlatformRemoteJobExecutorV1
+    TimeSpan? preferredWait = null, IPlatformMetricsV1? metrics = null) : IPlatformRemoteJobExecutorV1
 {
     public const string HashJobType = PlatformTestHashHandlerV1.TypeId;
     public const string HashCapabilityId = "platform.jobs.hash";
@@ -53,10 +55,12 @@ public sealed class DistributedPlatformJobExecutor(IDistributedWorkCoordinatorV1
         if (capability is null) return null;
         if (!IsAvailable(job.JobType) && job.ExecutionPolicy == PlatformJobExecutionPolicyV1.RemotePreferred) return null;
         while (!IsAvailable(job.JobType)) await Task.Delay(poll, cancellationToken).ConfigureAwait(false);
+        using var activity = PlatformTracingV1.Start("job.remote.dispatch", ActivityKind.Producer);
+        metrics.BestEffort(sink => sink.Increment("hispania.workers.executions"));
         var remoteId = $"{job.JobId:N}-{attemptNumber}";
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(new { payloadJson = job.PayloadJson }, JsonOptions));
         var request = new DistributedJobRequestV1(remoteId, capability.ContractId, capability.ContractVersion, "Execute",
-            document.RootElement.Clone(), RetrySafe: true, CorrelationId: job.CorrelationId, TimeoutSeconds: job.TimeoutSeconds);
+            document.RootElement.Clone(), RetrySafe: true, CorrelationId: job.CorrelationId, TimeoutSeconds: job.TimeoutSeconds, CausationId: job.CausationId, TraceParent: Activity.Current?.Id ?? job.TraceParent, TraceState: Activity.Current?.TraceStateString ?? job.TraceState);
         coordinator.Queue(request, allowRemote: true);
         active[job.JobId] = remoteId;
         var due = DateTimeOffset.UtcNow + preferredWait;
@@ -100,6 +104,7 @@ public sealed class DistributedPlatformJobExecutor(IDistributedWorkCoordinatorV1
             _ = coordinator.CancelJob(remoteId);
             throw;
         }
+        catch (Exception) { metrics.BestEffort(sink => sink.Increment("hispania.workers.failures")); throw; }
         finally { active.TryRemove(job.JobId, out _); }
     }
 

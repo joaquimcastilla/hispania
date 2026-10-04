@@ -11,7 +11,7 @@ using Xunit;
 
 namespace Hispania.Inventory.Tests;
 
-public sealed class ServerProcessRestartTests
+public sealed partial class ServerProcessRestartTests
 {
     [Fact]
     public async Task ScheduledPlatformJobSurvivesServerRestartAndRequiresSessionRbac()

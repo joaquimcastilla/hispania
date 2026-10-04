@@ -13,7 +13,7 @@ public sealed record PlatformJobV1(Guid JobId, string JobType, PlatformJobStatus
     int MaxAttempts, int? TimeoutSeconds, string? CorrelationId, string? CausationId, string? IdempotencyKey,
     string PayloadJson, string? ResultMetadataJson, string? ErrorMetadata, string Executor,
     DateTimeOffset? LeaseExpiresAt, PlatformJobExecutionPolicyV1 ExecutionPolicy = PlatformJobExecutionPolicyV1.LocalOnly,
-    string? WorkerId = null, string? Capability = null, long? Generation = null, string? LeaseId = null);
+    string? WorkerId = null, string? Capability = null, long? Generation = null, string? LeaseId = null, string? TraceParent = null, string? TraceState = null);
 public sealed record PlatformJobListItemV1(Guid JobId, string JobType, PlatformJobStatusV1 Status,
     DateTimeOffset CreatedAt, DateTimeOffset ScheduledAt, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
     int AttemptCount, int MaxAttempts, string Executor, string? ErrorSummary,
@@ -46,7 +46,7 @@ public sealed record PlatformRemoteJobExecutionV1(PlatformJobResultMetadataV1? R
     string Capability, long Generation, string LeaseId);
 public sealed record PlatformJobCreateResultV1(PlatformJobV1 Job, bool Duplicate);
 public sealed record PlatformJobHealthV1(bool StoreAccessible, bool DispatcherActive, long Pending, long Running,
-    long Succeeded, long Failed, long Cancelled, long DeadLettered);
+    long Succeeded, long Failed, long Cancelled, long DeadLettered, DateTimeOffset? OldestRemoteOnlyPendingAt = null);
 
 /// <summary>Durable job APIs. Jobs are commands/work to perform; Events are facts that occurred.</summary>
 public interface IPlatformJobServiceV1

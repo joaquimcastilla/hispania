@@ -1,3 +1,5 @@
+using Hispania.Platform.Contracts.Observability;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Security.Cryptography.X509Certificates;
@@ -35,12 +37,15 @@ public sealed class CompositeDistributedCapabilityExecutor(IDistributedCapabilit
     private readonly IReadOnlyList<IDistributedCapabilityHandlerV1> handlers = handlers.ToArray();
     public IReadOnlyCollection<DistributedCapabilityV1> ListCapabilities() => extensions.ListCapabilities().Concat(handlers.SelectMany(static handler => handler.Capabilities)).Distinct().ToArray();
     public ValueTask<JsonElement> ExecuteAsync(DistributedJobRequestV1 request, CancellationToken cancellationToken) => ExecuteAsync(request, 0, cancellationToken);
-    public ValueTask<JsonElement> ExecuteAsync(DistributedJobRequestV1 request, long generation, CancellationToken cancellationToken)
+    public async ValueTask<JsonElement> ExecuteAsync(DistributedJobRequestV1 request, long generation, CancellationToken cancellationToken)
     {
+        using var correlation = PlatformCorrelationV1.Push(new(request.CorrelationId ?? (PlatformCorrelationV1.IsValidId(request.JobId) ? request.JobId : Guid.NewGuid().ToString("N")), request.CausationId, PlatformCorrelationV1.IsValidId(request.JobId) ? request.JobId : null, request.TraceParent, request.TraceState));
+        using var activity = PlatformTracingV1.Start("worker.execute", ActivityKind.Consumer, request.TraceParent, request.TraceState);
         var capability = new DistributedCapabilityV1(request.ContractId, request.ContractVersion);
         var matching = handlers.Where(handler => handler.Capabilities.Contains(capability)).ToArray();
         if (matching.Length > 1) throw new InvalidOperationException($"More than one distributed handler provides {capability}.");
-        return matching.Length == 1 ? matching[0].ExecuteAsync(request, generation, cancellationToken) : extensions.ExecuteAsync(request, cancellationToken);
+        if (matching.Length == 1) return await matching[0].ExecuteAsync(request, generation, cancellationToken).ConfigureAwait(false);
+        return await extensions.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
     }
 }
 

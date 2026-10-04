@@ -205,6 +205,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "storage-filesystem", "stora
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hispania.Platform.Storage.Filesystem", "infrastructure\platform\storage-filesystem\Hispania.Platform.Storage.Filesystem.csproj", "{B4822DE3-66CD-4821-929E-1A13131E0EEB}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "observability", "observability", "{B60B1130-714C-BC5C-3677-0E01E2334CD3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hispania.Platform.Observability.Application", "application\platform\observability\Hispania.Platform.Observability.Application.csproj", "{54215283-ED69-4B79-8C6B-6F7E555426EE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -815,6 +819,18 @@ Global
 		{B4822DE3-66CD-4821-929E-1A13131E0EEB}.Release|x64.Build.0 = Release|Any CPU
 		{B4822DE3-66CD-4821-929E-1A13131E0EEB}.Release|x86.ActiveCfg = Release|Any CPU
 		{B4822DE3-66CD-4821-929E-1A13131E0EEB}.Release|x86.Build.0 = Release|Any CPU
+		{54215283-ED69-4B79-8C6B-6F7E555426EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{54215283-ED69-4B79-8C6B-6F7E555426EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{54215283-ED69-4B79-8C6B-6F7E555426EE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{54215283-ED69-4B79-8C6B-6F7E555426EE}.Debug|x64.Build.0 = Debug|Any CPU
+		{54215283-ED69-4B79-8C6B-6F7E555426EE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{54215283-ED69-4B79-8C6B-6F7E555426EE}.Debug|x86.Build.0 = Debug|Any CPU
+		{54215283-ED69-4B79-8C6B-6F7E555426EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{54215283-ED69-4B79-8C6B-6F7E555426EE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{54215283-ED69-4B79-8C6B-6F7E555426EE}.Release|x64.ActiveCfg = Release|Any CPU
+		{54215283-ED69-4B79-8C6B-6F7E555426EE}.Release|x64.Build.0 = Release|Any CPU
+		{54215283-ED69-4B79-8C6B-6F7E555426EE}.Release|x86.ActiveCfg = Release|Any CPU
+		{54215283-ED69-4B79-8C6B-6F7E555426EE}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -898,5 +914,7 @@ Global
 		{B8C1AB1C-37E4-41B3-83CD-BAC242BF9AD6} = {279982E8-684C-D6A0-5E67-33EABBC9010C}
 		{0E261625-A32D-709E-EB1E-76B7B81C2644} = {39D0EDD3-E627-BDF1-3DC5-0EF80A5C7655}
 		{B4822DE3-66CD-4821-929E-1A13131E0EEB} = {0E261625-A32D-709E-EB1E-76B7B81C2644}
+		{B60B1130-714C-BC5C-3677-0E01E2334CD3} = {0984A948-62D6-502D-10ED-32B74F96D2B0}
+		{54215283-ED69-4B79-8C6B-6F7E555426EE} = {B60B1130-714C-BC5C-3677-0E01E2334CD3}
 	EndGlobalSection
 EndGlobal

@@ -29,6 +29,7 @@ public sealed class PlatformDependencyTests
     [Fact]
     public void PlatformAndInventoryAssembliesHaveNoCrossDomainImplementationReferences()
     {
+        AssertNoForbiddenReferences(typeof(Hispania.Platform.Observability.Application.PlatformHealthV1).Assembly, "Media", "Inventory", "Server", "Persistence");
         AssertNoForbiddenReferences(typeof(IPlatformEvent).Assembly, "Media", "Inventory", "Store");
         AssertNoForbiddenReferences(typeof(IPlatformJobServiceV1).Assembly, "Media", "Inventory");
         AssertNoForbiddenReferences(typeof(PlatformJobService).Assembly, "Media", "Inventory");

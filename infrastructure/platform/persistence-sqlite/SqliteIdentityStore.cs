@@ -135,6 +135,14 @@ public sealed class SqliteIdentityStore : IIdentityStore
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1;
     }, cancellationToken).ConfigureAwait(false);
 
+    public async ValueTask<long> CountActiveSessionsAsync(CancellationToken cancellationToken = default) => await WithConnection(async connection =>
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM identity_sessions s JOIN identity_users u ON s.user_id=u.user_id WHERE s.revoked_utc IS NULL AND s.expires_utc > $now AND u.status=0";
+        command.Parameters.AddWithValue("$now", Fmt(DateTimeOffset.UtcNow));
+        return (long)(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) ?? 0L);
+    }, cancellationToken).ConfigureAwait(false);
+
     private async Task<T> WithConnection<T>(Func<SqliteConnection, Task<T>> action, CancellationToken cancellationToken)
     {
         await using var connection = new SqliteConnection(_connectionString); await connection.OpenAsync(cancellationToken).ConfigureAwait(false); return await action(connection).ConfigureAwait(false);

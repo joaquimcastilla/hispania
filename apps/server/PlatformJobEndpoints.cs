@@ -35,7 +35,7 @@ public static class PlatformJobEndpoints
                 var response = View(created.Job);
                 return created.Duplicate ? Results.Ok(response) : Results.Accepted($"/api/platform/jobs/{created.Job.JobId:D}", response);
             }
-            catch (ArgumentException ex) { return Results.BadRequest(new { error = "invalid_job", detail = ex.Message }); }
+            catch (ArgumentException) { return Results.BadRequest(new { error = "invalid_job" }); }
             catch (JsonException) { return Results.BadRequest(new { error = "invalid_payload" }); }
         }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.JobsManage, allowLegacyAdminBearer: false));
         group.MapGet("/health", async (IPlatformJobServiceV1 jobs, CancellationToken ct) =>

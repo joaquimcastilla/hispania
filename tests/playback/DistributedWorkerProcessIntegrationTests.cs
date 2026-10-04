@@ -141,10 +141,14 @@ public sealed class DistributedWorkerProcessIntegrationTests
             try
             {
                 var remoteJob = await jobService.CreateAsync(new(PlatformTestHashHandlerV1.TypeId,
-                    "{\"text\":\"remote-proof\",\"algorithm\":\"sha256\"}", CorrelationId: "platform-job-trace",
+                    "{\"text\":\"remote-proof\",\"algorithm\":\"sha256\"}", CorrelationId: "platform-job-trace", CausationId: "platform-event-cause",
                     ExecutionPolicy: PlatformJobExecutionPolicyV1.RemoteOnly));
+                Assert.Equal("platform-event-cause", remoteJob.Job.CausationId);
                 var remoteJobDone = await WaitForPlatformJobAsync(jobService, remoteJob.Job.JobId, PlatformJobStatusV1.Succeeded, TimeSpan.FromSeconds(15));
                 Assert.Equal("remote", remoteJobDone.Executor); Assert.Equal(NodeId, remoteJobDone.WorkerId);
+                var remoteEnvelope = coordinator.ListJobs().Single(job => job.Request.JobId.StartsWith(remoteJob.Job.JobId.ToString("N"), StringComparison.Ordinal)).Request;
+                Assert.Equal("platform-job-trace", remoteEnvelope.CorrelationId);
+                Assert.Equal("platform-event-cause", remoteEnvelope.CausationId);
                 Assert.Equal(DistributedPlatformJobExecutor.HashCapabilityId + "@" + DistributedPlatformJobExecutor.HashCapabilityVersion, remoteJobDone.Capability);
                 Assert.True(remoteJobDone.Generation > 0);
                 var remoteAttempt = Assert.Single(await jobService.GetAttemptsAsync(remoteJob.Job.JobId));

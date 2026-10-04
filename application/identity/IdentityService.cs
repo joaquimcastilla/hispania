@@ -1,3 +1,4 @@
+using Hispania.Platform.Contracts.Observability;
 using System.Security.Cryptography;
 using System.Text;
 using Hispania.Platform.Contracts.Audit;
@@ -30,12 +31,14 @@ public sealed class IdentityService : IIdentityCommandV1, IIdentityQueryV1
     private const int MinimumPasswordLength = 12;
     private const int MaximumPasswordLength = 1024;
     private static readonly string DummyHash = HashPassword("identity-timing-placeholder").Hash;
+    private readonly IPlatformMetricsV1? metrics;
     private readonly IIdentityStore store;
     private readonly IPlatformAuditWriter? audit;
     private readonly IdentityOptions _options;
 
-    public IdentityService(IIdentityStore store, IPlatformAuditWriter? audit = null, IdentityOptions? options = null)
+    public IdentityService(IIdentityStore store, IPlatformAuditWriter? audit = null, IdentityOptions? options = null, IPlatformMetricsV1? metrics = null)
     {
+        this.metrics = metrics;
         this.store = store;
         this.audit = audit;
         _options = options ?? new();
@@ -94,12 +97,14 @@ public sealed class IdentityService : IIdentityCommandV1, IIdentityQueryV1
 
     public async ValueTask<AuthenticationResult> LoginAsync(string username, string password, string? correlationId = null, CancellationToken cancellationToken = default)
     {
+        correlationId ??= PlatformCorrelationV1.Current?.CorrelationId;
         var normalized = TryNormalizeUsername(username, out var name) ? name : string.Empty;
         var user = normalized.Length == 0 ? null : await store.GetUserByUsernameAsync(normalized, cancellationToken).ConfigureAwait(false);
         var credential = user is null ? null : await store.GetCredentialAsync(user.Id, cancellationToken).ConfigureAwait(false);
         var valid = VerifyPassword(password ?? string.Empty, credential ?? ParseCredential(DummyHash));
         if (user is null || credential is null || !valid || user.Status != UserStatus.Enabled)
         {
+            metrics.BestEffort(sink => sink.Increment("hispania.identity.login.failure"));
             await WriteAudit(user?.Id, "login-failure", "failure", null, correlationId, cancellationToken).ConfigureAwait(false);
             return AuthenticationResult.Failed();
         }
@@ -107,6 +112,7 @@ public sealed class IdentityService : IIdentityCommandV1, IIdentityQueryV1
         var now = DateTimeOffset.UtcNow;
         var session = new Session(SessionId.New(), user.Id, now, now + _options.EffectiveSessionLifetime, null);
         await store.CreateSessionAsync(new(session, TokenHash(rawToken)), cancellationToken).ConfigureAwait(false);
+        metrics.BestEffort(sink => sink.Increment("hispania.identity.login.success"));
         await WriteAudit(user.Id, "login-success", "success", session.Id.Value.ToString("D"), correlationId, cancellationToken).ConfigureAwait(false);
         return new(true, user, session, rawToken);
     }
@@ -143,6 +149,7 @@ public sealed class IdentityService : IIdentityCommandV1, IIdentityQueryV1
 
     private async ValueTask WriteAudit(UserId? userId, string action, string result, string? sessionId, string? correlationId, CancellationToken cancellationToken)
     {
+        correlationId ??= PlatformCorrelationV1.Current?.CorrelationId;
         if (audit is null) return;
         var metadata = sessionId is null ? new Dictionary<string, string>() : new Dictionary<string, string> { ["sessionId"] = sessionId };
         await audit.WriteAsync(new(DateTimeOffset.UtcNow, userId?.Value.ToString("D"), correlationId, "platform.identity", action, "user", userId?.Value.ToString("D") ?? "unknown", result, metadata), cancellationToken).ConfigureAwait(false);

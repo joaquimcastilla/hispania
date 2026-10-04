@@ -17,7 +17,8 @@
       "apps/worker-agent/Hispania.WorkerAgent.csproj",
       "contracts/extension-demo/Hispania.ExtensionDemo.Contracts.csproj",
       "contracts/architecture-test/Hispania.ArchitectureTest.Contracts.csproj",
-      "modules/architecture-test/Hispania.ArchitectureTest.Modules.csproj"
+      "modules/architecture-test/Hispania.ArchitectureTest.Modules.csproj",
+      "application/platform/observability/Hispania.Platform.Observability.Application.csproj"
     ]
   }
 }
