@@ -50,7 +50,7 @@ Operations not committed before a crash are not guaranteed to survive. Events an
 | test shutdown | Registered only with explicit Testing:ShutdownToken; separate fixed-time token |
 | internal/admin/modules routes below | Existing bearer-only legacy administration, including advanced diagnostics/package/trust/worker/experiment operations |
 
-All current endpoint files and Program mappings were reviewed. No new endpoint is authorized by session presence alone. The new error middleware does not bypass authentication or change successful route policy. Public diagnostic compatibility endpoints and bearer-only module administration remain explicit limitations; the consolidated Admin projection is the safer session/RBAC surface.
+All current endpoint files and Program mappings were reviewed. No new endpoint is authorized by session presence alone. The new error middleware does not bypass authentication or change successful route policy. The public module health projection excludes runtime Detail, which can contain provider/extension exception messages; descriptor/state/timestamps remain public. Its real HTTP regression injects credential/path material and proves exclusion. Public diagnostic compatibility endpoints and bearer-only module administration remain explicit limitations; the consolidated Admin projection is the safer session/RBAC surface.
 
 ## Exact legacy bearer inventory
 
@@ -114,7 +114,7 @@ Admin's static route registry retains the exact permission map from 13.9. Isolat
 
 ## Stress, storage and SQLite
 
-`tools/test-phase13-concurrency.ps1` requires 20 passes of ten named tests (200 passes): Platform bootstrap, role updates, username uniqueness, Job acquisition, concurrent Event publish/acquisition, concurrent opaque filesystem writes, Media metadata unique-index race, retry-safe fencing, competing workers/late results and cancellation fencing. It fails on missing discovery, failure or skip, with no retry-to-green or added sleeps. The first local run overlaps the complete suite, exercising independent SQLite fixtures under load. Successful concurrent store operations plus integrity checks are required; a `database is locked` exception or deadlock fails the run.
+`tools/test-phase13-concurrency.ps1` requires 20 passes of ten named tests (200 passes): Platform bootstrap, concurrent normalized role creation/assignment and role updates, username uniqueness, Job acquisition, concurrent Event publish/acquisition, concurrent opaque filesystem writes, Media metadata unique-index race, retry-safe fencing, competing workers/late results and cancellation fencing. It fails on missing discovery, failure or skip, with no retry-to-green or added sleeps. The first local run overlaps the complete suite, exercising independent SQLite fixtures under load. Successful concurrent store operations plus integrity checks are required; a `database is locked` exception or deadlock fails the run.
 
 Storage regression also covers opaque and legacy handles, traversal, symlink/reparse protection, unknown provider, missing object, write compensation and metadata-first delete/orphan semantics. Symlink creation uses the existing OS privilege handling; no new skip is added. Provider writes clean partials; Assets own metadata, provider resolution and compensation. Delete may leave an orphan if content deletion fails after metadata removal; this is documented rather than hidden or silently redesigned.
 

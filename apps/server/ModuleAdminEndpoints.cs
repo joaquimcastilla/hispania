@@ -12,6 +12,15 @@ namespace Hispania.Server;
 
 public static class ModuleAdminEndpoints
 {
+    public static IEndpointRouteBuilder MapPublicModuleHealth(this IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapGet("/internal/modules/health", (IModuleRuntime runtime) => Results.Ok(runtime.ListHealth().Select(health => new
+        {
+            health.Descriptor, health.State, health.IsHealthy, health.UpdatedAtUtc, health.Revision
+        })));
+        return endpoints;
+    }
+
     private static readonly Action<ILogger, string, Version, Exception?> PackageInstalledLog = LoggerMessage.Define<string, Version>(LogLevel.Information, new EventId(1, "ExtensionPackageInstalled"), "Installed extension package {ExtensionId} version {ExtensionVersion}");
     private static readonly Action<ILogger, string, Exception?> PackageInstallFailedLog = LoggerMessage.Define<string>(LogLevel.Warning, new EventId(2, "ExtensionPackageInstallFailed"), "Extension package installation failed: {Error}");
     private static readonly Action<ILogger, string, string, int, Exception?> AdminOperationLog = LoggerMessage.Define<string, string, int>(LogLevel.Information, new EventId(3, "ExtensionAdminOperation"), "Module administration request {Method} {Path} completed with {StatusCode}");

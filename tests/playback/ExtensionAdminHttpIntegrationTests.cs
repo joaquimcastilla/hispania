@@ -50,6 +50,7 @@ public sealed class ExtensionAdminHttpIntegrationTests
                 new Dictionary<string, Func<Hispania.ModuleSystem.Contracts.IModule>>(), [ModuleId]));
             await using var app = builder.Build();
             app.MapModuleAdminEndpoints();
+            app.MapPublicModuleHealth();
             await app.StartAsync();
             using var client = app.GetTestClient();
 
@@ -111,6 +112,18 @@ public sealed class ExtensionAdminHttpIntegrationTests
                 Assert.Equal(System.Net.HttpStatusCode.Created, installed.StatusCode);
             using (var activated = await AdminPostAsync($"/internal/admin/modules/extensions/{ModuleId}/activate"))
                 Assert.Equal(System.Net.HttpStatusCode.OK, activated.StatusCode);
+            var runtime = app.Services.GetRequiredService<IModuleRuntime>();
+            await runtime.MarkDegradedAsync(ModuleId, "password=closure-secret; /internal/root; Authorization: Bearer closure-secret");
+            using (var publicHealth = await client.GetAsync("/internal/modules/health"))
+            {
+                Assert.Equal(System.Net.HttpStatusCode.OK, publicHealth.StatusCode);
+                var body = await publicHealth.Content.ReadAsStringAsync();
+                Assert.Contains(ModuleId, body);
+                Assert.DoesNotContain("detail", body, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("closure-secret", body);
+                Assert.DoesNotContain("/internal/root", body);
+            }
+            Assert.True(await runtime.CheckHealthAsync(ModuleId));
             using (var message = await AdminGetAsync($"/internal/admin/modules/extensions/{ModuleId}/greeting"))
             {
                 Assert.Equal(System.Net.HttpStatusCode.OK, message.StatusCode);

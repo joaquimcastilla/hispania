@@ -286,7 +286,7 @@ app.MapGet("/internal/metadata-enrichment", (IServiceProvider services) =>
     return enrichment is null ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable) : Results.Ok(enrichment.LastRun);
 });
 app.MapGet("/internal/module-test", (IArchitectureDemonstrationService service) => Results.Ok(service.GetResponse()));
-app.MapGet("/internal/modules/health", (IModuleRuntime runtime) => Results.Ok(runtime.ListHealth()));
+app.MapPublicModuleHealth();
 app.MapModuleAdminEndpoints();
 app.MapDistributedWorkerEndpoints();
 app.MapGet("/internal/capabilities/transcoding/health", (ITranscodingCapabilityHealthV1 health) => Results.Ok(health.GetSnapshot()));

@@ -57,13 +57,21 @@ public sealed class PlatformAuthorizationTests
         var authStore = new SqlitePlatformAuthorizationStore(path);
         var administration = new AuthorizationAdministrationService(authStore, identity);
         var authorization = new AuthorizationService(authStore, identity);
-        var roleResult = await administration.CreateRoleAsync("Media Readers", "Read access");
-        Assert.True(roleResult.Succeeded);
+        var concurrentRoles = await Task.WhenAll(
+            Task.Run(async () => await administration.CreateRoleAsync("Media Readers", "Read access")),
+            Task.Run(async () => await administration.CreateRoleAsync("media-readers", "Duplicate")));
+        var roleResult = Assert.Single(concurrentRoles, result => result.Succeeded);
+        Assert.Equal(AuthorizationFailure.DuplicateRoleName, Assert.Single(concurrentRoles, result => !result.Succeeded).Failure);
         var role = Assert.IsType<Role>(roleResult.Value);
         Assert.Equal(AuthorizationFailure.DuplicateRoleName, (await administration.CreateRoleAsync("media-readers", "Duplicate")).Failure);
         Assert.True((await administration.AddPermissionAsync(role.Id, "platform.users.read")).Succeeded);
-        Assert.True((await administration.AssignRoleAsync(created.Value!.Id, role.Id)).Succeeded);
-        Assert.False((await administration.AssignRoleAsync(created.Value.Id, role.Id)).Value);
+        var concurrentAssignments = await Task.WhenAll(
+            Task.Run(async () => await administration.AssignRoleAsync(created.Value!.Id, role.Id)),
+            Task.Run(async () => await administration.AssignRoleAsync(created.Value!.Id, role.Id)));
+        Assert.All(concurrentAssignments, result => Assert.True(result.Succeeded));
+        Assert.Single(concurrentAssignments, result => result.Value);
+        Assert.Single(concurrentAssignments, result => !result.Value);
+        Assert.NotNull(created.Value);
         Assert.True(await authorization.HasPermissionAsync(created.Value.Id, "platform.users.read"));
         Assert.False(await authorization.HasPermissionAsync(created.Value.Id, "platform.audit.read"));
         Assert.NotNull(await identity.ValidateSessionAsync(session.SessionToken!));
