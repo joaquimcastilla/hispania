@@ -55,7 +55,7 @@ public sealed class DistributedPlatformJobExecutor(IDistributedWorkCoordinatorV1
         if (capability is null) return null;
         if (!IsAvailable(job.JobType) && job.ExecutionPolicy == PlatformJobExecutionPolicyV1.RemotePreferred) return null;
         while (!IsAvailable(job.JobType)) await Task.Delay(poll, cancellationToken).ConfigureAwait(false);
-        using var activity = PlatformTracingV1.Start("job.remote.dispatch", ActivityKind.Producer);
+        using var activity = PlatformTracingV1.StartScope("job.remote.dispatch", ActivityKind.Producer);
         metrics.BestEffort(sink => sink.Increment("hispania.workers.executions"));
         var remoteId = $"{job.JobId:N}-{attemptNumber}";
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(new { payloadJson = job.PayloadJson }, JsonOptions));

@@ -53,6 +53,17 @@ jobs:
         run: dotnet build Hispania.Platform.slnf
       - name: Require Inventory, persistence, API restart, and architecture coverage
         run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj
+      - name: Require Observability correlation, tracing, concurrent metrics, health and administrative RBAC
+        shell: pwsh
+        run: |
+          dotnet test tests/inventory/Hispania.Inventory.Tests.csproj --no-build --filter "FullyQualifiedName~PlatformObservabilityTests|FullyQualifiedName~ObservabilityHttpCorrelation" --logger "trx;LogFileName=required-observability.trx"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $trx = [xml](Get-Content -Raw tests/inventory/TestResults/required-observability.trx -ErrorAction Stop)
+          $results = @($trx.TestRun.Results.UnitTestResult)
+          foreach ($pattern in @('*ConcurrentGaugesTimingsAndSnapshots*', '*ThrowingTraceCollectorsCannotBreakStorage*', '*UnsampledDurableFlow*', '*OperationPublishesEventWhichCreatesJob*', '*RemoteWorkerRestoresEnvelope*', '*HealthRecoversAndSanitizesStoreFailure*', '*ObservabilityHttpCorrelationAuditJobsAndDetailRbac*')) {
+            if (@($results | Where-Object { $_.testName -like $pattern -and $_.outcome -eq 'Passed' }).Count -eq 0) { throw "Required Observability test '$pattern' did not pass or was not discovered." }
+          }
+          if (@($results | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'Observability tests must pass without skips.' }
       - name: Build and package the greeting extension independently
         shell: pwsh
         run: |
@@ -121,6 +132,17 @@ jobs:
           dotnet-version: 10.0.x
       - name: Install FFmpeg integration tools
         run: choco install ffmpeg --yes --no-progress
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+        working-directory: apps/web
+      - run: npm run build
+        working-directory: apps/web
+      - run: npm test
+        working-directory: apps/web
       - run: dotnet restore Hispania.CrossPlatform.slnf
       - run: dotnet build Hispania.CrossPlatform.slnf --no-restore
       - name: Build the complete solution on Windows
@@ -129,6 +151,17 @@ jobs:
         run: dotnet build Hispania.Platform.slnf
       - name: Require Inventory, persistence, API restart, and architecture coverage
         run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj
+      - name: Require Observability correlation, tracing, concurrent metrics, health and administrative RBAC
+        shell: pwsh
+        run: |
+          dotnet test tests/inventory/Hispania.Inventory.Tests.csproj --no-build --filter "FullyQualifiedName~PlatformObservabilityTests|FullyQualifiedName~ObservabilityHttpCorrelation" --logger "trx;LogFileName=required-observability.trx"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $trx = [xml](Get-Content -Raw tests/inventory/TestResults/required-observability.trx -ErrorAction Stop)
+          $results = @($trx.TestRun.Results.UnitTestResult)
+          foreach ($pattern in @('*ConcurrentGaugesTimingsAndSnapshots*', '*ThrowingTraceCollectorsCannotBreakStorage*', '*UnsampledDurableFlow*', '*OperationPublishesEventWhichCreatesJob*', '*RemoteWorkerRestoresEnvelope*', '*HealthRecoversAndSanitizesStoreFailure*', '*ObservabilityHttpCorrelationAuditJobsAndDetailRbac*')) {
+            if (@($results | Where-Object { $_.testName -like $pattern -and $_.outcome -eq 'Passed' }).Count -eq 0) { throw "Required Observability test '$pattern' did not pass or was not discovered." }
+          }
+          if (@($results | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'Observability tests must pass without skips.' }
       - name: Require Windows FFmpeg worker process and media integration
         shell: pwsh
         run: |

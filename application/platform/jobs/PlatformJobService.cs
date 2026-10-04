@@ -36,6 +36,7 @@ public sealed class PlatformJobService(IPlatformJobStoreV1 store, IPlatformJobHa
 {
     public async ValueTask<PlatformJobCreateResultV1> CreateAsync(CreatePlatformJobV1 request, CancellationToken cancellationToken = default)
     {
+        using var activity = PlatformTracingV1.StartScope("job.create", ActivityKind.Producer);
         if (!PlatformJobHandlerRegistryV1.IsValidJobType(request.JobType) || !handlers.Contains(request.JobType)) throw new ArgumentException("JobType is not registered.", nameof(request));
         if (!Enum.IsDefined(request.ExecutionPolicy) || request.ExecutionPolicy == PlatformJobExecutionPolicyV1.RemoteOnly && remote?.GetCapability(request.JobType) is null)
             throw new ArgumentException("Execution policy is unsupported for this registered JobType.", nameof(request));
@@ -130,7 +131,7 @@ public sealed class LocalPlatformJobDispatcher(IPlatformJobStoreV1 store, IPlatf
     private async Task RunAsync(PlatformJobV1 job, CancellationToken stoppingToken)
     {
         using var correlation = PlatformCorrelationV1.Push(new(job.CorrelationId ?? job.JobId.ToString("N"), job.CausationId, job.JobId.ToString("D"), job.TraceParent, job.TraceState));
-        using var activity = PlatformTracingV1.Start("job.execute", ActivityKind.Consumer, job.TraceParent, job.TraceState);
+        using var activity = PlatformTracingV1.StartScope("job.execute", ActivityKind.Consumer, job.TraceParent, job.TraceState);
         var started = Stopwatch.GetTimestamp();
         using var logScope = logger.BeginScope(new Dictionary<string, object?> { ["CorrelationId"] = PlatformCorrelationV1.Current?.CorrelationId, ["CausationId"] = job.CausationId, ["OperationId"] = job.JobId, ["Component"] = "Jobs", ["Operation"] = "Execute" });
         JobStarted(logger, "JobStarted", job.JobId, "started", null);

@@ -6,40 +6,57 @@ namespace Hispania.Platform.Observability.Application;
 
 public sealed class PlatformMetricsV1 : IPlatformMetricsV1, IDisposable
 {
-    private readonly object sync = new();
     private readonly Meter meter = new("Hispania.Platform", "1.0.0");
-    private readonly Dictionary<string, long> values = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, MetricCell> values = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Counter<long>> counters = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Histogram<double>> histograms = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, (double Total, long Count)> timings = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, MetricCell> timings = new(StringComparer.Ordinal);
     public PlatformMetricsV1()
     {
-        foreach (var name in PlatformMetricNamesV1.Counters) { values[name] = 0; counters[name] = meter.CreateCounter<long>(name); }
-        foreach (var name in PlatformMetricNamesV1.Gauges) { values[name] = 0; meter.CreateObservableGauge(name, () => Read(name)); }
-        foreach (var name in PlatformMetricNamesV1.Histograms) { timings[name] = default; histograms[name] = meter.CreateHistogram<double>(name, "ms"); }
+        foreach (var name in PlatformMetricNamesV1.Counters) { values[name] = new(); counters[name] = meter.CreateCounter<long>(name); }
+        foreach (var name in PlatformMetricNamesV1.Gauges) { values[name] = new(); meter.CreateObservableGauge(name, () => Read(name)); }
+        foreach (var name in PlatformMetricNamesV1.Histograms) { timings[name] = new(); histograms[name] = meter.CreateHistogram<double>(name, "ms"); }
     }
-    private long Read(string name) { lock (sync) return values[name]; }
+    private long Read(string name) => Interlocked.Read(ref values[name].Value);
     public void Increment(string name, long amount = 1)
     {
         if (!counters.TryGetValue(name, out var counter) || amount < 0) throw new ArgumentException("Unknown counter or negative increment.", nameof(name));
-        lock (sync) values[name] = checked(values[name] + amount);
+        var cell = values[name];
+        lock (cell) cell.Value = checked(cell.Value + amount);
         try { counter.Add(amount); } catch (Exception) { /* Exporters are best effort. */ }
     }
     public void Gauge(string name, long value)
     {
         if (!PlatformMetricNamesV1.Gauges.Contains(name) || value < 0) throw new ArgumentException("Unknown gauge or negative value.", nameof(name));
-        lock (sync) values[name] = value;
+        Interlocked.Exchange(ref values[name].Value, value);
     }
     public void Observe(string name, double milliseconds)
     {
         if (!histograms.TryGetValue(name, out var histogram) || !double.IsFinite(milliseconds) || milliseconds < 0) throw new ArgumentException("Invalid timing.", nameof(name));
-        lock (sync) { var old = timings[name]; timings[name] = (old.Total + milliseconds, old.Count + 1); }
+        var cell = timings[name];
+        lock (cell)
+        {
+            var total = cell.Total + milliseconds;
+            if (!double.IsFinite(total)) throw new OverflowException("Timing aggregate exceeds the supported range.");
+            var count = checked(cell.Count + 1);
+            cell.Total = total; cell.Count = count;
+        }
         try { histogram.Record(milliseconds); } catch (Exception) { }
     }
     public IReadOnlyList<PlatformMetricSnapshotV1> Snapshot()
     {
-        lock (sync) return values.Select(pair => new PlatformMetricSnapshotV1(pair.Key, counters.ContainsKey(pair.Key) ? "Counter" : "Gauge", pair.Value))
-            .Concat(timings.Select(pair => new PlatformMetricSnapshotV1(pair.Key, "HistogramMeanMs", pair.Value.Count == 0 ? 0 : pair.Value.Total / pair.Value.Count, pair.Value.Count))).OrderBy(row => row.Name, StringComparer.Ordinal).ToArray();
+        return values.Select(pair => new PlatformMetricSnapshotV1(pair.Key, counters.ContainsKey(pair.Key) ? "Counter" : "Gauge", Interlocked.Read(ref pair.Value.Value)))
+            .Concat(timings.Select(pair =>
+            {
+                var cell = pair.Value;
+                lock (cell) return new PlatformMetricSnapshotV1(pair.Key, "HistogramMeanMs", cell.Count == 0 ? 0 : cell.Total / cell.Count, cell.Count);
+            })).OrderBy(row => row.Name, StringComparer.Ordinal).ToArray();
+    }
+    private sealed class MetricCell
+    {
+        public long Value;
+        public double Total;
+        public long Count;
     }
     public void Dispose() => meter.Dispose();
 }

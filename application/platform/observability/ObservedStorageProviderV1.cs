@@ -16,7 +16,7 @@ public sealed class ObservedStorageProviderV1(IStorageProviderV1 inner, IPlatfor
     public ValueTask<StorageProviderHealth> CheckHealthAsync(CancellationToken cancellationToken = default) => inner.CheckHealthAsync(cancellationToken);
     private async ValueTask<T> ExecuteAsync<T>(string operation, Func<ValueTask<T>> execute)
     {
-        using var activity = PlatformTracingV1.Start("storage." + operation);
+        using var activity = PlatformTracingV1.StartScope("storage." + operation);
         var started = Stopwatch.GetTimestamp();
         metrics.BestEffort(sink => sink.Increment("hispania.storage." + operation));
         try { return await execute().ConfigureAwait(false); }

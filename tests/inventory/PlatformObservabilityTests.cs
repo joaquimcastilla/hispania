@@ -19,6 +19,59 @@ namespace Hispania.Inventory.Tests;
 public sealed class PlatformObservabilityTests
 {
     [Fact]
+    public async Task ConcurrentGaugesTimingsAndSnapshotsRemainFiniteAndReturnToZero()
+    {
+        using var metrics = new PlatformMetricsV1();
+        var writers = Enumerable.Range(0, 16).Select(_ => Task.Run(() =>
+        {
+            for (var i = 0; i < 1000; i++)
+            {
+                metrics.Increment("hispania.jobs.created");
+                metrics.Gauge("hispania.jobs.running", i % 8);
+                metrics.Observe("hispania.jobs.duration", 2);
+                if (i % 50 == 0) Assert.All(metrics.Snapshot(), row => { Assert.True(double.IsFinite(row.Value)); Assert.True(row.Value >= 0); Assert.True(row.Count >= 0); });
+            }
+        }));
+        await Task.WhenAll(writers);
+        metrics.Gauge("hispania.jobs.running", 0);
+        var snapshot = metrics.Snapshot();
+        Assert.Equal(16000, Assert.Single(snapshot, row => row.Name == "hispania.jobs.created").Value);
+        var timing = Assert.Single(snapshot, row => row.Name == "hispania.jobs.duration"); Assert.Equal(16000, timing.Count); Assert.Equal(2, timing.Value);
+        Assert.Equal(0, Assert.Single(snapshot, row => row.Name == "hispania.jobs.running").Value);
+    }
+
+    [Theory]
+    [InlineData("sample")]
+    [InlineData("start")]
+    [InlineData("stop")]
+    public async Task ThrowingTraceCollectorsCannotBreakStorageOrLeakTheActivityScope(string failure)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "hispania-trace-fault-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(directory);
+        using var parent = new Activity("collector.parent").SetIdFormat(ActivityIdFormat.W3C).Start();
+        using var correlation = PlatformCorrelationV1.Push(new("flow-collector", OperationId: "request", TraceParent: parent.Id));
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == "Hispania.Platform",
+            Sample = (ref ActivityCreationOptions<ActivityContext> options) => failure == "sample" && options.Name == "storage.writes" ? throw new IOException("collector-secret") : ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStarted = activity => { if (failure == "start" && activity.OperationName == "storage.writes") throw new IOException("collector-secret"); },
+            ActivityStopped = activity => { if (failure == "stop" && activity.OperationName == "storage.writes") throw new IOException("collector-secret"); }
+        };
+        ActivitySource.AddActivityListener(listener);
+        try
+        {
+            using var metrics = new PlatformMetricsV1();
+            var storage = new ObservedStorageProviderV1(new Hispania.Platform.Storage.Filesystem.FilesystemStorageProviderV1(directory), metrics);
+            using var bytes = new MemoryStream([1, 2, 3]);
+            var written = await storage.WriteAsync(bytes, 100);
+            Assert.Equal(3, written.Metadata.Size); Assert.Same(parent, Activity.Current);
+            Assert.Equal("flow-collector", PlatformCorrelationV1.Current?.CorrelationId);
+            Assert.True(await storage.DeleteAsync(written.Handle));
+            Assert.Equal(1, Assert.Single(metrics.Snapshot(), row => row.Name == "hispania.storage.writes").Value);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public async Task UnsampledDurableFlowRetainsTraceParentForFutureListeners()
     {
         var directory = Path.Combine(Path.GetTempPath(), "hispania-observability-unsampled-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(directory);

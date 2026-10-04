@@ -21,7 +21,7 @@ public sealed class PlatformCorrelationMiddleware(RequestDelegate next, ILogger<
         http.Request.Headers[PlatformCorrelationV1.HeaderName] = correlation;
         http.Response.OnStarting(() => { http.Response.Headers[PlatformCorrelationV1.HeaderName] = correlation; return Task.CompletedTask; });
         using var logging = PlatformLogConventionsV1.BeginOperation(logger, "HTTP", http.Request.Method);
-        using var activity = PlatformTracingV1.Start("http.request", ActivityKind.Server);
+        using var activity = PlatformTracingV1.StartScope("http.request", ActivityKind.Server);
         var started = Stopwatch.GetTimestamp();
         try { await next(http); }
         finally { metrics.BestEffort(sink => sink.Observe("hispania.http.duration", Stopwatch.GetElapsedTime(started).TotalMilliseconds)); }

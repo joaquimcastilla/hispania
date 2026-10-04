@@ -41,7 +41,7 @@ public sealed class SqliteDurablePlatformEventBus : IDurablePlatformEventBusV1, 
     private long CountStatus(DurableDeliveryStatus status) { try { using var db = Open(); using var cmd = db.CreateCommand(); cmd.CommandText = "SELECT COUNT(*) FROM Deliveries WHERE Status=$status"; cmd.Parameters.AddWithValue("$status", (int)status); return (long)(cmd.ExecuteScalar() ?? 0L); } catch { return 0; } }
     public async ValueTask<Guid> PublishAsync<TEvent>(TEvent value, string producer, IReadOnlyCollection<string> subscribers, EventContext? context = null, string? causationId = null, CancellationToken cancellationToken = default) where TEvent : IPlatformEvent
     {
-        using var activity = PlatformTracingV1.Start("event.publish");
+        using var activity = PlatformTracingV1.StartScope("event.publish");
         context = new(context?.CorrelationId ?? PlatformCorrelationV1.Current?.CorrelationId);
         causationId ??= PlatformCorrelationV1.Current?.OperationId;
         if (context?.CorrelationId is { } correlationId && !PlatformCorrelationV1.IsValidId(correlationId) || causationId is not null && !PlatformCorrelationV1.IsValidId(causationId)) throw new ArgumentException("Invalid correlation metadata.");
@@ -81,7 +81,7 @@ public sealed class SqliteDurablePlatformEventBus : IDurablePlatformEventBusV1, 
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 using var correlation = PlatformCorrelationV1.Push(new(item.envelope.CorrelationId ?? item.eventId.ToString("N"), item.envelope.CausationId, item.eventId.ToString("D"), item.envelope.TraceParent, item.envelope.TraceState));
-                using var activity = PlatformTracingV1.Start("event.deliver", ActivityKind.Consumer, item.envelope.TraceParent, item.envelope.TraceState);
+                using var activity = PlatformTracingV1.StartScope("event.deliver", ActivityKind.Consumer, item.envelope.TraceParent, item.envelope.TraceState);
                 await using var claim = db.CreateCommand(); claim.CommandText = "UPDATE Deliveries SET Status=$processing,AttemptCount=AttemptCount+1,NextAttemptAt=$lease WHERE DeliveryId=$id AND Status=$pending"; claim.Parameters.AddWithValue("$processing", (int)DurableDeliveryStatus.Processing); claim.Parameters.AddWithValue("$pending", (int)DurableDeliveryStatus.Pending); claim.Parameters.AddWithValue("$lease", now.Add(options.EffectiveProcessingLease).ToString("O")); claim.Parameters.AddWithValue("$id", item.delivery.ToString("D")); if (await claim.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0) continue;
                 try { await DeliverAsync(item.envelope, item.subscriber, cancellationToken).ConfigureAwait(false); await SetTerminalAsync(item.delivery, DurableDeliveryStatus.Delivered, item.attempts + 1, null, cancellationToken).ConfigureAwait(false); Metrics.BestEffort(sink => sink.Increment("hispania.events.delivered")); }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }

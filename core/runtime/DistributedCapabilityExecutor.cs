@@ -40,7 +40,7 @@ public sealed class CompositeDistributedCapabilityExecutor(IDistributedCapabilit
     public async ValueTask<JsonElement> ExecuteAsync(DistributedJobRequestV1 request, long generation, CancellationToken cancellationToken)
     {
         using var correlation = PlatformCorrelationV1.Push(new(request.CorrelationId ?? (PlatformCorrelationV1.IsValidId(request.JobId) ? request.JobId : Guid.NewGuid().ToString("N")), request.CausationId, PlatformCorrelationV1.IsValidId(request.JobId) ? request.JobId : null, request.TraceParent, request.TraceState));
-        using var activity = PlatformTracingV1.Start("worker.execute", ActivityKind.Consumer, request.TraceParent, request.TraceState);
+        using var activity = PlatformTracingV1.StartScope("worker.execute", ActivityKind.Consumer, request.TraceParent, request.TraceState);
         var capability = new DistributedCapabilityV1(request.ContractId, request.ContractVersion);
         var matching = handlers.Where(handler => handler.Capabilities.Contains(capability)).ToArray();
         if (matching.Length > 1) throw new InvalidOperationException($"More than one distributed handler provides {capability}.");

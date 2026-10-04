@@ -28,7 +28,7 @@ Never log passwords, session/bearer tokens, bootstrap secrets, private keys, Aut
 
 ## Metrics V1
 
-`PlatformMetricsV1` supplies a single `System.Diagnostics.Metrics.Meter` named `Hispania.Platform`, version 1.0.0, with counters, observable gauges and millisecond histograms. Snapshot writes and reads are synchronized; nonnegative counters/gauges and finite nonnegative timings are enforced. Snapshot histogram values are runtime arithmetic means plus counts, not stored distributions or percentiles.
+`PlatformMetricsV1` supplies a single `System.Diagnostics.Metrics.Meter` named `Hispania.Platform`, version 1.0.0, with counters, observable gauges and millisecond histograms. Counter/timing updates synchronize per instrument; gauges and value reads use Interlocked. Snapshots preserve each timing mean/count pair without a global metric lock; nonnegative counters/gauges and finite nonnegative timings are enforced. Snapshot histogram values are runtime arithmetic means plus counts, not stored distributions or percentiles.
 
 There are no labels in V1. Names come from the immutable `PlatformMetricNamesV1` vocabulary; arbitrary names and identifier-derived names are rejected. Existing Job/Event metrics are replaced by the common instruments, not emitted in parallel under their old names.
 
@@ -43,7 +43,7 @@ There are no labels in V1. Names come from the immutable `PlatformMetricNamesV1`
 
 Event retry/dead-letter counters count transitions, while backlog gauges count current persisted rows. Job terminal gauges are reconstructed from its existing durable store. Active sessions exclude expired, revoked and disabled-user sessions. Worker executions/failures count coordinator-side Platform remote attempts; capability gauge counts distinct connected/authorized capabilities, not IDs. Storage counts provider calls (including failures); reads count opening streams, not later reads from a returned stream. Checks/snapshots refresh store and worker gauges; the existing Job dispatcher also refreshes its gauges. Gauges are observations, not globally transactional across stores.
 
-Metrics are runtime-only: counters/timing aggregates reset on process restart, gauges are reconstructed on refresh, and no TSDB/history is provided. Metrics/exporter callbacks are best effort and must not interrupt committed Events, Jobs, Identity or Storage work. Validation of the metric vocabulary is strict at the contract boundary; service adapters invoke sinks through the best-effort helper. Logging/tracing have no new durable I/O requirement. No payload serialization or persistence transaction is added solely for metrics.
+Metrics are runtime-only: counters/timing aggregates reset on process restart, gauges are reconstructed on refresh, and no TSDB/history is provided. Metrics/exporter callbacks and production tracing scopes (sampling/start/stop listeners) are best effort and must not interrupt committed Events, Jobs, Identity or Storage work. Validation of the metric vocabulary is strict at the contract boundary; service adapters invoke sinks through the best-effort helper. Logging/tracing have no new durable I/O requirement. No payload serialization or persistence transaction is added solely for metrics.
 
 ## Health, liveness and readiness
 
@@ -55,7 +55,7 @@ Health is recomputed on every request, not sticky. Overall status is the worst r
 
 ## Tracing and remote transport
 
-`ActivitySource` `Hispania.Platform` version 1.0.0 supplies HTTP request, Event publish/delivery, Job execution, remote dispatch, Worker execution and Storage activities. It honors listeners' sampling decisions; no listener means no new sampled activity. Existing ASP.NET trace context remains usable. Correlation is a separate opaque business-flow identifier, not a substituted TraceId.
+`ActivitySource` `Hispania.Platform` version 1.0.0 supplies HTTP request, Event publish/delivery, short Job creation, Job execution, remote dispatch, Worker execution and Storage activities. Production adapters use `StartScope` to isolate sampling/start/stop callback failures and restore the parent Activity. It honors listeners' sampling decisions; no listener means no new sampled activity. Existing ASP.NET trace context remains usable. Correlation is a separate opaque business-flow identifier, not a substituted TraceId.
 
 Events and Jobs add optional W3C parent/state envelope metadata via additive SQLite migrations; existing rows remain readable. Delivery and execution restore that parent. Unsampled flows retain the carrier independently of Activity creation, so transport does not depend on having a listener installed. The remote protocol carries only correlation, causation, TraceParent and TraceState, not arbitrary HTTP headers or baggage. The generic WorkerAgent restores the scope before invoking capability handlers. Optional fields preserve older peers' JSON compatibility. Correlation and causation survive restart only where stored in Events, Jobs or Audit; health and runtime metrics are reconstructed. Traces are sampling hooks, not a promise of permanent complete trace capture.
 

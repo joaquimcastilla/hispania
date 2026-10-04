@@ -31,13 +31,37 @@ public static class PlatformTracingV1
     public static ActivitySource Source { get; } = new("Hispania.Platform", "1.0.0");
     public static Activity? Start(string operation, ActivityKind kind = ActivityKind.Internal, string? traceParent = null, string? traceState = null)
     {
-        traceParent ??= PlatformCorrelationV1.Current?.TraceParent;
-        traceState ??= PlatformCorrelationV1.Current?.TraceState;
-        var activity = ActivityContext.TryParse(traceParent, traceState, true, out var parent)
-            ? Source.StartActivity(operation, kind, parent) : Source.StartActivity(operation, kind);
-        activity?.SetTag("correlation.id", PlatformCorrelationV1.Current?.CorrelationId);
-        activity?.SetTag("causation.id", PlatformCorrelationV1.Current?.CausationId);
-        return activity;
+        var previous = Activity.Current;
+        try
+        {
+            traceParent ??= PlatformCorrelationV1.Current?.TraceParent;
+            traceState ??= PlatformCorrelationV1.Current?.TraceState;
+            var activity = ActivityContext.TryParse(traceParent, traceState, true, out var parent)
+                ? Source.StartActivity(operation, kind, parent) : Source.StartActivity(operation, kind);
+            activity?.SetTag("correlation.id", PlatformCorrelationV1.Current?.CorrelationId);
+            activity?.SetTag("causation.id", PlatformCorrelationV1.Current?.CausationId);
+            return activity;
+        }
+        catch (Exception)
+        {
+            if (Activity.Current is { } failed && failed != previous) { try { failed.Dispose(); } catch (Exception) { } }
+            Activity.Current = previous;
+            return null;
+        }
+    }
+    public static IDisposable? StartScope(string operation, ActivityKind kind = ActivityKind.Internal, string? traceParent = null, string? traceState = null)
+    {
+        var previous = Activity.Current;
+        var activity = Start(operation, kind, traceParent, traceState);
+        return activity is null ? null : new BestEffortActivityScope(activity, previous);
+    }
+    private sealed class BestEffortActivityScope(Activity activity, Activity? previous) : IDisposable
+    {
+        public void Dispose()
+        {
+            try { activity.Dispose(); } catch (Exception) { }
+            finally { if (Activity.Current == activity) Activity.Current = previous; }
+        }
     }
 }
 

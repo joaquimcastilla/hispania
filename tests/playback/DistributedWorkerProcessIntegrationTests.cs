@@ -140,15 +140,24 @@ public sealed class DistributedWorkerProcessIntegrationTests
             await jobDispatcher.StartAsync(CancellationToken.None);
             try
             {
-                var remoteJob = await jobService.CreateAsync(new(PlatformTestHashHandlerV1.TypeId,
+                PlatformJobCreateResultV1 remoteJob;
+                ActivityTraceId serverTraceId;
+                using (var serverActivity = new Activity("test.platform.http").SetIdFormat(ActivityIdFormat.W3C).Start())
+                {
+                    serverTraceId = serverActivity.TraceId;
+                remoteJob = await jobService.CreateAsync(new(PlatformTestHashHandlerV1.TypeId,
                     "{\"text\":\"remote-proof\",\"algorithm\":\"sha256\"}", CorrelationId: "platform-job-trace", CausationId: "platform-event-cause",
                     ExecutionPolicy: PlatformJobExecutionPolicyV1.RemoteOnly));
+                }
                 Assert.Equal("platform-event-cause", remoteJob.Job.CausationId);
                 var remoteJobDone = await WaitForPlatformJobAsync(jobService, remoteJob.Job.JobId, PlatformJobStatusV1.Succeeded, TimeSpan.FromSeconds(15));
                 Assert.Equal("remote", remoteJobDone.Executor); Assert.Equal(NodeId, remoteJobDone.WorkerId);
                 var remoteEnvelope = coordinator.ListJobs().Single(job => job.Request.JobId.StartsWith(remoteJob.Job.JobId.ToString("N"), StringComparison.Ordinal)).Request;
                 Assert.Equal("platform-job-trace", remoteEnvelope.CorrelationId);
                 Assert.Equal("platform-event-cause", remoteEnvelope.CausationId);
+                Assert.True(ActivityContext.TryParse(remoteEnvelope.TraceParent, remoteEnvelope.TraceState, out var remoteTrace));
+                Assert.Equal(serverTraceId, remoteTrace.TraceId);
+                Assert.NotEqual(remoteEnvelope.CorrelationId, remoteTrace.TraceId.ToString());
                 Assert.Equal(DistributedPlatformJobExecutor.HashCapabilityId + "@" + DistributedPlatformJobExecutor.HashCapabilityVersion, remoteJobDone.Capability);
                 Assert.True(remoteJobDone.Generation > 0);
                 var remoteAttempt = Assert.Single(await jobService.GetAttemptsAsync(remoteJob.Job.JobId));

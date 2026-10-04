@@ -27,6 +27,11 @@ public sealed partial class ServerProcessRestartTests
             using var customResponse = await client.SendAsync(custom); Assert.Equal("client-flow-A", Assert.Single(customResponse.Headers.GetValues("X-Correlation-ID")));
             using var invalid = new HttpRequestMessage(HttpMethod.Get, "/api/health"); invalid.Headers.Add("X-Correlation-ID", new string('x', 129));
             using var invalidResponse = await client.SendAsync(invalid); Assert.Equal(HttpStatusCode.BadRequest, invalidResponse.StatusCode);
+            foreach (var value in new[] { "invalid id", "invalid/id", "invalid%id" })
+            {
+                using var malformed = new HttpRequestMessage(HttpMethod.Get, "/api/health"); malformed.Headers.Add("X-Correlation-ID", value);
+                using var response = await client.SendAsync(malformed); Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            }
             using var anonymous = await client.GetAsync("/api/health/details"); Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             using var legacy = new HttpRequestMessage(HttpMethod.Get, "/api/platform/observability"); legacy.Headers.Authorization = new("Bearer", adminToken);
             using var rejected = await client.SendAsync(legacy); Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
@@ -46,6 +51,26 @@ public sealed partial class ServerProcessRestartTests
             var json = await snapshot.Content.ReadAsStringAsync(); using var parsed = JsonDocument.Parse(json); Assert.Equal("Healthy", parsed.RootElement.GetProperty("health").GetProperty("status").GetString());
             Assert.DoesNotContain(session, json, StringComparison.Ordinal); Assert.DoesNotContain(bootstrapToken, json, StringComparison.Ordinal); Assert.DoesNotContain(root, json, StringComparison.Ordinal); Assert.DoesNotContain("private-payload", json, StringComparison.Ordinal);
             Assert.Contains("hispania.identity.sessions.active", json, StringComparison.Ordinal);
+            // A failed critical store affects readiness, while process liveness remains independent.
+            await RenameDeliveryTableAsync(root, unavailable: true);
+            try
+            {
+                using var unready = await client.GetAsync("/api/health/ready"); Assert.Equal(HttpStatusCode.ServiceUnavailable, unready.StatusCode);
+                using var stillLive = await client.GetAsync("/api/health/live"); stillLive.EnsureSuccessStatusCode();
+                using var details = await SendWithSessionAsync(client, HttpMethod.Get, "/api/health/details", session); details.EnsureSuccessStatusCode();
+                var detailJson = await details.Content.ReadAsStringAsync(); Assert.Contains("Unhealthy", detailJson, StringComparison.Ordinal);
+                Assert.DoesNotContain(root, detailJson, StringComparison.Ordinal); Assert.DoesNotContain("SqliteException", detailJson, StringComparison.Ordinal); Assert.DoesNotContain("stackTrace", detailJson, StringComparison.OrdinalIgnoreCase);
+            }
+            finally { await RenameDeliveryTableAsync(root, unavailable: false); }
+            using (var recovered = await client.GetAsync("/api/health/ready")) { recovered.EnsureSuccessStatusCode(); Assert.Contains("Healthy", await recovered.Content.ReadAsStringAsync(), StringComparison.Ordinal); }
+            using var waitingRequest = new HttpRequestMessage(HttpMethod.Post, "/api/platform/jobs") { Content = JsonContent.Create(new { jobType = "platform.test.hash", payload = new { text = "waiting", algorithm = "sha256" }, scheduledAt = DateTimeOffset.UtcNow.AddMinutes(-10), executionPolicy = "RemoteOnly" }) };
+            waitingRequest.Headers.Authorization = new("Session", session);
+            using var waiting = await client.SendAsync(waitingRequest); Assert.Equal(HttpStatusCode.Accepted, waiting.StatusCode);
+            using var waitingJson = JsonDocument.Parse(await waiting.Content.ReadAsStringAsync()); var waitingId = waitingJson.RootElement.GetProperty("jobId").GetGuid();
+            using (var degraded = await client.GetAsync("/api/health/ready")) { degraded.EnsureSuccessStatusCode(); Assert.Contains("Degraded", await degraded.Content.ReadAsStringAsync(), StringComparison.Ordinal); }
+            using (var stillLive = await client.GetAsync("/api/health/live")) stillLive.EnsureSuccessStatusCode();
+            using (var cancelled = await SendWithSessionAsync(client, HttpMethod.Post, $"/api/platform/jobs/{waitingId:D}/cancel", session)) Assert.Equal(HttpStatusCode.Accepted, cancelled.StatusCode);
+            using (var recovered = await client.GetAsync("/api/health/ready")) { recovered.EnsureSuccessStatusCode(); Assert.Contains("Healthy", await recovered.Content.ReadAsStringAsync(), StringComparison.Ordinal); }
             await StopServerGracefullyAsync(server, client, shutdownToken); server.Dispose(); server = null;
         }
         finally
@@ -54,4 +79,12 @@ public sealed partial class ServerProcessRestartTests
             server?.Dispose(); SqliteConnection.ClearAllPools(); Directory.Delete(root, true);
         }
     }
+    private static async Task RenameDeliveryTableAsync(string root, bool unavailable)
+    {
+        await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "platform", "events.sqlite") }.ToString());
+        await connection.OpenAsync(); await using var command = connection.CreateCommand();
+        command.CommandText = unavailable ? "ALTER TABLE Deliveries RENAME TO unavailable_deliveries" : "ALTER TABLE unavailable_deliveries RENAME TO Deliveries";
+        await command.ExecuteNonQueryAsync();
+    }
+
 }
