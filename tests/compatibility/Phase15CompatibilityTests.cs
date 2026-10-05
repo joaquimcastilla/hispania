@@ -62,6 +62,11 @@ public sealed class Phase15CompatibilityTests(Xunit.Abstractions.ITestOutputHelp
         Assert.Contains(SelectedApi.Diff(baseline, baseline.Replace("GetUserAsync", "ChangedReturnSignature", StringComparison.Ordinal)), line => line.StartsWith("BREAKING:", StringComparison.Ordinal));
         Assert.Contains(SelectedApi.Diff("TYPE Test.Enum | base=System.Enum\nField Int32 Enabled | value=0\n", "TYPE Test.Enum | base=System.Enum\nField Int32 Enabled | value=1\n"), line => line.StartsWith("BREAKING:", StringComparison.Ordinal));
         Assert.Contains(SelectedApi.Diff(baseline, baseline + "Method Added()\n"), line => line.StartsWith("ADDITIVE:", StringComparison.Ordinal));
+        Assert.DoesNotContain(SelectedApi.Diff(baseline, baseline + "Method Added()\n"), line => line.StartsWith("BREAKING:", StringComparison.Ordinal));
+        const string publicType = "TYPE Test.Surface | base=System.Object\nMethod System.Int32 Read() | public=True\n";
+        Assert.Contains(SelectedApi.Diff(publicType, ""), line => line.StartsWith("BREAKING:", StringComparison.Ordinal) && line.Contains("TYPE Test.Surface", StringComparison.Ordinal));
+        Assert.Contains(SelectedApi.Diff(publicType, publicType.Replace("public=True", "public=False", StringComparison.Ordinal)), line => line.StartsWith("BREAKING:", StringComparison.Ordinal));
+        Assert.Contains(SelectedApi.Diff(publicType, publicType.Replace("System.Int32", "System.String", StringComparison.Ordinal)), line => line.StartsWith("BREAKING:", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -191,6 +196,12 @@ public sealed class Phase15CompatibilityTests(Xunit.Abstractions.ITestOutputHelp
         await Assert.ThrowsAsync<EndOfStreamException>(() => ModuleWorkerProtocolV1.ReadFrameAsync<ModuleWorkerHelloV1>(truncated).AsTask());
         using var malformed = new MemoryStream(new byte[] { 1, 0, 0, 0, (byte)'{' });
         await Assert.ThrowsAsync<InvalidDataException>(() => ModuleWorkerProtocolV1.ReadFrameAsync<ModuleWorkerHelloV1>(malformed).AsTask());
+        foreach (var length in new[] { 0, -1, ModuleWorkerProtocolV1.DefaultMaximumFrameBytes + 1 })
+        {
+            var header = new byte[4]; System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(header, length);
+            using var invalidLength = new MemoryStream(header);
+            await Assert.ThrowsAsync<InvalidDataException>(() => ModuleWorkerProtocolV1.ReadFrameAsync<ModuleWorkerHelloV1>(invalidLength).AsTask());
+        }
         var hello = JsonSerializer.Deserialize<JsonElement>(bytes.AsSpan(4));
         var fields = hello.EnumerateObject().ToDictionary(property => property.Name, property => property.Value);
         fields["UnknownFuture"] = JsonSerializer.SerializeToElement(7);

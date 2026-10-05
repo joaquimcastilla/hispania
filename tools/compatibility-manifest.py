@@ -3,6 +3,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from collections import Counter
 
 ROOT = Path(__file__).resolve().parent.parent
 CORPUS = ROOT / "compatibility"
@@ -50,11 +51,27 @@ if "--initial-freeze" in sys.argv:
         designation="Technical compatibility baseline; not a published release", artifacts=entries), indent=2) + "\n",
         encoding="utf-8", newline="\n")
 else:
-    entries = json.loads(MANIFEST.read_text(encoding="utf-8"))["artifacts"]
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    entries = manifest["artifacts"]
     frozen = json.loads(INDEX.read_text(encoding="utf-8"))
     by_id = {row["id"]: row for row in entries}
     errors = ["BREAKING: frozen entry removed/changed " + row["id"] for row in frozen if by_id.get(row["id"]) != row]
+    if manifest.get("baseline") != "0.7" or manifest.get("sourceSha") != SOURCE:
+        errors.append("BREAKING: baseline source identity changed")
+    if hash_file(INDEX) != "de8431a7f42e4a36979cc372a574cb62094f37399e9ee88a167d17f3a2bb005b":
+        errors.append("BREAKING: immutable index changed")
+    for key in ("id", "path"):
+        errors += ["INVALID: duplicate " + key + " " + value for value, count in Counter(row[key] for row in entries).items() if count != 1]
     for row in entries:
+        for key in ("id", "axis", "path", "sha256", "owner", "origin", "version", "expectation", "regenerationPolicy"):
+            if not isinstance(row.get(key), str) or not row[key].strip():
+                errors.append("INVALID: missing " + key)
+        relative = row["path"]
+        if "\\" in relative or ":" in relative or any(part in ("", ".", "..") for part in relative.split("/")):
+            errors.append("INVALID: unsafe fixture path " + relative)
+            continue
+        if row["origin"] != SOURCE or row["version"] != "0.7":
+            errors.append("INVALID: artifact provenance " + row["id"])
         path = CORPUS / row["path"]
         if not path.is_file() or hash_file(path) != row["sha256"]:
             errors.append("BREAKING: missing/changed fixture " + row["path"])

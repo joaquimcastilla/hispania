@@ -57,6 +57,19 @@ jobs:
           $trx = [xml](Get-Content -Raw tests/unit/TestResults/required-phase14-versioning.trx -ErrorAction Stop)
           $results = @($trx.TestRun.Results.UnitTestResult)
           if ($results.Count -ne 3 -or @($results | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'All three Phase 14 metadata/API gates must be discovered and pass without skips.' }
+      - name: Require deterministic Python corpus analysis and negative cases
+        shell: pwsh
+        run: |
+          $first = python tools/compatibility-manifest.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $second = python tools/compatibility-manifest.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (($first -join "`n") -cne ($second -join "`n")) { throw 'Corpus analysis must repeat identically.' }
+          $manifest = ($first -join "`n") | ConvertFrom-Json
+          if ($manifest.fixtures -ne 27 -or $manifest.manifestSha256 -ne '4cb34019df3824596917297e2c81a992f881f45bb2cc3a534752b6b970446da5') { throw 'Phase 15 manifest identity changed.' }
+          $first
+          python tools/test-compatibility-manifest.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Require Phase 15 immutable historical compatibility baselines
         shell: pwsh
         run: ./tools/test-phase15-compatibility.ps1 -ResultsDirectory .artifacts/phase15-ci
@@ -183,6 +196,19 @@ jobs:
           $trx = [xml](Get-Content -Raw tests/unit/TestResults/required-phase14-versioning.trx -ErrorAction Stop)
           $results = @($trx.TestRun.Results.UnitTestResult)
           if ($results.Count -ne 3 -or @($results | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'All three Phase 14 metadata/API gates must be discovered and pass without skips.' }
+      - name: Require deterministic Python corpus analysis and negative cases
+        shell: pwsh
+        run: |
+          $first = python tools/compatibility-manifest.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $second = python tools/compatibility-manifest.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (($first -join "`n") -cne ($second -join "`n")) { throw 'Corpus analysis must repeat identically.' }
+          $manifest = ($first -join "`n") | ConvertFrom-Json
+          if ($manifest.fixtures -ne 27 -or $manifest.manifestSha256 -ne '4cb34019df3824596917297e2c81a992f881f45bb2cc3a534752b6b970446da5') { throw 'Phase 15 manifest identity changed.' }
+          $first
+          python tools/test-compatibility-manifest.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Require Phase 15 immutable historical compatibility baselines
         shell: pwsh
         run: ./tools/test-phase15-compatibility.ps1 -ResultsDirectory .artifacts/phase15-ci
