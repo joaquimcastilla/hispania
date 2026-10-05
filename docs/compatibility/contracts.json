@@ -3,6 +3,21 @@
   "distributionSource": "version.json",
   "contracts": [
     {
+      "id": "backup.format",
+      "contract": "Offline installation backup format",
+      "source": "apps/server/BackupInstallation.cs",
+      "kind": "Format",
+      "owner": "Host operations",
+      "technicalVersion": "Backup Format Generation 1",
+      "visibility": "Operator tooling",
+      "stability": "Experimental",
+      "consumers": "Offline backup verify and clean-root restore",
+      "serialization": "Directory bundle and bounded JSON manifest",
+      "compatibilityCommitment": "Reject unsupported generations and integrity failures before target switch; no global ACID",
+      "breakingChangePolicy": "Explicit format generation and reader policy; preserve immutable historical baselines",
+      "interpretation": "Technical bundle generation independent of distribution and owner schema versions"
+    },
+    {
       "id": "application/inventory/InventoryService.cs#ItemCreatedV1",
       "contract": "ItemCreatedV1",
       "source": "application/inventory/InventoryService.cs",

@@ -18,3 +18,7 @@ This is a support target and evidence map, not a deployment certification. Valid
 | Dynamic Web modules | Unsupported | Static route/build registration only | Explicitly outside 1.0 scope |
 
 Recorded evidence is from Phase 13; Phase 14 local execution is separately reported in `PHASE-14-VALIDATION.md`. “Validated” does not imply stable APIs, long-term operation, old-binary compatibility, backup/restore or every security/deployment scenario. See [closure](PHASE-13-CLOSURE.md) and [scope](PLATFORM-1.0-SCOPE.md).
+
+## Phase 17 — operational backup support under validation
+
+Offline full bundles support the explicitly configured managed single-host root: Platform/Inventory SQLite, Media SQLite or logical PostgreSQL, filesystem Storage and installed extension bytes/public trust configuration. PostgreSQL 16 client tooling and externally reprovisioned libpq credentials are required by the Linux mixed-provider gate. Scattered source paths are preserved from the original host configuration through a machine-local descriptor; external Media source bytes are reprovisioned. No online/global-ACID/overwrite/merge/partial restore is claimed. See [Phase 17](PHASE-17-BACKUP-RESTORE.md); complete closure remains pending.

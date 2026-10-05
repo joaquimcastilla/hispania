@@ -35,3 +35,7 @@ Dynamic Web modules; multi-coordinator HA; consensus; general S3/object storage 
 ## Kernel decision
 
 Option B: `core/kernel/Hispania.Kernel.csproj` is an empty SDK library with no source or project references; production projects do not reference it. `core/runtime` owns actual registry/lifecycle/resolution. ADR-0030's “minimal host/runtime primitives” description is imprecise for that empty project. Propose removal of the empty project and solution entries in a later maintenance change; retain it in Phase 14 to avoid unrelated solution churn. Do not invent responsibilities or add functionality to justify a placeholder. “Kernel” may still describe the architectural role implemented by Runtime, not an implementation in this empty assembly.
+
+## Phase 17 — backup implementation status
+
+Distribution 0.7.0 adds experimental Backup Format Generation 1, without a Public Stable promotion. Required closure is a coherent complete backup and destructive clean-host reconstruction with semantic recovery and mixed-provider evidence. The current offline managed-root implementation is under validation; it does not establish 1.0 readiness. [Phase 17](PHASE-17-BACKUP-RESTORE.md) records exact exclusions and remaining acceptance. No Phase 18 work is introduced.

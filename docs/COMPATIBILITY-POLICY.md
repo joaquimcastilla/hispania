@@ -48,3 +48,7 @@ Phase 15 implements immutable selected historical evidence in [Compatibility Bas
 Owner-local SQLite schemas now track version 1 (`0001_baseline07_adoption`) and minimum supported known legacy shape 0. Media keeps its EF SQLite five-step and PostgreSQL one-step lineages; playback JSON remains schema 1. Unknown/future histories fail before writes. Upgrades are forward-only and per-store transactional; startup blocks readiness on failure. Old executables without guards are not safe rollback targets. Data schema versions remain independent of distribution/API/wire versions; no contract gains Public Stable status.
 
 The independent 15-artifact populated corpus and mandatory Linux PostgreSQL gate are documented in [Phase 16](PHASE-16-HISTORICAL-DATA-UPGRADES.md) and [ADR-0041](adr/ADR-0041-schema-evolution-and-historical-upgrades.md). Phase 15's 27 artifacts and hashes remain frozen. Local implementation is prepared for CI; Phase 16 closure awaits live PostgreSQL and both OS jobs. Backup/restore remains outside this phase.
+
+## Phase 17 — restore compatibility
+
+Generation-1 bundles reject unsupported formats, future distribution/schema metadata, duplicate paths and integrity failure before switching an application root. Restore may materialize known legacy owner schemas and subsequently run Phase 16 migrations. SHA-256 is integrity evidence, not backup authentication. Clean-root offline restore is experimental; distribution remains 0.7.0. See [Phase 17](PHASE-17-BACKUP-RESTORE.md).

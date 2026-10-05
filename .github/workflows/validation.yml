@@ -38,7 +38,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - name: Install FFmpeg integration tools
-        run: sudo apt-get update && sudo apt-get install --yes ffmpeg
+        run: sudo apt-get update && sudo apt-get install --yes ffmpeg postgresql-client-16
       - run: npm ci
         working-directory: apps/web
       - run: npm run build
@@ -78,6 +78,9 @@ jobs:
         run: ./tools/test-phase16-historical-upgrades.ps1 -ResultsDirectory .artifacts/phase16-ci -RequirePostgreSql
       - name: Require Platform-only dependency boundary
         run: dotnet build Hispania.Platform.slnf
+      - name: Require Phase 17 backup, process disaster, interruption and mixed-provider restore
+        shell: pwsh
+        run: ./tools/test-phase17-backup-restore.ps1 -ResultsDirectory .artifacts/phase17-ci -RequirePostgreSql
       - name: Require Inventory, persistence, API restart, and architecture coverage
         run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj
       - name: Require Phase 13 closure, real crash recovery, safe errors and 20 concurrency repetitions
@@ -191,6 +194,9 @@ jobs:
       - run: dotnet build Hispania.CrossPlatform.slnf --no-restore
       - name: Build the complete solution on Windows
         run: dotnet build Hispania.sln
+      - name: Require Phase 17 portable backup, process disaster and interruption
+        shell: pwsh
+        run: ./tools/test-phase17-backup-restore.ps1 -ResultsDirectory .artifacts/phase17-ci
       - name: Require Phase 14 catalog, distribution semantics and candidate API review
         shell: pwsh
         run: |

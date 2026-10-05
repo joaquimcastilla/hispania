@@ -26,6 +26,9 @@ HISPANIA 0.7.0 is the documentation baseline for the integrated distribution, no
 | Observability Instrument Version | `PlatformTracingV1.Source`, application `Meter`, 1.0.0 | Instrumentation scope identity for listeners/exporters | Public experimental instrumentation schema identity; names/units/meaning need compatibility review. 1.0.0 is not Platform maturity |
 | Host package compatibility level | Server, WorkerAgent catalog constructor; ModuleHost bounds check: 1.0.0 | Manifest `MinimumHostVersion`/`MaximumHostVersion` acceptance | Legacy compatibility baseline, not distribution or formal negotiated generation. Retained for existing packages; changing it requires package acceptance fixtures |
 | FFmpeg worker protocol | `FfmpegWorkerProtocolV1`, response ProtocolVersion=1 | Dedicated subprocess JSON adapter | Media-owned experimental wire generation, separate from generic workers; unchanged |
+| Backup Format Generation | `BackupInstallation.FormatGeneration = 1` | Offline installation bundle/manifest interpretation | Experimental integer generation; unsupported future generations reject before target writes; independent of distribution and component schemas |
+
+Phase 17 adds the 23rd version axis. The historical Phase 14/15/16 inventories had 22; their frozen evidence remains unchanged. No Public Stable declaration is added.
 
 All values above require compatibility decisions appropriate to their consumers, including internal persisted state. Public CLR visibility alone is not a stable promise. V1/V2/Version1/Version2 declarations are enumerated in the [catalog](compatibility/CONTRACT-CATALOG.md); the machine catalog records their interpretation and source. A technical V2 is never sufficient evidence for SemVer 2.0.
 

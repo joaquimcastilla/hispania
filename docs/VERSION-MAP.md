@@ -44,3 +44,7 @@ The independent 15-artifact populated corpus and mandatory Linux PostgreSQL gate
 | Media PostgreSQL | Media.Persistence.PostgreSQL | EF 20260926104649_InitialPostgreSql / empty or same lineage |
 | Playback experiments | Media.Playback.Experiments | JSON 1 / schema 1 |
 | Storage bytes | Platform.Storage.Filesystem | opaque and legacy layouts; no database ledger |
+
+## Phase 17 — backup format axis
+
+Backup Format Generation 1 belongs to offline host operations and is independent of distribution 0.7.0 and component schemas. There are now 23 version axes and zero Public Stable declarations. See [Phase 17](PHASE-17-BACKUP-RESTORE.md) for managed-layout support and pending acceptance.
