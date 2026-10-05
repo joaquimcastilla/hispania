@@ -44,6 +44,7 @@
     <ProjectReference Include="..\..\application\platform\observability\Hispania.Platform.Observability.Application.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="../../version.json" Link="version.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\extensions\**\module.json" Link="extensions\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="demo-assets\**\*" Link="demo-assets\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

@@ -559,13 +559,23 @@ public sealed class ModuleExtensionCatalog : IDisposable
         return full;
     }
 
+    public static void ValidateBackupPackage(ModuleManifest manifest, string packageDirectory)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (manifest.EntryAssembly is null) return;
+        if (manifest.PackageFormatVersion != 1 || manifest.Files is null || !manifest.Files.ContainsKey(manifest.EntryAssembly))
+            throw new InvalidDataException("Installed backup package has an unsupported format or missing entry payload.");
+        VerifyPackageIntegrity(manifest, packageDirectory);
+    }
+
     private static void VerifyPackageIntegrity(ModuleManifest manifest, string packageDirectory)
     {
         if (manifest.Files is null || manifest.Files.Count == 0) throw new InvalidDataException("Package has no integrity file list.");
         foreach (var (relativePath, expectedHash) in manifest.Files)
         {
             var path = ResolvePackageFile(packageDirectory, relativePath);
-            var actualHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path)));
+            using var content = File.OpenRead(path);
+            var actualHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(content));
             if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(Convert.FromHexString(actualHash), Convert.FromHexString(expectedHash)))
                 throw new InvalidDataException($"Package integrity check failed for '{relativePath}'.");
         }

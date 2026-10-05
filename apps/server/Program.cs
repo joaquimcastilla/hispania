@@ -36,7 +36,11 @@ using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Hispania.Platform.Contracts.Observability;
 using Hispania.Platform.Observability.Application;
 
+using var backupCancellation = new CancellationTokenSource();
+Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; backupCancellation.Cancel(); };
+if (await BackupInstallation.TryCommandAsync(args, backupCancellation.Token)) return;
 var builder = WebApplication.CreateBuilder(args);
+using var installationLease = BackupInstallation.Configure(builder.Configuration);
 builder.Services.AddSingleton<IPlatformMetricsV1, PlatformMetricsV1>();
 builder.Services.AddPlatformObservability();
 builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https =>

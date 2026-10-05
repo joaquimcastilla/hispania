@@ -89,6 +89,37 @@ public sealed class PersistentPlatformAssetStore : IPlatformAssetStore
 
 public sealed class SqliteAssetMetadataRepository(string path) : IPlatformAssetMetadataRepository
 {
+    // Owner-local operational validation; handle interpretation stays with the owning adapter.
+    public static string[] ValidateBackupStorage(string metadataPath, string storageRoot)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = metadataPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+        connection.Open(); using var query = connection.CreateCommand();
+        query.CommandText = "SELECT content_handle,size,provider_id FROM platform_assets";
+        var expected = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        using var reader = query.ExecuteReader();
+        while (reader.Read())
+        {
+            if (reader.GetString(2) != "filesystem") throw new InvalidDataException("Backup encountered an unsupported Asset provider.");
+            var handle = reader.GetString(0); string id;
+            if (handle.StartsWith("storage://filesystem/", StringComparison.Ordinal))
+            {
+                id = handle["storage://filesystem/".Length..];
+                if (id.Length != 32 || id.Any(c => c is not (>= 'a' and <= 'f') and not (>= '0' and <= '9'))) throw new InvalidDataException("Invalid Asset handle.");
+            }
+            else
+            {
+                if (handle.Length != 32 || !handle.All(char.IsAsciiHexDigit)) throw new InvalidDataException("Invalid legacy Asset handle.");
+                id = handle.ToUpperInvariant();
+            }
+            var name = id + ".blob"; expected.Add(name); var file = Path.Combine(storageRoot, name);
+            if (!File.Exists(file) || (File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0 || new FileInfo(file).Length != reader.GetInt64(1))
+                throw new InvalidDataException("Asset metadata has missing or inconsistent Storage bytes.");
+        }
+        if (!Directory.Exists(storageRoot)) return [];
+        var orphans = Directory.EnumerateFiles(storageRoot).Count(file => !expected.Contains(Path.GetFileName(file)));
+        return orphans == 0 ? [] : [$"Storage contains {orphans} unreferenced objects; captured without reconciliation."];
+    }
+
     private readonly string _connection = Initialize(path);
     private static string Initialize(string path)
     {
