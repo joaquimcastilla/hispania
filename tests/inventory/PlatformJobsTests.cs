@@ -13,13 +13,14 @@ public sealed class PlatformJobsTests
     [Fact]
     public async Task JobsPersistIdempotentlyAndKeepScheduledWorkUnclaimedUntilDue()
     {
+        const string privatePayloadMarker = "TEST-ONLY-private-job-payload";
         using var temp = new JobTemp(); var path = temp.File("jobs.sqlite");
         var registry = Registry(); var options = new PlatformJobOptionsV1(MaximumAttempts: 3);
         PlatformJobCreateResultV1 created;
         var store = new SqlitePlatformJobStore(path);
         {
             var service = new PlatformJobService(store, registry, options);
-            var request = new CreatePlatformJobV1(PlatformTestHashHandlerV1.TypeId, "{\"text\":\"abc\",\"algorithm\":\"sha256\"}", DateTimeOffset.UtcNow.AddHours(1), IdempotencyKey: "hash:abc");
+            var request = new CreatePlatformJobV1(PlatformTestHashHandlerV1.TypeId, JsonSerializer.Serialize(new { text = privatePayloadMarker, algorithm = "sha256" }), DateTimeOffset.UtcNow.AddHours(1), IdempotencyKey: "hash:abc");
             created = await service.CreateAsync(request);
             var duplicate = await service.CreateAsync(request);
             Assert.True(duplicate.Duplicate); Assert.Equal(created.Job.JobId, duplicate.Job.JobId);
@@ -29,7 +30,14 @@ public sealed class PlatformJobsTests
         {
             var job = await reopened.GetAsync(created.Job.JobId, default);
             Assert.NotNull(job); Assert.Equal(PlatformJobStatusV1.Pending, job.Status); Assert.Equal("hash:abc", job.IdempotencyKey);
-            var rows = await reopened.ListAsync(null, 20, default); Assert.Single(rows); Assert.DoesNotContain("abc", JsonSerializer.Serialize(rows));
+            var rows = await reopened.ListAsync(null, 20, default); Assert.Single(rows);
+            // A UUID can legitimately contain "abc"; only the private payload/key must be absent.
+            var publicJson = JsonSerializer.Serialize(rows);
+            Assert.DoesNotContain(privatePayloadMarker, publicJson, StringComparison.Ordinal);
+            Assert.DoesNotContain("hash:abc", publicJson, StringComparison.Ordinal);
+            using var document = JsonDocument.Parse(publicJson);
+            Assert.False(document.RootElement[0].TryGetProperty(nameof(PlatformJobV1.PayloadJson), out _));
+            Assert.False(document.RootElement[0].TryGetProperty(nameof(PlatformJobV1.IdempotencyKey), out _));
         }
     }
 
