@@ -93,6 +93,18 @@ public sealed partial class Phase16HistoricalDataUpgradeTests
     public async Task HistoricalPasswordsSessionsAndRbacKeepTheirSecurityMeaning()
     {
         using var copy=new HistoricalDataCopy("identity-authorization.sqlite");var path=copy.PathFor("identity-authorization.sqlite");
+        var permissionsBefore=new Dictionary<int,string[]>();
+        using(var historical=HistoricalDataCorpus.Open(path))
+        {
+            foreach(var user in new[]{1,2,3})
+            {
+                using var query=historical.CreateCommand();
+                query.CommandText="SELECT DISTINCT p.permission_id FROM authorization_user_roles u JOIN authorization_role_permissions p ON p.role_id=u.role_id WHERE u.user_id=$user ORDER BY p.permission_id";
+                query.Parameters.AddWithValue("$user",Id(user).ToString());
+                using var rows=query.ExecuteReader();var permissions=new List<string>();while(rows.Read())permissions.Add(rows.GetString(0));
+                permissionsBefore.Add(user,permissions.ToArray());
+            }
+        }
         var store=new SqliteIdentityStore(path);var identity=new IdentityService(store);var authStore=new SqlitePlatformAuthorizationStore(path);var auth=new AuthorizationService(authStore,identity);
         var credential=await store.GetCredentialAsync(new(Id(1)),default);
         var login=await identity.LoginAsync("TEST_ADMIN","TEST-ONLY-Phase16-password");Assert.True(login.Succeeded);Assert.Equal(Id(1),login.User!.Id.Value);
@@ -103,6 +115,8 @@ public sealed partial class Phase16HistoricalDataUpgradeTests
         Assert.Equal(AdminPermissions,(await auth.GetEffectivePermissionsAsync(new(Id(1)))).Order(StringComparer.Ordinal));
         Assert.Equal(PartialPermissions,await auth.GetEffectivePermissionsAsync(new(Id(2))));
         Assert.False(await auth.HasPermissionAsync(new(Id(2)),"platform.authorization.manage"));Assert.Empty(await auth.GetEffectivePermissionsAsync(new(Id(3))));
+        foreach(var user in new[]{1,2,3})
+            Assert.Equal(permissionsBefore[user],(await auth.GetEffectivePermissionsAsync(new(Id(user)))).Order(StringComparer.Ordinal));
         var admin=new AuthorizationAdministrationService(authStore,identity,configuredBootstrapToken:"TEST-ONLY-bootstrap");
         Assert.False(await admin.BootstrapAdministratorAsync(new(Id(3)),"TEST-ONLY-bootstrap"));Assert.Equal("1",HistoricalDataCorpus.Scalar(path,"SELECT consumed FROM authorization_bootstrap"));
     }

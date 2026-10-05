@@ -41,12 +41,18 @@ internal static class HistoricalPostgreSqlUpgradeEvidence
             Assert.Equal(Guid.Parse("00000000-0000-0000-0000-000000000048"),(await current.MediaEntities.SingleAsync()).Id);
             var settings=await provider.GetRequiredService<IMetadataSettingsStore>().GetSettingsAsync(new WorkId(Guid.Parse("00000000-0000-0000-0000-000000000047")));
             Assert.Equal("es",settings.PreferredMetadataLanguage);Assert.Equal("ES",settings.MetadataCountryRegion);Assert.True(settings.LockItemMetadata);
+            // Enforce constraints on the populated historical schema, not only on a fresh provider DB.
+            var duplicate=await Assert.ThrowsAsync<PostgresException>(()=>current.Database.ExecuteSqlRawAsync("INSERT INTO works(id,category_code) VALUES ('00000000-0000-0000-0000-000000000047','movie')"));
+            Assert.Equal(PostgresErrorCodes.UniqueViolation,duplicate.SqlState);
+            var missingWork=await Assert.ThrowsAsync<PostgresException>(()=>current.Database.ExecuteSqlRawAsync("INSERT INTO media_entities(id,work_id,category_code) VALUES ('00000000-0000-0000-0000-000000000099','00000000-0000-0000-0000-000000000098','movie')"));
+            Assert.Equal(PostgresErrorCodes.ForeignKeyViolation,missingWork.SqlState);
+            Assert.Single(await current.Works.ToListAsync());Assert.Single(await current.MediaEntities.ToListAsync());
             // Provider serialization/locking: both startup paths preserve the single EF lineage.
             await Task.WhenAll(runner.InitializeAsync(store),runner.InitializeAsync(store));
             await current.Database.ExecuteSqlRawAsync("INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\",\"ProductVersion\") VALUES ('20990101000100_future','10.0.12')");
             await Assert.ThrowsAsync<InvalidOperationException>(()=>runner.InitializeAsync(store));Assert.Single(await current.Works.ToListAsync());
             Assert.Equal(2,(await current.Database.GetAppliedMigrationsAsync()).Count());
-            Console.WriteLine("Phase16 PostgreSQL: frozen old schema/data -> current EF runner -> IDs/settings preserved; repeat/concurrent startup and future-schema guard passed.");
+            Console.WriteLine("Phase16 PostgreSQL: frozen old schema/data -> current EF runner -> IDs/settings and historical PK/FK preserved; repeat/concurrent startup and future-schema guard passed.");
         }
         finally
         { await using var drop=admin.CreateCommand();drop.CommandText=$"DROP SCHEMA IF EXISTS \"{schema}\" CASCADE";await drop.ExecuteNonQueryAsync(); }
