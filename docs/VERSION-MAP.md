@@ -22,3 +22,25 @@ SDKs may become independent SemVer units only if actually distributed to consume
 ## Phase 15 historical evidence
 
 [Phase 15](PHASE-15-COMPATIBILITY-BASELINES.md) adds technical Compatibility Baseline 0.7 from Phase 14 SHA 78f291fdacf9442c6e2d8e23094dc0e309828693: selected API, old binary/source consumer, signed package, serialization and generation-1 protocol evidence. Distribution remains 0.7.0; no generation is renumbered.
+
+
+## Phase 16 — historical persisted data
+
+Owner-local SQLite schemas now track version 1 (`0001_baseline07_adoption`) and minimum supported known legacy shape 0. Media keeps its EF SQLite five-step and PostgreSQL one-step lineages; playback JSON remains schema 1. Unknown/future histories fail before writes. Upgrades are forward-only and per-store transactional; startup blocks readiness on failure. Old executables without guards are not safe rollback targets. Data schema versions remain independent of distribution/API/wire versions; no contract gains Public Stable status.
+
+The independent 15-artifact populated corpus and mandatory Linux PostgreSQL gate are documented in [Phase 16](PHASE-16-HISTORICAL-DATA-UPGRADES.md) and [ADR-0041](adr/ADR-0041-schema-evolution-and-historical-upgrades.md). Phase 15's 27 artifacts and hashes remain frozen. Local implementation is prepared for CI; Phase 16 closure awaits live PostgreSQL and both OS jobs. Backup/restore remains outside this phase.
+
+| Independent persistence axis | Owner | Current schema / supported predecessor |
+|---|---|---|
+| Identity | Platform.Identity | 1 / known unversioned 0.7 shape |
+| Authorization | Platform.Authorization | 1 / known unversioned 0.7 shape |
+| Events | Platform.Events | 1 / known unversioned 0.7 shape |
+| Jobs | Platform.Jobs | 1 / known unversioned 0.7 shape |
+| Asset metadata | Platform.Assets | 1 / known unversioned 0.7 shape |
+| Audit | Platform.Audit | 1 / known unversioned 0.7 shape |
+| Inventory | Inventory.Persistence | 1 / known unversioned 0.7 shape |
+| Coordinator | Platform.Coordinator | 1 / known unversioned 0.7 shape |
+| Media SQLite | Media.Persistence.SQLite | EF 20260923000500_person_metadata / contiguous known prefix |
+| Media PostgreSQL | Media.Persistence.PostgreSQL | EF 20260926104649_InitialPostgreSql / empty or same lineage |
+| Playback experiments | Media.Playback.Experiments | JSON 1 / schema 1 |
+| Storage bytes | Platform.Storage.Filesystem | opaque and legacy layouts; no database ledger |

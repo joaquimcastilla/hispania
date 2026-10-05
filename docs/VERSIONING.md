@@ -46,3 +46,10 @@ No version derives from phase count, test count, code size, complexity or a V2 t
 ## Phase 15 historical evidence
 
 Compatibility Baseline 0.7 now preserves selected historical artifacts from validated Phase 14, independently of distribution 0.7.0 and existing technical generations. See [Phase 15](PHASE-15-COMPATIBILITY-BASELINES.md) for empirical source, binary, wire and behavioral coverage; no Public Stable promotion.
+
+
+## Phase 16 — historical persisted data
+
+Owner-local SQLite schemas now track version 1 (`0001_baseline07_adoption`) and minimum supported known legacy shape 0. Media keeps its EF SQLite five-step and PostgreSQL one-step lineages; playback JSON remains schema 1. Unknown/future histories fail before writes. Upgrades are forward-only and per-store transactional; startup blocks readiness on failure. Old executables without guards are not safe rollback targets. Data schema versions remain independent of distribution/API/wire versions; no contract gains Public Stable status.
+
+The independent 15-artifact populated corpus and mandatory Linux PostgreSQL gate are documented in [Phase 16](PHASE-16-HISTORICAL-DATA-UPGRADES.md) and [ADR-0041](adr/ADR-0041-schema-evolution-and-historical-upgrades.md). Phase 15's 27 artifacts and hashes remain frozen. Local implementation is prepared for CI; Phase 16 closure awaits live PostgreSQL and both OS jobs. Backup/restore remains outside this phase.

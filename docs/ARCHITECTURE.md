@@ -444,3 +444,10 @@ See [ADR-0038](adr/ADR-0038-phase-13-platform-maturity-closure.md) and the [clos
 ## Phase 15 historical evidence
 
 Phase 15 adds test/tooling-owned [historical compatibility baselines](PHASE-15-COMPATIBILITY-BASELINES.md), using immutable artifacts from validated Phase 14 and current runtime consumers. Production dependencies/APIs remain unchanged; no database upgrade or deployment architecture is added. [ADR-0040](adr/ADR-0040-historical-compatibility-baselines.md) separates binary/source/API/wire/behavioral evidence and future breaking-change review.
+
+
+## Phase 16 — historical persisted data
+
+Owner-local SQLite schemas now track version 1 (`0001_baseline07_adoption`) and minimum supported known legacy shape 0. Media keeps its EF SQLite five-step and PostgreSQL one-step lineages; playback JSON remains schema 1. Unknown/future histories fail before writes. Upgrades are forward-only and per-store transactional; startup blocks readiness on failure. Old executables without guards are not safe rollback targets. Data schema versions remain independent of distribution/API/wire versions; no contract gains Public Stable status.
+
+The independent 15-artifact populated corpus and mandatory Linux PostgreSQL gate are documented in [Phase 16](PHASE-16-HISTORICAL-DATA-UPGRADES.md) and [ADR-0041](adr/ADR-0041-schema-evolution-and-historical-upgrades.md). Phase 15's 27 artifacts and hashes remain frozen. Local implementation is prepared for CI; Phase 16 closure awaits live PostgreSQL and both OS jobs. Backup/restore remains outside this phase.
