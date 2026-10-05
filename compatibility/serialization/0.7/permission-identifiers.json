@@ -1,0 +1,15 @@
+[
+  "platform.admin",
+  "platform.assets.write",
+  "platform.audit.read",
+  "platform.events.manage",
+  "platform.events.read",
+  "platform.jobs.manage",
+  "platform.jobs.read",
+  "platform.observability.read",
+  "platform.roles.permissions.write",
+  "platform.roles.read",
+  "platform.roles.write",
+  "platform.users.read",
+  "platform.users.write"
+]

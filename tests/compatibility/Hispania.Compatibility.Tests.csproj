@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><IsPackable>false</IsPackable><OutputType>Exe</OutputType><StartupObject>Hispania.Compatibility.Tests.Program</StartupObject></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2"><PrivateAssets>all</PrivateAssets></PackageReference>
+    <ProjectReference Include="../../contracts/playback/Hispania.Playback.Contracts.csproj" />
+    <ProjectReference Include="../../core/runtime/Hispania.Runtime.csproj" />
+    <ProjectReference Include="../../application/identity/Hispania.Identity.Application.csproj" />
+    <ProjectReference Include="../../application/authorization/Hispania.Authorization.Application.csproj" />
+    <ProjectReference Include="../../infrastructure/platform/persistence-sqlite/Hispania.Platform.Persistence.Sqlite.csproj" />
+    <ProjectReference Include="../../contracts/extension-demo/Hispania.ExtensionDemo.Contracts.csproj" />
+  </ItemGroup>
+</Project>

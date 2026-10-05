@@ -18,3 +18,7 @@ These are ownership/release planning units, not new NuGet packages or physical v
 | Inventory / ERP owner | contracts/application/SQLite | experimental, no release selected | Domain proof, not ERP product 1.0 |
 
 SDKs may become independent SemVer units only if actually distributed to consumers. Until then build defaults are implementation metadata; synchronizing every csproj would manufacture promises. Signed package implementation identities and host compatibility ranges must not be regenerated from distribution SemVer. The empty Kernel is not a useful release unit. See [axis inventory](VERSIONING.md) and [publication scope](PLATFORM-1.0-SCOPE.md).
+
+## Phase 15 historical evidence
+
+[Phase 15](PHASE-15-COMPATIBILITY-BASELINES.md) adds technical Compatibility Baseline 0.7 from Phase 14 SHA 78f291fdacf9442c6e2d8e23094dc0e309828693: selected API, old binary/source consumer, signed package, serialization and generation-1 protocol evidence. Distribution remains 0.7.0; no generation is renumbered.

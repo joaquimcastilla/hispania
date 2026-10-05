@@ -1,0 +1,25 @@
+    private static readonly System.Text.Json.JsonSerializerOptions CaptureOptions = new() { WriteIndented = true };
+    [Fact]
+    public async Task CaptureHistoricalRangeSemantics()
+    {
+        var cases = new (string Id, string? Range, bool Changed)[] {
+            ("full", null, false), ("closed", "bytes=1-3", false), ("suffix", "bytes=-2", false),
+            ("open", "bytes=2-", false), ("unsatisfiable", "bytes=5-", false),
+            ("malformed", "items=1-2", false), ("multiple", "bytes=0-1,3-4", false), ("source-changed", null, true)
+        };
+        var captures = new List<object>();
+        foreach (var item in cases)
+        {
+            await using var host = await Host.CreateAsync([0,1,2,3,4]);
+            if (item.Changed) await File.WriteAllBytesAsync(Path.Combine(host.DirectoryPath, "film.mp4"), new byte[] {0,1,2,3,4,5});
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/media/{host.Entry.Id.Value}/stream");
+            if (item.Range is not null) request.Headers.TryAddWithoutValidation("Range", item.Range);
+            using var response = await host.Client.SendAsync(request);
+            captures.Add(new { id = item.Id, method = "GET", route = "/api/v1/media/{id}/stream", range = item.Range,
+                sourceChanged = item.Changed, status = (int)response.StatusCode,
+                acceptRanges = string.Join(",", response.Headers.AcceptRanges), contentType = response.Content.Headers.ContentType?.MediaType,
+                contentLength = response.Content.Headers.ContentLength, contentRange = response.Content.Headers.ContentRange?.ToString(),
+                bodyBase64 = Convert.ToBase64String(await response.Content.ReadAsByteArrayAsync()) });
+        }
+        await File.WriteAllTextAsync(Environment.GetEnvironmentVariable("HISPANIA_HISTORICAL_HTTP_OUTPUT")!, System.Text.Json.JsonSerializer.Serialize(captures, CaptureOptions) + "\n");
+    }

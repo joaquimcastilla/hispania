@@ -1,0 +1,34 @@
+{
+  "Id": "hispania.extension-demo.greeting",
+  "Name": "Independent greeting extension",
+  "Version": "1.0.0",
+  "Implements": [
+    "hispania.extension-demo.greeting@1.0"
+  ],
+  "Provides": [
+    "hispania.extension-demo.greeting@1.0"
+  ],
+  "Requires": [],
+  "OptionalDependencies": [],
+  "Dependencies": [],
+  "DependencyMinimumVersions": {},
+  "Permissions": [],
+  "MinimumHostVersion": "1.0.0",
+  "MaximumHostVersion": null,
+  "Runtime": "dotnet-inprocess-trusted",
+  "RestartRequiredForUpdate": false,
+  "EntryAssembly": "Hispania.ExtensionDemo.dll",
+  "EntryType": "Hispania.ExtensionDemo.IndependentGreetingModule",
+  "SharedAssemblies": [
+    "Hispania.ExtensionDemo.Contracts"
+  ],
+  "ContractTypes": {},
+  "PublisherId": "TEST-ONLY-baseline-07",
+  "SignatureAlgorithm": "rsa-pss-sha256",
+  "Signature": "Zvp8c7Ogf/KZAccDn/mYQwLr9sESFjgkEIW9I7zl5/YdPoIYwlHzmBIs1ce8YPePqEOrRNxMIDHaQ4tfj95GMTZLblmvQzhqNF5xBQwRf4sM2Jc28/XV8J5HOr07S4S3lCoRF00d7cH8s\u002B1sCpFmIt3d7exteg4paFQ7ID/iMbDRRVz7jFV9LRnIqXVCjsbq0esfzfsZCnIIWtSd5R75UFsqHIBC8rssu17go2wZ/LknVVq0Bk4mylldaYpJweVZCLyj2Wv80f1R46MybGPPZLrGT0rI971lJDyx3Kycq70uYICmNfn6wsEU7u5YVFgIvavBjSIq41addKq/8TJZ/g==",
+  "Files": {
+    "Hispania.ExtensionDemo.dll": "afe8836cf7988df26eccc091c4c222e896aa9930bf203c8cdfa4ccb719315710",
+    "Hispania.ExtensionDemo.Contracts.dll": "bd059255e0cd308ed1e4643287de911bf9a96524fec29b69bd9074d1f0bfc243"
+  },
+  "PackageFormatVersion": 1
+}

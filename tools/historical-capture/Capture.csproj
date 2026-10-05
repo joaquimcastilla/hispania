@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><DebugType>none</DebugType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(HistoricalRoot)/contracts/platform/Hispania.Platform.Contracts.csproj" />
+    <ProjectReference Include="$(HistoricalRoot)/contracts/module-system/Hispania.ModuleSystem.Contracts.csproj" />
+    <ProjectReference Include="$(HistoricalRoot)/modules/extension-demo/Hispania.ExtensionDemo.csproj" />
+  </ItemGroup>
+</Project>

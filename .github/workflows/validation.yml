@@ -57,6 +57,9 @@ jobs:
           $trx = [xml](Get-Content -Raw tests/unit/TestResults/required-phase14-versioning.trx -ErrorAction Stop)
           $results = @($trx.TestRun.Results.UnitTestResult)
           if ($results.Count -ne 3 -or @($results | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'All three Phase 14 metadata/API gates must be discovered and pass without skips.' }
+      - name: Require Phase 15 immutable historical compatibility baselines
+        shell: pwsh
+        run: ./tools/test-phase15-compatibility.ps1 -ResultsDirectory .artifacts/phase15-ci
       - name: Require Platform-only dependency boundary
         run: dotnet build Hispania.Platform.slnf
       - name: Require Inventory, persistence, API restart, and architecture coverage
@@ -180,6 +183,9 @@ jobs:
           $trx = [xml](Get-Content -Raw tests/unit/TestResults/required-phase14-versioning.trx -ErrorAction Stop)
           $results = @($trx.TestRun.Results.UnitTestResult)
           if ($results.Count -ne 3 -or @($results | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'All three Phase 14 metadata/API gates must be discovered and pass without skips.' }
+      - name: Require Phase 15 immutable historical compatibility baselines
+        shell: pwsh
+        run: ./tools/test-phase15-compatibility.ps1 -ResultsDirectory .artifacts/phase15-ci
       - name: Require Platform-only dependency boundary
         run: dotnet build Hispania.Platform.slnf
       - name: Require Inventory, persistence, API restart, and architecture coverage

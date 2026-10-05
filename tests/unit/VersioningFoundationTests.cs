@@ -126,6 +126,7 @@ public sealed class VersioningFoundationTests
         var path = Path.Combine(root, "compatibility", "api", "stable-candidates.txt");
         if (Environment.GetEnvironmentVariable("HISPANIA_CAPTURE_API_BASELINE") == "1")
         {
+            Assert.False(File.Exists(Path.Combine(root, "compatibility", "baseline-0.7.json")), "Historical baseline exists: preserve 0.7; capture new evidence in a new staging corpus.");
             Assert.False(string.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase), "CI must not regenerate API evidence.");
             File.WriteAllText(path, actual, new UTF8Encoding(false));
             return;

@@ -42,3 +42,7 @@ HISPANIA distribution 0.7.0
 The host's 1.0.0 was hardcoded rather than sourced from distribution metadata. Source usage establishes only package bounds semantics; there is no evidence it implements SDK binary compatibility. This phase documents it instead of renaming a public parameter or altering package acceptance. Observability's 1.0.0 likewise stays unchanged for existing listeners. Demo module/package 1.0.0/2.0.0/3.0.0 values identify historical test implementations, not product maturity.
 
 No version derives from phase count, test count, code size, complexity or a V2 type name. See [policy](COMPATIBILITY-POLICY.md), [logical ownership map](VERSION-MAP.md) and ADR-0039.
+
+## Phase 15 historical evidence
+
+Compatibility Baseline 0.7 now preserves selected historical artifacts from validated Phase 14, independently of distribution 0.7.0 and existing technical generations. See [Phase 15](PHASE-15-COMPATIBILITY-BASELINES.md) for empirical source, binary, wire and behavioral coverage; no Public Stable promotion.

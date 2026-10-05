@@ -1,0 +1,22 @@
+{
+  "Lease": {
+    "JobId": "test-job-07",
+    "NodeId": "test-worker-07",
+    "Generation": 2,
+    "ExpiresAtUtc": "1970-01-01T01:00:00+00:00"
+  },
+  "Request": {
+    "JobId": "test-job-07",
+    "ContractId": "test.baseline.echo",
+    "ContractVersion": "1.0",
+    "Operation": "echo",
+    "Payload": "test-payload",
+    "HasExternalSideEffects": false,
+    "RetrySafe": true,
+    "CorrelationId": null,
+    "TimeoutSeconds": null,
+    "CausationId": null,
+    "TraceParent": null,
+    "TraceState": null
+  }
+}

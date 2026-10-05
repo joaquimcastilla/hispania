@@ -120,11 +120,54 @@ public sealed class HttpDirectPlayIntegrationTests
         Assert.Equal(bytes[100..200], await partial.Content.ReadAsByteArrayAsync());
     }
 
+    [Fact]
+    [Trait("Category", "Phase15Compatibility")]
+    public async Task Historical07HttpRangeFixturesMatchCurrentObservableBehavior()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "Hispania.sln"))) root = root.Parent;
+        using var fixture = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(root!.FullName, "compatibility", "serialization", "0.7", "http-range.json")));
+        foreach (var item in fixture.RootElement.EnumerateArray())
+        {
+            await using var host = await Host.CreateAsync([0, 1, 2, 3, 4]);
+            if (item.GetProperty("sourceChanged").GetBoolean()) await File.WriteAllBytesAsync(Path.Combine(host.DirectoryPath, "film.mp4"), new byte[] { 0, 1, 2, 3, 4, 5 });
+            var route = item.GetProperty("route").GetString()!.Replace("{id}", host.Entry.Id.Value.ToString(), StringComparison.Ordinal);
+            using var request = new HttpRequestMessage(new HttpMethod(item.GetProperty("method").GetString()!), route);
+            if (item.GetProperty("range").GetString() is { } range) request.Headers.TryAddWithoutValidation("Range", range);
+            using var response = await host.Client.SendAsync(request);
+            Assert.Equal(item.GetProperty("status").GetInt32(), (int)response.StatusCode);
+            Assert.Equal(item.GetProperty("acceptRanges").GetString(), string.Join(",", response.Headers.AcceptRanges));
+            Assert.Equal(item.GetProperty("contentType").GetString(), response.Content.Headers.ContentType?.MediaType);
+            Assert.Equal(item.GetProperty("contentRange").GetString(), response.Content.Headers.ContentRange?.ToString());
+            if (item.GetProperty("contentLength").ValueKind != System.Text.Json.JsonValueKind.Null)
+                Assert.Equal(item.GetProperty("contentLength").GetInt64(), response.Content.Headers.ContentLength);
+            Assert.Equal(Convert.FromBase64String(item.GetProperty("bodyBase64").GetString()!), await response.Content.ReadAsByteArrayAsync());
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Phase15Compatibility")]
+    public async Task Historical07DirectPlayResultOwnsAndDisposesItsStream()
+    {
+        await using var host = await Host.CreateAsync([0, 1, 2, 3, 4]);
+        var catalog = new InMemoryMediaCatalog(); catalog.Upsert(host.Entry);
+        var planner = new DirectPlayPlanner(catalog);
+        var accessor = new LocalFileSystemSourceContentAccessor(new LocalLibraryRootConfiguration([new LocalLibraryRoot("movies", host.DirectoryPath)]));
+        var executor = new DirectPlayExecutor(catalog, accessor);
+        var plan = Assert.IsType<DirectPlayPlanned>(planner.Plan(host.Entry.Id)).Plan;
+        var result = Assert.IsType<FullContent>(await executor.ExecuteAsync(plan, new ByteRangeRequest.Full()));
+        var stream = result.Content.Stream;
+        Assert.True(stream.CanRead);
+        await result.DisposeAsync();
+        Assert.False(stream.CanRead);
+    }
+
     private sealed class Host : IAsyncDisposable
     {
         private readonly WebApplication _application;
         private readonly string _directory;
         private Host(WebApplication application, HttpClient client, MediaCatalogEntry entry, string directory, TestAuthorization authorization) { _application = application; Client = client; Entry = entry; _directory = directory; Authorization = authorization; }
+        public string DirectoryPath => _directory;
         public HttpClient Client { get; }
         public MediaCatalogEntry Entry { get; }
         public TestAuthorization Authorization { get; }

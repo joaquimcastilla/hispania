@@ -403,3 +403,7 @@ Overview is composed at the HTTP host through existing public contracts, with ad
 ## Phase 13 hardening and closure
 
 See [ADR-0038](adr/ADR-0038-phase-13-platform-maturity-closure.md) and the [closure/security audit](PHASE-13-CLOSURE.md) for the final dependency graph, exact legacy bearer inventory, health/metrics semantics, process and concurrency gates, and limitations. Server composition supplies a sanitized HTTP error boundary; exception messages/stacks, provider paths and credentials are excluded from error responses and failure logs. Events and Jobs retain independent at-least-once stores. **Phase 13 — CLOSED — validated on Linux and Windows** Functional SHA `75e10edd560e396a6e509a386d5aae5dd7928827` passed [Validation #37230450104](https://github.com/joaquimcastilla/hispania/actions/runs/37230450104). The annotated `phase-13-complete` checkpoint and Release close the phase; merging to main is a separate task. Closure adds no domain features or Phase 14 work.
+
+## Phase 15 historical evidence
+
+Phase 15 retains a historical greeting binary and signed format-1 package compiled against archived Phase 14 SDKs. Current compatibility tests verify explicit TEST ONLY publisher trust, install, validate, load, execute, stop and unload without rebuilding the package. Selected ModuleHost/Worker generation-1 fixtures add bounded parser/fencing evidence; Module SDK remains experimental. See [Phase 15](PHASE-15-COMPATIBILITY-BASELINES.md) and [ADR-0040](adr/ADR-0040-historical-compatibility-baselines.md).
