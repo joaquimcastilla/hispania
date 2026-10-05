@@ -284,4 +284,6 @@ jobs:
             if (@($results | Where-Object { $_.testName -like $pattern }).Count -eq 0) { throw "Required distributed worker test '$pattern' did not pass or was not discovered." }
           }
       - name: Run the complete .NET suite on Windows
-        run: dotnet test Hispania.sln --no-build
+        # Keep process-heavy integration projects from starving each other on hosted Windows.
+        # Preserve every test and its existing cancellation/request deadlines.
+        run: dotnet test Hispania.sln --no-build -m:1
