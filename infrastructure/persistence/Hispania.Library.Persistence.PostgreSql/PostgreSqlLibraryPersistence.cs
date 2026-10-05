@@ -43,7 +43,7 @@ public sealed class PostgreSqlMigrationRunner(IDbContextFactory<LibraryCatalogDb
     public async Task InitializeAsync(EfLibraryCatalogStore store, CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-        await context.Database.MigrateAsync(cancellationToken);
+        await Hispania.Persistence.Schema.EfSchemaGuard.UpgradeAsync(context, "Media.Persistence.PostgreSQL", cancellationToken);
         await store.LoadSnapshotAsync(cancellationToken: cancellationToken);
     }
 }

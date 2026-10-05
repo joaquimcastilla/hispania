@@ -33,7 +33,7 @@ public sealed class Phase15CompatibilityTests(Xunit.Abstractions.ITestOutputHelp
         {
             var path = Path.GetRelativePath(BaselineCorpus.PathFor(""), file).Replace('\\', '/');
             var parts = path.Split('/');
-            if (!parts.Contains("0.7") || parts.Any(part => part is "bin" or "obj") || path == "manifests/0.7/frozen-index.json") continue;
+            if (parts[0] == "data" || !parts.Contains("0.7") || parts.Any(part => part is "bin" or "obj") || path == "manifests/0.7/frozen-index.json") continue;
             Assert.Contains(path, declared);
         }
     }

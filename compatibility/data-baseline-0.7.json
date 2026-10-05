@@ -1,0 +1,182 @@
+{
+  "baseline": "0.7",
+  "sourceSha": "78f291fdacf9442c6e2d8e23094dc0e309828693",
+  "designation": "Historical populated data evidence; independent from Phase 15 contract corpus",
+  "testCredentials": {
+    "password": "TEST-ONLY-Phase16-password",
+    "sessions": [
+      "TEST-ONLY-valid-session",
+      "TEST-ONLY-revoked-session",
+      "TEST-ONLY-expired-session"
+    ],
+    "saltPolicy": "Fixed TEST ONLY salts, never production credentials"
+  },
+  "artifacts": [
+    {
+      "path": "data/0.7/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB.blob",
+      "owner": [
+        "Platform.Storage.Filesystem"
+      ],
+      "historicalSchema": "unversioned-0.7",
+      "expectedCurrentSchema": "1:0001_baseline07_adoption",
+      "sha256": "486ea46224d1bb4fb680f34f7c9ad96a8f24ec88be73ea8e5a6c65260e9cb8a7",
+      "immutable": true,
+      "generationMethod": "Archived 78f291fd producer constructors/EF migrations; deterministic TEST ONLY row instrumentation. Never current store capture."
+    },
+    {
+      "path": "data/0.7/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.blob",
+      "owner": [
+        "Platform.Storage.Filesystem"
+      ],
+      "historicalSchema": "unversioned-0.7",
+      "expectedCurrentSchema": "1:0001_baseline07_adoption",
+      "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+      "immutable": true,
+      "generationMethod": "Archived 78f291fd producer constructors/EF migrations; deterministic TEST ONLY row instrumentation. Never current store capture."
+    },
+    {
+      "path": "data/0.7/assets.sqlite",
+      "owner": [
+        "Platform.Assets"
+      ],
+      "historicalSchema": "unversioned-0.7",
+      "expectedCurrentSchema": "1:0001_baseline07_adoption",
+      "sha256": "1cc04c613dedf5319eb4eaa70b706fb9a2963ee69bf2860e3d4cfaa4794d39fc",
+      "immutable": true,
+      "generationMethod": "Archived 78f291fd producer constructors/EF migrations; deterministic TEST ONLY row instrumentation. Never current store capture."
+    },
+    {
+      "path": "data/0.7/audit.sqlite",
+      "owner": [
+        "Platform.Audit"
+      ],
+      "historicalSchema": "unversioned-0.7",
+      "expectedCurrentSchema": "1:0001_baseline07_adoption",
+      "sha256": "ddca58d5214b4091e953a20966af3b987fd943f0f4ebc9e0ddc605e70ba7eab9",
+      "immutable": true,
+      "generationMethod": "Archived 78f291fd producer constructors/EF migrations; deterministic TEST ONLY row instrumentation. Never current store capture."
+    },
+    {
+      "path": "data/0.7/coordinator.sqlite",
+      "owner": [
+        "Platform.Coordinator"
+      ],
+      "historicalSchema": "unversioned-0.7",
+      "expectedCurrentSchema": "1:0001_baseline07_adoption",
+      "sha256": "a11ca4e255d989cf309e838629f309837183a55ae860dec3b7031a61ae4037fa",
+      "immutable": true,
+      "generationMethod": "Archived 78f291fd producer constructors/EF migrations; deterministic TEST ONLY row instrumentation. Never current store capture."
+    },
+    {
+      "path": "data/0.7/events.sqlite",
+      "owner": [
+        "Platform.Events"
+      ],
+      "historicalSchema": "unversioned-0.7",
+      "expectedCurrentSchema": "1:0001_baseline07_adoption",
+      "sha256": "975e77c84e791a9fcfd968912802ba994ed3d5eabaffe1f0e40ddfdf702418d4",
+      "immutable": true,
+      "generationMethod": "Archived 78f291fd producer constructors/EF migrations; deterministic TEST ONLY row instrumentation. Never current store capture."
+    },
+    {
+      "path": "data/0.7/identity-authorization.sqlite",
+      "owner": [
+        "Platform.Identity",
+        "Platform.Authorization"
+      ],
+      "historicalSchema": "unversioned-0.7",
+      "expectedCurrentSchema": "1:0001_baseline07_adoption",
+      "sha256": "ab3e3c9faaa24112261e24d05f2cd7ce595d1c13f94234b554237cb1a41a27c2",
+      "immutable": true,
+      "generationMethod": "Archived 78f291fd producer constructors/EF migrations; deterministic TEST ONLY row instrumentation. Never current store capture."
+    },
+    {
+      "path": "data/0.7/inventory.sqlite",
+      "owner": [
+        "Inventory.Persistence"
+      ],
+      "historicalSchema": "unversioned-0.7",
+      "expectedCurrentSchema": "1:0001_baseline07_adoption",
+      "sha256": "98053d3014a3e30b65c66d6dd22d3ceaad20b2170ea69cab4f9a7bfc404f8064",
+      "immutable": true,
+      "generationMethod": "Archived 78f291fd producer constructors/EF migrations; deterministic TEST ONLY row instrumentation. Never current store capture."
+    },
+    {
+      "path": "data/0.7/jobs.sqlite",
+      "owner": [
+        "Platform.Jobs"
+      ],
+      "historicalSchema": "unversioned-0.7",
+      "expectedCurrentSchema": "1:0001_baseline07_adoption",
+      "sha256": "326aaea208a27000e64b81384043516643d7ab73ddc1cf7152aa00273e013113",
+      "immutable": true,
+      "generationMethod": "Archived 78f291fd producer constructors/EF migrations; deterministic TEST ONLY row instrumentation. Never current store capture."
+    },
+    {
+      "path": "data/0.7/media-initial.sqlite",
+      "owner": [
+        "Media.Persistence.SQLite"
+      ],
+      "historicalSchema": "20260922000100_initial",
+      "expectedCurrentSchema": "20260923000500_person_metadata",
+      "sha256": "4bd2e45142a469ca4d3e14970fe1ed124453f824848130a7f4e17e99c8fe6660",
+      "immutable": true,
+      "generationMethod": "Archived 78f291fd producer constructors/EF migrations; deterministic TEST ONLY row instrumentation. Never current store capture."
+    },
+    {
+      "path": "data/0.7/media-library.sqlite",
+      "owner": [
+        "Media.Persistence.SQLite"
+      ],
+      "historicalSchema": "20260923000500_person_metadata",
+      "expectedCurrentSchema": "20260923000500_person_metadata",
+      "sha256": "4d2c7f4d5521a986ebc9acedd2dcda0086e0ae11f7767ad3a7ff232a283b7ecf",
+      "immutable": true,
+      "generationMethod": "Archived 78f291fd producer constructors/EF migrations; deterministic TEST ONLY row instrumentation. Never current store capture."
+    },
+    {
+      "path": "data/0.7/media-postgresql-data.sql",
+      "owner": [
+        "Media.Persistence.PostgreSQL"
+      ],
+      "historicalSchema": "20260926104649_InitialPostgreSql",
+      "expectedCurrentSchema": "20260926104649_InitialPostgreSql",
+      "sha256": "a780fd5db75e3b53d21f630f343227d0febd4c445e083743c658567689a3ce67",
+      "immutable": true,
+      "generationMethod": "Archived 78f291fd producer constructors/EF migrations; deterministic TEST ONLY row instrumentation. Never current store capture."
+    },
+    {
+      "path": "data/0.7/media-postgresql-schema.sql",
+      "owner": [
+        "Media.Persistence.PostgreSQL"
+      ],
+      "historicalSchema": "20260926104649_InitialPostgreSql",
+      "expectedCurrentSchema": "20260926104649_InitialPostgreSql",
+      "sha256": "62d50a3e2ee7ce2dd13659effa20462a6cf4e51b7925f0fa55deab0dbbd488ab",
+      "immutable": true,
+      "generationMethod": "Archived 78f291fd producer constructors/EF migrations; deterministic TEST ONLY row instrumentation. Never current store capture."
+    },
+    {
+      "path": "data/0.7/playback-experiment.json",
+      "owner": [
+        "Media.Playback.Experiments"
+      ],
+      "historicalSchema": "1",
+      "expectedCurrentSchema": "1",
+      "sha256": "15bfd2c96eec5c0d9f97498d59adabc9978986e26fe813ca22bb079fd56b1b4a",
+      "immutable": true,
+      "generationMethod": "Archived JsonPlaybackExperimentStore.Save/SaveAssignment with TEST ONLY deterministic state."
+    },
+    {
+      "path": "data/0.7/semantic-snapshots.json",
+      "owner": [
+        "Compatibility.DataEvidence"
+      ],
+      "historicalSchema": "unversioned-0.7",
+      "expectedCurrentSchema": "1:0001_baseline07_adoption",
+      "sha256": "8f9e89f9a6c43844319f4426929965fe1addd5a22dc3802581c4b14b3eae508a",
+      "immutable": true,
+      "generationMethod": "Archived 78f291fd producer constructors/EF migrations; deterministic TEST ONLY row instrumentation. Never current store capture."
+    }
+  ]
+}

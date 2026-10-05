@@ -22,9 +22,21 @@ public sealed class LibraryReadiness
     public void MarkReady() => IsReady = true;
 }
 
-public sealed class PersistenceStartupService(ILibraryPersistenceInitializer initializer, EfLibraryCatalogStore store) : IHostedService
+public sealed class PersistenceStartupService(ILibraryPersistenceInitializer initializer, EfLibraryCatalogStore store, IServiceProvider? services = null) : IHostedService
 {
-    public Task StartAsync(CancellationToken cancellationToken) => initializer.InitializeAsync(store, cancellationToken);
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        if (services is not null)
+        {
+            _ = services.GetRequiredService<Hispania.Identity.Application.IIdentityStore>();
+            _ = services.GetRequiredService<Hispania.Authorization.Application.IPlatformAuthorizationStore>();
+            _ = services.GetRequiredService<Hispania.Platform.Contracts.Assets.IPlatformAssetMetadataRepository>();
+            _ = services.GetRequiredService<Hispania.Platform.Persistence.Sqlite.SqlitePlatformAuditStore>();
+            _ = services.GetRequiredService<Hispania.Inventory.Application.IInventoryStore>();
+            _ = services.GetRequiredService<Hispania.ModuleSystem.Contracts.IDistributedWorkStateStoreV1>();
+        }
+        await initializer.InitializeAsync(store, cancellationToken);
+    }
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 

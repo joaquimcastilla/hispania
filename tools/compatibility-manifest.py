@@ -16,6 +16,7 @@ def hash_file(path):
 
 def paths():
     return sorted((p for p in CORPUS.rglob("*") if p.is_file() and "0.7" in p.parts
+                   and p.relative_to(CORPUS).parts[0] != "data"
                    and not {"bin", "obj"}.intersection(p.parts) and p != INDEX),
                   key=lambda p: p.relative_to(CORPUS).as_posix())
 

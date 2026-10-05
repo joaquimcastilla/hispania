@@ -4,3 +4,6 @@
 # Historical evidence is hashed as bytes; checkout must never translate newlines.
 compatibility/**/0.7/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 compatibility/baseline-0.7.json -text
+
+compatibility/data-baseline-0.7.json -text
+compatibility/data/0.7/*.sql whitespace=cr-at-eol,-blank-at-eof

@@ -1,0 +1,39 @@
+{
+  "Experiment": {
+    "SchemaVersion": 1,
+    "ExperimentId": "TEST-ONLY-historical-experiment",
+    "Revision": 7,
+    "Mode": "disabled",
+    "CapabilityId": "test.planner",
+    "ContractVersion": "1.0",
+    "Variants": [
+      {
+        "ModuleId": "test.module",
+        "ModuleVersion": "1.0.0",
+        "CapabilityId": "test.planner",
+        "ContractVersion": "1.0",
+        "Generation": 3,
+        "BasisPoints": 10000
+      }
+    ],
+    "ActiveModuleId": "test.module",
+    "ShadowModuleId": null,
+    "FallbackPolicy": "active-only",
+    "AutomaticDisableAfterErrors": 3,
+    "DisabledVariantKeys": [],
+    "AssignmentSaltFingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+    "SavedAtUtc": "1970-01-01T00:00:00+00:00"
+  },
+  "Assignments": [
+    {
+      "ExperimentId": "TEST-ONLY-historical-experiment",
+      "AssignmentKey": "2222222222222222222222222222222222222222222222222222222222222222",
+      "ModuleId": "test.module",
+      "CapabilityId": "test.planner",
+      "ContractVersion": "1.0",
+      "Generation": 3,
+      "ModuleVersion": "1.0.0",
+      "ExpiresAtUtc": "2099-01-01T00:00:00+00:00"
+    }
+  ]
+}

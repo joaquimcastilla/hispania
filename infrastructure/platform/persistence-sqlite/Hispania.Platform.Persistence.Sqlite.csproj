@@ -2,4 +2,5 @@
   <PropertyGroup><AssemblyName>Hispania.Platform.Persistence.Sqlite</AssemblyName><RootNamespace>Hispania.Platform.Persistence.Sqlite</RootNamespace></PropertyGroup>
   <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /><PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" /></ItemGroup>
   <ItemGroup><ProjectReference Include="..\..\..\contracts\platform\Hispania.Platform.Contracts.csproj" /><ProjectReference Include="..\..\..\application\identity\Hispania.Identity.Application.csproj" /><ProjectReference Include="..\..\..\application\authorization\Hispania.Authorization.Application.csproj" /><ProjectReference Include="..\..\..\application\platform\jobs\Hispania.Platform.Jobs.Application.csproj" /></ItemGroup>
+  <ItemGroup><Compile Include="../../persistence/schema-support/SqliteSchemaUpgrade.cs" Link="Schema/SqliteSchemaUpgrade.cs" /></ItemGroup>
 </Project>

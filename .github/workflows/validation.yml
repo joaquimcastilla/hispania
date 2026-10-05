@@ -73,6 +73,9 @@ jobs:
       - name: Require Phase 15 immutable historical compatibility baselines
         shell: pwsh
         run: ./tools/test-phase15-compatibility.ps1 -ResultsDirectory .artifacts/phase15-ci
+      - name: Require Phase 16 historical populated data upgrades and live PostgreSQL
+        shell: pwsh
+        run: ./tools/test-phase16-historical-upgrades.ps1 -ResultsDirectory .artifacts/phase16-ci -RequirePostgreSql
       - name: Require Platform-only dependency boundary
         run: dotnet build Hispania.Platform.slnf
       - name: Require Inventory, persistence, API restart, and architecture coverage
@@ -212,6 +215,9 @@ jobs:
       - name: Require Phase 15 immutable historical compatibility baselines
         shell: pwsh
         run: ./tools/test-phase15-compatibility.ps1 -ResultsDirectory .artifacts/phase15-ci
+      - name: Require Phase 16 historical populated data upgrades
+        shell: pwsh
+        run: ./tools/test-phase16-historical-upgrades.ps1 -ResultsDirectory .artifacts/phase16-ci
       - name: Require Platform-only dependency boundary
         run: dotnet build Hispania.Platform.slnf
       - name: Require Inventory, persistence, API restart, and architecture coverage

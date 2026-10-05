@@ -92,6 +92,7 @@ public sealed class JsonPlaybackExperimentStore : IPlaybackExperimentStore
     {
         lock (gate)
         {
+            EnsureWritable();
             this.experiment = experiment;
             if (experiment is null) assignments.Clear();
             WriteAtomic();
@@ -103,6 +104,7 @@ public sealed class JsonPlaybackExperimentStore : IPlaybackExperimentStore
     {
         lock (gate)
         {
+            EnsureWritable();
             if (experiment is null || experiment.DisabledVariantKeys.Contains(variantKey, StringComparer.Ordinal)) return;
             experiment = experiment with { DisabledVariantKeys = experiment.DisabledVariantKeys.Append(variantKey).ToArray(), SavedAtUtc = DateTimeOffset.UtcNow };
             WriteAtomic();
@@ -129,6 +131,7 @@ public sealed class JsonPlaybackExperimentStore : IPlaybackExperimentStore
         if (!IsPseudonym(assignmentKey)) throw new ArgumentException("Assignment keys must be SHA-256 pseudonyms.", nameof(assignmentKey));
         lock (gate)
         {
+            EnsureWritable();
             assignments[(experimentId, assignmentKey)] = new PersistedAssignment(experimentId, assignmentKey,
                 variant.ModuleId, variant.CapabilityId, variant.ContractVersion.ToString(), variant.Generation,
                 variant.ModuleVersion?.ToString(), expiresAtUtc);
@@ -140,12 +143,17 @@ public sealed class JsonPlaybackExperimentStore : IPlaybackExperimentStore
     {
         lock (gate)
         {
+            EnsureWritable();
             foreach (var key in assignments.Where(pair => pair.Key.Experiment == experimentId && ToIdentity(pair.Value) == variant).Select(pair => pair.Key).ToArray())
                 assignments.Remove(key);
             if (experiment?.ExperimentId == experimentId) WriteAtomic();
         }
     }
 
+    private void EnsureWritable()
+    {
+        if (loadFailure is not null) throw new InvalidDataException("Playback experiment schema is incompatible or corrupt; preserve the state file for explicit recovery. No reset was performed.");
+    }
     private void WriteAtomic()
     {
         var directory = Path.GetDirectoryName(path)!;

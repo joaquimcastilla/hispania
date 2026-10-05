@@ -29,16 +29,15 @@ public sealed class InventorySqliteStore : IInventoryStore
         connectionString = new SqliteConnectionStringBuilder { DataSource = path, ForeignKeys = true }.ToString();
         using var connection = Open();
         using var command = connection.CreateCommand();
-        command.CommandText = """
-            PRAGMA journal_mode=WAL;
+        Hispania.Persistence.Schema.SqliteSchemaUpgrade.Initialize(connection, "Inventory.Persistence", """
+
             CREATE TABLE IF NOT EXISTS items(id TEXT PRIMARY KEY, sku TEXT NOT NULL UNIQUE, name TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS item_assets(item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE, asset_id TEXT NOT NULL, PRIMARY KEY(item_id,asset_id));
             CREATE TABLE IF NOT EXISTS warehouses(id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS locations(id TEXT PRIMARY KEY, warehouse_id TEXT NOT NULL REFERENCES warehouses(id), code TEXT NOT NULL, name TEXT NOT NULL, UNIQUE(warehouse_id,code));
             CREATE TABLE IF NOT EXISTS stock(item_id TEXT NOT NULL REFERENCES items(id), location_id TEXT NOT NULL REFERENCES locations(id), quantity INTEGER NOT NULL CHECK(quantity>=0), PRIMARY KEY(item_id,location_id));
             CREATE TABLE IF NOT EXISTS movements(id TEXT PRIMARY KEY, item_id TEXT NOT NULL REFERENCES items(id), kind INTEGER NOT NULL, quantity INTEGER NOT NULL CHECK(quantity>0), source_id TEXT NULL REFERENCES locations(id), destination_id TEXT NULL REFERENCES locations(id), timestamp TEXT NOT NULL, actor_id TEXT NULL, correlation_id TEXT NULL);
-            """;
-        command.ExecuteNonQuery();
+            """);
     }
 
     public async ValueTask<IReadOnlyList<InventoryItem>> GetItemsAsync(CancellationToken cancellationToken = default)

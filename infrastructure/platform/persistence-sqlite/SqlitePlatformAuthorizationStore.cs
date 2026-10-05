@@ -12,9 +12,9 @@ public sealed class SqlitePlatformAuthorizationStore : IPlatformAuthorizationSto
     public SqlitePlatformAuthorizationStore(string path)
     {
         connectionString = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate, ForeignKeys = true }.ToString();
-        using var connection = new SqliteConnection(connectionString); connection.Open();
+        using var connection = new SqliteConnection(connectionString); Hispania.Persistence.Schema.SqliteSchemaUpgrade.Open(connection, "Platform.Authorization");
         using var command = connection.CreateCommand();
-        command.CommandText = """
+        Hispania.Persistence.Schema.SqliteSchemaUpgrade.Initialize(connection, "Platform.Authorization", """
             CREATE TABLE IF NOT EXISTS authorization_roles(role_id TEXT NOT NULL PRIMARY KEY,name TEXT NOT NULL COLLATE BINARY UNIQUE,description TEXT NOT NULL,created_utc TEXT NOT NULL,updated_utc TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS ix_authorization_roles_name ON authorization_roles(name);
             CREATE TABLE IF NOT EXISTS authorization_role_permissions(role_id TEXT NOT NULL REFERENCES authorization_roles(role_id) ON DELETE CASCADE,permission_id TEXT NOT NULL,created_utc TEXT NOT NULL,PRIMARY KEY(role_id,permission_id));
@@ -22,8 +22,7 @@ public sealed class SqlitePlatformAuthorizationStore : IPlatformAuthorizationSto
             CREATE INDEX IF NOT EXISTS ix_authorization_user_roles_role ON authorization_user_roles(role_id,user_id);
             CREATE TABLE IF NOT EXISTS authorization_bootstrap(id INTEGER NOT NULL PRIMARY KEY CHECK(id=1),consumed INTEGER NOT NULL);
             INSERT OR IGNORE INTO authorization_bootstrap(id,consumed) VALUES(1,0);
-            """;
-        command.ExecuteNonQuery();
+            """);
     }
 
     public async ValueTask<Role?> GetRoleAsync(RoleId roleId, CancellationToken cancellationToken) => await QueryRoleAsync("role_id", roleId.Value.ToString("D"), cancellationToken).ConfigureAwait(false);

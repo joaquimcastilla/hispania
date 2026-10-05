@@ -20,24 +20,19 @@ public sealed class SqliteDurablePlatformEventBus : IDurablePlatformEventBusV1, 
         connectionString = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate, Cache = SqliteCacheMode.Shared, Pooling = false }.ToString();
         this.options = options ?? new();
         if (this.options.MaximumPayloadBytes < 1 || this.options.MaximumAttempts < 1 || this.options.EffectiveRetryDelay < TimeSpan.Zero || this.options.EffectiveProcessingLease <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(options));
-        using var db = Open(); using var cmd = db.CreateCommand();
-        cmd.CommandText = """
+        using var db = new SqliteConnection(connectionString); Hispania.Persistence.Schema.SqliteSchemaUpgrade.Open(db, "Platform.Events"); using var cmd = db.CreateCommand();
+        Hispania.Persistence.Schema.SqliteSchemaUpgrade.Initialize(db, "Platform.Events", """
             PRAGMA journal_mode=WAL;
+
             CREATE TABLE IF NOT EXISTS Events(EventId TEXT PRIMARY KEY, EventType TEXT NOT NULL, Version INTEGER NOT NULL, OccurredAt TEXT NOT NULL, CorrelationId TEXT NULL, CausationId TEXT NULL, Producer TEXT NOT NULL, PayloadJson TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS Subscribers(SubscriberId TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS Deliveries(DeliveryId TEXT PRIMARY KEY, EventId TEXT NOT NULL REFERENCES Events(EventId), SubscriberId TEXT NOT NULL REFERENCES Subscribers(SubscriberId), Status INTEGER NOT NULL, AttemptCount INTEGER NOT NULL, NextAttemptAt TEXT NOT NULL, LastError TEXT NULL, DeliveredAt TEXT NULL, DeadLetteredAt TEXT NULL, UNIQUE(EventId, SubscriberId));
             CREATE TABLE IF NOT EXISTS DeliveryAttempts(AttemptId TEXT PRIMARY KEY, DeliveryId TEXT NOT NULL REFERENCES Deliveries(DeliveryId), AttemptNumber INTEGER NOT NULL, FinishedAt TEXT NOT NULL, Outcome INTEGER NOT NULL, Error TEXT NULL);
             CREATE INDEX IF NOT EXISTS IX_Deliveries_Ready ON Deliveries(Status, NextAttemptAt);
-            """; cmd.ExecuteNonQuery();
-        EnsureColumn(db, "TraceParent"); EnsureColumn(db, "TraceState");
+            """, ("Events", "TraceParent", "TEXT"), ("Events", "TraceState", "TEXT"));
     }
     private SqliteConnection Open() { var db = new SqliteConnection(connectionString); db.Open(); return db; }
-    private static void EnsureColumn(SqliteConnection connection, string column)
-    {
-        using var query = connection.CreateCommand(); query.CommandText = "PRAGMA table_info(Events)";
-        using var reader = query.ExecuteReader(); while (reader.Read()) if (reader.GetString(1) == column) return;
-        reader.Close(); using var alter = connection.CreateCommand(); alter.CommandText = $"ALTER TABLE Events ADD COLUMN {column} TEXT"; alter.ExecuteNonQuery();
-    }
+
     private long CountStatus(DurableDeliveryStatus status) { try { using var db = Open(); using var cmd = db.CreateCommand(); cmd.CommandText = "SELECT COUNT(*) FROM Deliveries WHERE Status=$status"; cmd.Parameters.AddWithValue("$status", (int)status); return (long)(cmd.ExecuteScalar() ?? 0L); } catch { return 0; } }
     public async ValueTask<Guid> PublishAsync<TEvent>(TEvent value, string producer, IReadOnlyCollection<string> subscribers, EventContext? context = null, string? causationId = null, CancellationToken cancellationToken = default) where TEvent : IPlatformEvent
     {

@@ -14,18 +14,18 @@ public sealed class SqliteIdentityStore : IIdentityStore
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         _connectionString = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate, ForeignKeys = true }.ToString();
         using var connection = new SqliteConnection(_connectionString);
-        connection.Open();
+        Hispania.Persistence.Schema.SqliteSchemaUpgrade.Open(connection, "Platform.Identity");
         using var command = connection.CreateCommand();
-        command.CommandText = """
+        Hispania.Persistence.Schema.SqliteSchemaUpgrade.Initialize(connection, "Platform.Identity", """
             PRAGMA journal_mode=WAL;
+
             CREATE TABLE IF NOT EXISTS identity_users(user_id TEXT NOT NULL PRIMARY KEY, username TEXT NOT NULL COLLATE BINARY UNIQUE, display_name TEXT NOT NULL, status INTEGER NOT NULL, created_utc TEXT NOT NULL, updated_utc TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS ix_identity_users_username ON identity_users(username);
             CREATE TABLE IF NOT EXISTS identity_credentials(user_id TEXT NOT NULL PRIMARY KEY REFERENCES identity_users(user_id) ON DELETE CASCADE, algorithm TEXT NOT NULL, iterations INTEGER NOT NULL, salt TEXT NOT NULL, password_hash TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS identity_sessions(session_id TEXT NOT NULL PRIMARY KEY, user_id TEXT NOT NULL REFERENCES identity_users(user_id) ON DELETE CASCADE, token_hash TEXT NOT NULL UNIQUE, created_utc TEXT NOT NULL, expires_utc TEXT NOT NULL, revoked_utc TEXT NULL);
             CREATE INDEX IF NOT EXISTS ix_identity_sessions_active_user ON identity_sessions(user_id, expires_utc, revoked_utc);
             CREATE INDEX IF NOT EXISTS ix_identity_sessions_token_hash ON identity_sessions(token_hash);
-            """;
-        command.ExecuteNonQuery();
+            """);
     }
 
     public async ValueTask<User?> GetUserAsync(UserId id, CancellationToken cancellationToken) =>

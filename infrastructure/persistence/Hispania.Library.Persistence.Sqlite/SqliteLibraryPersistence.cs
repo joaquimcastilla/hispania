@@ -47,8 +47,7 @@ public sealed class SqliteMigrationRunner(IDbContextFactory<LibraryCatalogDbCont
     public async Task MigrateAndLoadAsync(EfLibraryCatalogStore store, CancellationToken cancellationToken)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-        await NormalizeLegacyMigrationHistoryAsync(context, cancellationToken);
-        await context.Database.MigrateAsync(cancellationToken);
+        await Hispania.Persistence.Schema.EfSchemaGuard.UpgradeAsync(context, "Media.Persistence.SQLite", cancellationToken, new Dictionary<string, string>(StringComparer.Ordinal) { ["0001_initial"]="20260922000100_initial", ["0002_metadata_enrichment"]="20260922000200_metadata_enrichment", ["0003_rich_metadata"]="20260922000300_rich_metadata", ["0004_metadata_settings"]="20260922000400_metadata_settings", ["0005_person_metadata"]="20260923000500_person_metadata" }, () => NormalizeLegacyMigrationHistoryAsync(context, cancellationToken));
         await store.LoadSnapshotAsync(cancellationToken: cancellationToken);
     }
 

@@ -2,4 +2,5 @@
   <PropertyGroup><AssemblyName>Hispania.Inventory.Persistence.Sqlite</AssemblyName><RootNamespace>Hispania.Inventory.Persistence.Sqlite</RootNamespace></PropertyGroup>
   <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /><PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" /></ItemGroup>
   <ItemGroup><ProjectReference Include="..\..\..\application\inventory\Hispania.Inventory.Application.csproj" /></ItemGroup>
+  <ItemGroup><Compile Include="../schema-support/SqliteSchemaUpgrade.cs" Link="Schema/SqliteSchemaUpgrade.cs" /></ItemGroup>
 </Project>
