@@ -77,7 +77,8 @@ public sealed class ArtifactProcessTests
         Assert.Equal(0, (await fixture.CommandAsync(["--backup-restore", bundle, Path.Combine(recovered.Home, "state")])).Code);
         using var restoredServer = recovered.Start(); await recovered.ReadyAsync(restoredServer); await AssertLoginAsync(recovered.Client, password); await recovered.StopAsync(restoredServer);
         var identity = Path.Combine(recovered.Home, "state", "platform", "identity.sqlite");
-        using var connection = new SqliteConnection($"Data Source={identity}"); connection.Open();
+        SqliteConnection.ClearAllPools();
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = identity, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ConnectionString); connection.Open();
         using var command = connection.CreateCommand(); command.CommandText = "SELECT consumed FROM authorization_bootstrap WHERE id=1";
         Assert.Equal(1L, command.ExecuteScalar());
     }
