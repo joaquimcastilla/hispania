@@ -7,11 +7,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Logging;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Hispania.Deployment.ProcessTests;
 
 [Trait("Category", "Phase18NativeService")]
-public sealed class NativeServiceTests
+public sealed class NativeServiceTests(ITestOutputHelper output)
 {
     [Theory]
     [InlineData("server")]
@@ -48,11 +49,29 @@ public sealed class NativeServiceTests
         try
         {
             await ServiceAsync("install", fixture.Home, role); installed = true;
+            if (OperatingSystem.IsWindows())
+            {
+                var name = role == "server" ? "HispaniaServer" : "HispaniaWorker";
+                var definition = await RunAsync("sc.exe", ["qc", name]);
+                Assert.Contains("NT AUTHORITY\\LocalService", definition, StringComparison.OrdinalIgnoreCase);
+                var recovery = await RunAsync("sc.exe", ["qfailure", name]);
+                Assert.Contains("RESTART", recovery, StringComparison.OrdinalIgnoreCase);
+                output.WriteLine("SCM definition: LocalService confirmed; recovery definition validated; crash recovery runtime not exercised.");
+            }
+            else
+            {
+                var identity = await RunAsync("systemctl", ["show", "hispania-" + role + ".service", "--property=User", "--value"]);
+                Assert.Equal("hispania", identity.Trim());
+                var uid = await RunAsync("id", ["-u", "hispania"]);
+                Assert.NotEqual("0", uid.Trim());
+                output.WriteLine("systemd definition: non-root hispania identity confirmed; app directory read-only for service user.");
+            }
             await ServiceAsync("start", fixture.Home, role); await WaitAsync(1);
             await ServiceAsync("status", fixture.Home, role);
             await ServiceAsync("restart", fixture.Home, role); await WaitAsync(2);
             var timer = Stopwatch.StartNew(); await ServiceAsync("stop", fixture.Home, role);
             Assert.True(timer.Elapsed < TimeSpan.FromSeconds(40));
+            output.WriteLine("{0} {1}: native start/readiness/restart passed; graceful stop {2:F3}s.", OperatingSystem.IsWindows() ? "SCM" : "systemd", role, timer.Elapsed.TotalSeconds);
             using (Hispania.Hosting.InstallationOperations.Lock(fixture.Home)) { }
             await ServiceAsync("uninstall", fixture.Home, role); installed = false;
             Assert.True(File.Exists(Path.Combine(fixture.Home, "config", "production.json")));

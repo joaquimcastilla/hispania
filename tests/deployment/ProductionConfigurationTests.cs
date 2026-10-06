@@ -59,9 +59,14 @@ public sealed class ProductionConfigurationTests
     public void ExplicitOverridesBeatEnvironmentAndFileAndDefaults()
     {
         using var fixture = new Fixture("{\"endpoint\":\"http://127.0.0.1:5101\"}");
+        Assert.Equal("http://127.0.0.1:5101", fixture.Load().Configuration.Endpoint);
         using var env = new EnvironmentValue("HISPANIA__ENDPOINT", "http://127.0.0.1:5102");
         Assert.Equal("http://127.0.0.1:5102", fixture.Load().Configuration.Endpoint);
         Assert.Equal("http://127.0.0.1:5103", fixture.Load("--set=endpoint=http://127.0.0.1:5103").Configuration.Endpoint);
+        Assert.Equal(2, Assert.Throws<DeploymentException>(() => fixture.Load("--set=endpoint=invalid-high-priority")).ExitCode);
+        Environment.SetEnvironmentVariable("HISPANIA__ENDPOINT", "invalid-environment");
+        Assert.Equal(2, Assert.Throws<DeploymentException>(() => fixture.Load()).ExitCode);
+        Environment.SetEnvironmentVariable("HISPANIA__ENDPOINT", "http://127.0.0.1:5102");
         using var typo = new EnvironmentValue("HISPANIA__WORKER__MAXIMUMCONCURRENTJOBS", "5");
         Assert.Equal(5, fixture.Load().Configuration.Worker.MaximumConcurrentJobs);
     }
