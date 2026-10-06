@@ -12,6 +12,11 @@ try {
     $env:HISPANIA_PHASE18_ARTIFACT=[IO.Path]::GetFullPath($ArtifactDirectory)
     $env:HISPANIA_PHASE18_PREDECESSOR=[IO.Path]::GetFullPath($PredecessorDirectory)
     $results=[IO.Path]::GetFullPath($ResultsDirectory)
+    if ($env:GITHUB_ACTIONS -eq 'true') {
+        $manifest = Get-Content -LiteralPath (Join-Path $env:HISPANIA_PHASE18_ARTIFACT 'artifact-manifest.json') -Raw | ConvertFrom-Json
+        if ($manifest.sourceDirty -isnot [bool] -or $manifest.sourceDirty -ne $false) { throw 'CI artifact must record sourceDirty=false; investigate checkout and generated source changes.' }
+        if (-not $env:GITHUB_SHA -or $manifest.gitSha -cne $env:GITHUB_SHA) { throw 'CI artifact GitSha must match the exact published workflow SHA.' }
+    }
     function Test-Suite([string]$Project,[string]$Filter,[string]$Name,[int]$Expected) {
         & dotnet test $Project --filter $Filter --results-directory $results --logger "trx;LogFileName=$Name.trx" --nologo -v quiet
         if ($LASTEXITCODE -ne 0) { throw "Phase 18 $Name failed." }
