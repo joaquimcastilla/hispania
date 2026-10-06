@@ -21,7 +21,7 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
     {
         Assert.Equal("1", Environment.GetEnvironmentVariable("HISPANIA_PHASE18_REQUIRE_SERVICE"));
         // systemd PrivateTmp intentionally hides /tmp; use the runner's explicit service root.
-        var root = OperatingSystem.IsLinux() ? Environment.GetEnvironmentVariable("RUNNER_TEMP") ?? throw new InvalidOperationException("Native systemd gate requires an explicit runner service root outside /tmp.") : null;
+        var root = OperatingSystem.IsLinux() ? Environment.GetEnvironmentVariable("HISPANIA_PHASE18_SERVICE_ROOT") ?? throw new InvalidOperationException("Native systemd gate requires a provisioned service root outside private runner directories and /tmp.") : null;
         using var fixture = new ArtifactProcessTests.HostFixture(directoryRoot: root);
         using var serverCertificate = WorkerDeploymentTests.Certificate("native-coordinator");
         using var clientCertificate = WorkerDeploymentTests.Certificate("native-worker");
