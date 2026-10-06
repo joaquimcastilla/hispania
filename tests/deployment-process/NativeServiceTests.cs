@@ -102,6 +102,8 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
                 if (role == "server") try { using var response = await fixture.Client.GetAsync("/readyz"); if (response.IsSuccessStatusCode) return; } catch (HttpRequestException) { }
                 await Task.Delay(200);
             }
+            if (OperatingSystem.IsLinux())
+                output.WriteLine(await RunAsync("sudo", ["journalctl", "--unit=hispania-" + role + ".service", "--no-pager", "--lines=80"]));
             throw new InvalidOperationException("Native service did not become Ready or negotiate within its startup deadline.");
         }
     }
