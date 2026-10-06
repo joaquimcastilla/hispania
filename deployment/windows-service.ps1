@@ -19,6 +19,8 @@ switch ($Action) {
         if (Get-Service -Name $name -ErrorAction SilentlyContinue) { throw 'Service already registered; existing installation was preserved.' }
         $executable=Join-Path $InstallationHome "app/$directory/$assembly.exe"
         if (-not (Test-Path -LiteralPath $executable)) { throw 'Missing native apphost; publish win-x64 first.' }
+        & icacls.exe $InstallationHome /grant '*S-1-5-19:RX' /Q | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Installation root read/traverse permissions could not be applied.' }
         foreach ($readOnly in @('app','config')) {
             & icacls.exe (Join-Path $InstallationHome $readOnly) /grant '*S-1-5-19:(OI)(CI)RX' /T /Q | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Read permissions could not be applied.' }

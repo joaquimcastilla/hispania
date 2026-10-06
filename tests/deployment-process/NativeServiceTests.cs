@@ -21,7 +21,7 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
     {
         Assert.Equal("1", Environment.GetEnvironmentVariable("HISPANIA_PHASE18_REQUIRE_SERVICE"));
         // systemd PrivateTmp intentionally hides /tmp; use the runner's explicit service root.
-        var root = OperatingSystem.IsLinux() ? Environment.GetEnvironmentVariable("HISPANIA_PHASE18_SERVICE_ROOT") ?? throw new InvalidOperationException("Native systemd gate requires a provisioned service root outside private runner directories and /tmp.") : null;
+        var root = Environment.GetEnvironmentVariable("HISPANIA_PHASE18_SERVICE_ROOT") ?? throw new InvalidOperationException("Native service gate requires a provisioned service root outside private runner directories and /tmp.");
         using var fixture = new ArtifactProcessTests.HostFixture(directoryRoot: root);
         using var serverCertificate = WorkerDeploymentTests.Certificate("native-coordinator");
         using var clientCertificate = WorkerDeploymentTests.Certificate("native-worker");
@@ -76,6 +76,15 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
             await ServiceAsync("uninstall", fixture.Home, role); installed = false;
             Assert.True(File.Exists(Path.Combine(fixture.Home, "config", "production.json")));
             if (role == "server") Assert.True(File.Exists(Path.Combine(fixture.Home, "state", "platform", "identity.sqlite")));
+        }
+        catch
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                foreach (var log in Directory.EnumerateFiles(Path.Combine(fixture.Home, "logs"), "*", SearchOption.AllDirectories)) output.WriteLine(File.ReadAllText(log));
+                output.WriteLine(await RunAsync("pwsh", ["-NoProfile", "-Command", "Get-WinEvent -FilterHashtable @{LogName='System';ProviderName='Service Control Manager';StartTime=(Get-Date).AddMinutes(-5)} -ErrorAction SilentlyContinue | Select-Object -First 12 TimeCreated,Id,Message | Format-List | Out-String; exit 0"]));
+            }
+            throw;
         }
         finally
         {

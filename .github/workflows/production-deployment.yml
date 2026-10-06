@@ -86,6 +86,8 @@ jobs:
 
   windows-production:
     runs-on: windows-2025
+    env:
+      HISPANIA_PHASE18_SERVICE_ROOT: C:\ProgramData\HispaniaPhase18CI
     steps:
       - uses: actions/checkout@v7
         with:
@@ -122,7 +124,9 @@ jobs:
         run: ./tools/publish-phase17-predecessor.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase18/predecessor-win-x64
       - name: Require clean-host, real SCM Server and Worker, upgrade and disaster recovery
         shell: pwsh
-        run: ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/win-x64 -PredecessorDirectory .artifacts/phase18/predecessor-win-x64 -ResultsDirectory .artifacts/phase18/evidence -RequireNativeService
+        run: |
+          New-Item -ItemType Directory -Path $env:HISPANIA_PHASE18_SERVICE_ROOT -Force | Out-Null
+          ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/win-x64 -PredecessorDirectory .artifacts/phase18/predecessor-win-x64 -ResultsDirectory .artifacts/phase18/evidence -RequireNativeService
       - name: Preserve production evidence
         if: always()
         uses: actions/upload-artifact@v6
