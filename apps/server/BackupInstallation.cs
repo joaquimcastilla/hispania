@@ -42,7 +42,12 @@ internal static class BackupInstallation
     private static readonly string[] PortablePrefixes =
     ["Storage:DefaultProvider", "Modules:TrustedExtensionIds:", "Modules:TrustedPublisherKeys:",
      "Modules:RevokedPublisherIds:", "Modules:RequirePublisherSignature", "Modules:PlaybackPlanner",
-     "Modules:OutOfProcessResources:", "Modules:OutOfProcessRestarts:", "Identity:SessionLifetimeMinutes",
+     "Modules:OutOfProcessResources:MaximumMemoryBytes", "Modules:OutOfProcessResources:MaximumCpuSeconds",
+     "Modules:OutOfProcessResources:MaximumConcurrentRequests", "Modules:OutOfProcessResources:MaximumWindowsProcessCount",
+     "Modules:OutOfProcessResources:MaximumRequestDuration", "Modules:OutOfProcessResources:MaximumCpuRatePercent",
+     "Modules:OutOfProcessResources:RequireOperatingSystemLimits", "Modules:OutOfProcessResources:EnforceLinuxAddressSpaceLimit",
+     "Modules:OutOfProcessRestarts:MaximumRestarts", "Modules:OutOfProcessRestarts:RecoveryWindow",
+     "Modules:OutOfProcessRestarts:InitialBackoff", "Modules:OutOfProcessRestarts:MaximumBackoff", "Identity:SessionLifetimeMinutes",
      "Platform:Events:MaximumPayloadBytes", "Platform:Events:MaximumAttempts", "Platform:Events:RetryDelaySeconds",
      "Platform:Jobs:MaximumPayloadBytes", "Platform:Jobs:MaximumResultMetadataBytes", "Platform:Jobs:MaximumAttempts",
      "Platform:Jobs:RetryDelaySeconds", "Platform:Jobs:ExecutionLeaseSeconds", "Platform:Jobs:PollIntervalMilliseconds",

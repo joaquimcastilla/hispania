@@ -7,6 +7,8 @@ using Npgsql;
 using Hispania.Media.Domain.Identity;
 using Hispania.Media.Domain.Enrichment;
 using Hispania.Metadata.Contracts;
+using Hispania.Library.Application;
+using Hispania.Library.Contracts;
 using Xunit;
 
 namespace Hispania.Inventory.Tests;
@@ -51,10 +53,16 @@ public sealed class Phase17PostgreSqlTests
                 }
             }
             var work = new WorkId(Guid.Parse("00000000-0000-0000-0000-000000000047"));
+            var importedIdentity = new ImportedPlayableMovieIdentityFactory().Create();
             var manualTitle = new MetadataAssertion(new MetadataAssertionId(Guid.NewGuid()), EnrichmentTarget.For(work), new MetadataField("title"), MetadataValue.Text("Manual PostgreSQL recovery title"), new MetadataProvenance(MetadataProvenanceOrigin.Manual, DateTimeOffset.UtcNow), MetadataAssertionStatus.Active, null);
             await using (var sourceProvider = new ServiceCollection().AddPostgreSqlLibraryPersistence(sourceSettings.ConnectionString).BuildServiceProvider())
             {
                 await sourceProvider.GetRequiredService<PostgreSqlMigrationRunner>().InitializeAsync(sourceProvider.GetRequiredService<EfLibraryCatalogStore>());
+                var key = new ImportKey("recovery-fixture", "Recovery Movie.mp4");
+                var sourceSnapshot = new LibrarySourceSnapshot(1234, DateTimeOffset.UnixEpoch);
+                var mapped = Assert.IsType<MediaMappingSucceeded>(new ProbedMediaMapper().Map(new DiscoveredMediaCandidate(new LibraryFileReference(key.RootKey, key.NormalizedRelativePath), sourceSnapshot.ByteLength, sourceSnapshot.LastModifiedUtc),
+                    new ProbeSucceeded(new ProbeResult("mp4", TimeSpan.FromSeconds(2), [new VideoStreamObservation(0, "h264", 1920, 1080, new ObservedRational(24, 1), 8, null), new AudioStreamObservation(1, "aac", 48000, 2, null, null)])), importedIdentity)).Entry;
+                await sourceProvider.GetRequiredService<EfLibraryCatalogStore>().CommitCompletedScanAsync(new CompletedLibraryScan(DateTimeOffset.UtcNow, new LibraryScanScope([key.RootKey]), [new MappedImport(key, sourceSnapshot, importedIdentity, mapped)]));
                 await sourceProvider.GetRequiredService<IMetadataEnrichmentStore>().ApplyAsync(new MetadataEnrichmentWrite([], [manualTitle], [], null));
             }
             var before = await SnapshotAsync(sourceSettings.ConnectionString);
@@ -70,7 +78,13 @@ public sealed class Phase17PostgreSqlTests
             await using var provider = new ServiceCollection().AddPostgreSqlLibraryPersistence(targetSettings.ConnectionString).BuildServiceProvider();
             var runner = provider.GetRequiredService<PostgreSqlMigrationRunner>(); var store = provider.GetRequiredService<EfLibraryCatalogStore>();
             await runner.InitializeAsync(store);
-            Assert.Contains(store.GetAll(), entry => entry.Media.Work.Id == work);
+            var catalogEntry = Assert.Single(store.GetAll());
+            Assert.Equal(importedIdentity.WorkId, catalogEntry.Media.Work.Id);
+            Assert.Equal(importedIdentity.MediaEntityId, catalogEntry.Id);
+            Assert.Equal("recovery-fixture", catalogEntry.File.RootKey);
+            Assert.Single(catalogEntry.Media.VideoAsset.TechnicalRepresentations.Single().SourceBindings);
+            Assert.Single(catalogEntry.Media.AudioAsset.TechnicalRepresentations.Single().SourceBindings);
+            Assert.True(await provider.GetRequiredService<IMetadataEnrichmentStore>().WorkExistsAsync(work));
             var metadata = await provider.GetRequiredService<IMetadataEnrichmentStore>().LoadForTargetAsync(EnrichmentTarget.For(work));
             Assert.Equal(manualTitle.Id, Assert.Single(metadata.Assertions).Id);
             Assert.Equal("Manual PostgreSQL recovery title", Assert.Single(metadata.Assertions).Value.TextValue);
@@ -80,6 +94,8 @@ public sealed class Phase17PostgreSqlTests
             await using (var restored = new NpgsqlConnection(targetSettings.ConnectionString))
             {
                 await restored.OpenAsync(); await using var command = restored.CreateCommand();
+                command.CommandText = "SELECT work_id FROM media_entities WHERE id='00000000-0000-0000-0000-000000000048'";
+                Assert.Equal(work.Value, await command.ExecuteScalarAsync());
                 command.CommandText = "INSERT INTO works SELECT * FROM works";
                 Assert.Equal(PostgresErrorCodes.UniqueViolation, (await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteNonQueryAsync())).SqlState);
                 command.CommandText = "UPDATE media_entities SET work_id='ffffffff-ffff-ffff-ffff-ffffffffffff'";

@@ -151,6 +151,7 @@ public sealed class Phase17BackupRestoreTests
             ["Backup:ManagedRoot"] = fixture.Target, ["Identity:Bootstrap:Token"] = "excluded-bootstrap",
             ["Persistence:PostgreSql:ConnectionString"] = "Password=excluded-db", ["Modules:AdminToken"] = "excluded-admin",
             ["PlaybackExperiments:AssignmentSalt"] = "excluded-salt", ["Modules:TrustedPublisherKeys:public-test"] = "public-test-key",
+            ["Modules:OutOfProcessResources:Password"] = "excluded-resource-secret", ["Modules:OutOfProcessRestarts:Secret"] = "excluded-restart-secret",
             ["Platform:Events:Password"] = "excluded-event-secret", ["Platform:Jobs:Secret"] = "excluded-job-secret",
             ["Modules:RevokedPublisherIds:0"] = "revoked-test-publisher"
         }).Build();
