@@ -42,7 +42,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Source SHA unavailable.' }
     $sourceDirty = @(& git status --porcelain --untracked-files=normal).Count -ne 0
     $files = [ordered]@{}
-    foreach ($file in (Get-ChildItem -LiteralPath $outputRoot -File -Recurse | Sort-Object FullName)) {
+    foreach ($file in (Get-ChildItem -LiteralPath $outputRoot -File -Recurse -Force | Sort-Object FullName)) {
         $relative = [IO.Path]::GetRelativePath($outputRoot,$file.FullName).Replace('\','/')
         $files[$relative] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     }

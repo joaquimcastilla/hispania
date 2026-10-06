@@ -18,6 +18,7 @@ public sealed class ArtifactManifest
 
     public static ArtifactManifest Verify(string artifact)
     {
+        var stage = "directory safety";
         try
         {
             ProductionInstallation.RejectLinks(artifact);
@@ -29,14 +30,17 @@ public sealed class ArtifactManifest
                 if ((attributes & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException();
                 if ((attributes & FileAttributes.Directory) != 0) directories.Push(entry);
             }
+            stage = "manifest parsing and metadata";
             var path = Path.Combine(artifact, "artifact-manifest.json");
             if (new FileInfo(path).Length > 16 * 1024 * 1024) throw new InvalidDataException();
             var manifest = JsonSerializer.Deserialize<ArtifactManifest>(File.ReadAllText(path), ProductionConfiguration.Json) ?? throw new InvalidDataException();
             if (manifest.ManifestGeneration != 1 || manifest.DistributionVersion != "0.7.0" || manifest.GitSha.Length != 40 || !manifest.GitSha.All(Uri.IsHexDigit) || manifest.TargetRid is not ("win-x64" or "linux-x64") || manifest.BuildConfiguration != "Release" || manifest.BuildUtc == default) throw new InvalidDataException();
+            stage = "file inventory";
             var files = Directory.EnumerateFiles(artifact, "*", SearchOption.AllDirectories).Select(file => Path.GetRelativePath(artifact, file).Replace('\\', '/')).Where(file => file != "artifact-manifest.json").Order(StringComparer.Ordinal).ToArray();
             if (!files.SequenceEqual(manifest.Files.Keys.Order(StringComparer.Ordinal))) throw new InvalidDataException();
             foreach (var (relative, expected) in manifest.Files)
             {
+                stage = "file checksum or path safety";
                 if (Path.IsPathFullyQualified(relative) || relative.Split('/').Any(part => part is ".." or ".")) throw new InvalidDataException();
                 var file = Path.Combine(artifact, relative);
                 ProductionInstallation.RejectLinks(Path.GetDirectoryName(file)!);
@@ -49,6 +53,6 @@ public sealed class ArtifactManifest
             return manifest;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or UnauthorizedAccessException or InvalidOperationException)
-        { throw new DeploymentException(5, "Artifact integrity validation failed; supply a complete trusted publication and verify its external checksum."); }
+        { throw new DeploymentException(5, $"Artifact integrity validation failed ({stage}); supply a complete trusted publication and verify its external checksum."); }
     }
 }

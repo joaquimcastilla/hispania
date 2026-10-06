@@ -39,7 +39,7 @@ try {
     }
     Copy-Item -LiteralPath (Join-Path $outputRoot 'server/wwwroot/classic/index.classic.html') -Destination (Join-Path $outputRoot 'server/wwwroot/classic/index.html')
     $files=[ordered]@{}
-    foreach ($file in (Get-ChildItem -LiteralPath $outputRoot -File -Recurse | Sort-Object FullName)) {
+    foreach ($file in (Get-ChildItem -LiteralPath $outputRoot -File -Recurse -Force | Sort-Object FullName)) {
         $files[[IO.Path]::GetRelativePath($outputRoot,$file.FullName).Replace('\','/')]=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     }
     [ordered]@{ manifestGeneration=1;distributionVersion='0.7.0';gitSha=$checkpoint;targetRid=$Rid;buildConfiguration='Release';dotnetSdkVersion=(& dotnet --version).Trim();runtimePrerequisite='ASP.NET Core Runtime 10.0 (x64)';buildUtc=[DateTimeOffset]::UtcNow.ToString('O');files=$files } |
