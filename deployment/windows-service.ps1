@@ -1,14 +1,14 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidateSet('install','start','stop','restart','status','uninstall')][string]$Action,
-    [Parameter(Mandatory)][string]$Home,
+    [Parameter(Mandatory)][Alias('Home')][string]$InstallationHome,
     [ValidateSet('server','worker')][string]$Role='server',
     [string]$Account='NT AUTHORITY\LocalService'
 )
 $ErrorActionPreference='Stop'
 if (-not $IsWindows) { throw 'Windows SCM operation requires Windows.' }
-if (-not [IO.Path]::IsPathFullyQualified($Home) -or $Home.Contains('"')) { throw 'Provide an absolute installation root without quote characters.' }
-$Home=[IO.Path]::GetFullPath($Home)
+if (-not [IO.Path]::IsPathFullyQualified($InstallationHome) -or $InstallationHome.Contains('"')) { throw 'Provide an absolute installation root without quote characters.' }
+$InstallationHome=[IO.Path]::GetFullPath($InstallationHome)
 $name=if ($Role -eq 'server') { 'HispaniaServer' } else { 'HispaniaWorker' }
 $directory=if ($Role -eq 'server') { 'server' } else { 'worker' }
 $assembly=if ($Role -eq 'server') { 'Hispania.Server' } else { 'Hispania.WorkerAgent' }
@@ -17,17 +17,17 @@ switch ($Action) {
     install {
         if ($Account -ne 'NT AUTHORITY\LocalService') { throw 'This script supports LocalService; provision custom non-admin accounts and their logon credentials through SCM separately.' }
         if (Get-Service -Name $name -ErrorAction SilentlyContinue) { throw 'Service already registered; existing installation was preserved.' }
-        $executable=Join-Path $Home "app/$directory/$assembly.exe"
+        $executable=Join-Path $InstallationHome "app/$directory/$assembly.exe"
         if (-not (Test-Path -LiteralPath $executable)) { throw 'Missing native apphost; publish win-x64 first.' }
         foreach ($readOnly in @('app','config')) {
-            & icacls.exe (Join-Path $Home $readOnly) /grant '*S-1-5-19:(OI)(CI)RX' /T /Q | Out-Null
+            & icacls.exe (Join-Path $InstallationHome $readOnly) /grant '*S-1-5-19:(OI)(CI)RX' /T /Q | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Read permissions could not be applied.' }
         }
         foreach ($mutable in @('state','logs','backups','run')) {
-            & icacls.exe (Join-Path $Home $mutable) /grant '*S-1-5-19:(OI)(CI)M' /T /Q | Out-Null
+            & icacls.exe (Join-Path $InstallationHome $mutable) /grant '*S-1-5-19:(OI)(CI)M' /T /Q | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Mutable permissions could not be applied.' }
         }
-        $secrets=Join-Path $Home 'secrets'
+        $secrets=Join-Path $InstallationHome 'secrets'
         foreach ($privateItem in @(Get-Item -LiteralPath $secrets)+@(Get-ChildItem -LiteralPath $secrets -Recurse)) {
             $acl=Get-Acl -LiteralPath $privateItem.FullName
             $acl.SetAccessRuleProtection($true,$false)
@@ -40,11 +40,11 @@ switch ($Action) {
             }
             Set-Acl -LiteralPath $privateItem.FullName -AclObject $acl
         }
-        $lock=Join-Path $Home 'state.maintenance.lock'
+        $lock=Join-Path $InstallationHome 'state.maintenance.lock'
         if (-not (Test-Path -LiteralPath $lock)) { New-Item -ItemType File -Path $lock | Out-Null }
         & icacls.exe $lock /grant '*S-1-5-19:M' /Q | Out-Null
         if ($LASTEXITCODE -ne 0) { throw 'Maintenance lock permissions could not be applied.' }
-        Invoke-Sc @('create',$name,'binPath=',('"'+$executable+'" --home "'+$Home+'"'),'start=','auto','obj=',$Account)
+        Invoke-Sc @('create',$name,'binPath=',('"'+$executable+'" --home "'+$InstallationHome+'"'),'start=','auto','obj=',$Account)
         $runtimeRoot=Split-Path (Get-Command dotnet -ErrorAction Stop).Source -Parent
         New-ItemProperty -Path ("HKLM:\SYSTEM\CurrentControlSet\Services\"+$name) -Name Environment -PropertyType MultiString -Value @("DOTNET_ROOT_X64=$runtimeRoot","DOTNET_ENVIRONMENT=Production") -Force | Out-Null
         Invoke-Sc @('failure',$name,'reset=','86400','actions=','restart/10000/restart/30000/none/0')
