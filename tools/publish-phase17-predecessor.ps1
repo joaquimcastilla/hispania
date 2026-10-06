@@ -18,6 +18,13 @@ try {
     Push-Location (Join-Path $sourceRoot 'apps/web')
     try {
         & npm ci; if ($LASTEXITCODE -ne 0) { throw 'Predecessor Web dependencies failed.' }
+        $audit = & npm audit --json
+        $auditExit = $LASTEXITCODE
+        if ($auditExit -gt 1) { throw 'Predecessor dependency audit could not complete.' }
+        $audit | Set-Content -LiteralPath ($outputRoot+'.npm-audit.json') -Encoding utf8NoBOM
+        $report = ($audit -join "`n") | ConvertFrom-Json
+        if ($report.error) { throw 'Predecessor dependency audit returned an error.' }
+        Write-Host "Archived predecessor dependency advisory count: $($report.metadata.vulnerabilities.total); details retained for build/runtime classification."
         & npm run build; if ($LASTEXITCODE -ne 0) { throw 'Predecessor Web build failed.' }
     } finally { Pop-Location }
     foreach ($entry in @(

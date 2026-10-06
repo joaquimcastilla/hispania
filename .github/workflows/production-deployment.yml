@@ -44,9 +44,17 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes ffmpeg postgresql-client-16
       - run: npm ci
         working-directory: apps/web
+      - name: Audit current production dependencies
+        run: npm audit --omit=dev
+        working-directory: apps/web
       - name: Publish actual linux-x64 production artifact
         shell: pwsh
         run: ./tools/publish-production.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase18/linux-x64
+      - name: Archive and checksum linux-x64 artifact
+        shell: pwsh
+        run: |
+          Compress-Archive -Path .artifacts/phase18/linux-x64/* -DestinationPath .artifacts/phase18/linux-x64.zip
+          (Get-FileHash .artifacts/phase18/linux-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content .artifacts/phase18/linux-x64.zip.sha256
       - name: Publish exact archived Phase 17 predecessor
         shell: pwsh
         run: ./tools/publish-phase17-predecessor.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase18/predecessor-linux-x64
@@ -63,6 +71,8 @@ jobs:
             .artifacts/phase18/*.build-evidence.json
             .artifacts/phase18/*.manifest.sha256
             .artifacts/phase18/linux-x64/artifact-manifest.json
+            .artifacts/phase18/*.npm-audit.json
+            .artifacts/phase18/linux-x64.zip*
 
   windows-production:
     runs-on: windows-2025
@@ -86,9 +96,17 @@ jobs:
           'C:\ProgramData\chocolatey\bin' | Out-File -FilePath $env:GITHUB_PATH -Append
       - run: npm ci
         working-directory: apps/web
+      - name: Audit current production dependencies
+        run: npm audit --omit=dev
+        working-directory: apps/web
       - name: Publish actual win-x64 production artifact
         shell: pwsh
         run: ./tools/publish-production.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase18/win-x64
+      - name: Archive and checksum win-x64 artifact
+        shell: pwsh
+        run: |
+          Compress-Archive -Path .artifacts/phase18/win-x64/* -DestinationPath .artifacts/phase18/win-x64.zip
+          (Get-FileHash .artifacts/phase18/win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content .artifacts/phase18/win-x64.zip.sha256
       - name: Publish exact archived Phase 17 predecessor
         shell: pwsh
         run: ./tools/publish-phase17-predecessor.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase18/predecessor-win-x64
@@ -105,3 +123,5 @@ jobs:
             .artifacts/phase18/*.build-evidence.json
             .artifacts/phase18/*.manifest.sha256
             .artifacts/phase18/win-x64/artifact-manifest.json
+            .artifacts/phase18/*.npm-audit.json
+            .artifacts/phase18/win-x64.zip*
