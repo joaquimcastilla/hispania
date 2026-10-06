@@ -1,5 +1,8 @@
+using Hispania.Hosting;
+#if !HISPANIA_PRODUCTION_DISTRIBUTION
 using Hispania.ArchitectureTest.Contracts;
 using Hispania.ArchitectureTest.Modules;
+#endif
 using Hispania.Runtime;
 using Hispania.Library.Application;
 using Hispania.Library.Contracts;
@@ -36,11 +39,48 @@ using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Hispania.Platform.Contracts.Observability;
 using Hispania.Platform.Observability.Application;
 
+try { await RunHostAsync(args); }
+catch (Exception exception) when (ProductionInstallation.IsProduction(args))
+{
+    Environment.ExitCode = ProductionInstallation.ReportFailure(exception);
+}
+
+static async Task RunHostAsync(string[] args)
+{
 using var backupCancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; backupCancellation.Cancel(); };
 if (await BackupInstallation.TryCommandAsync(args, backupCancellation.Token)) return;
-var builder = WebApplication.CreateBuilder(args);
+var production = ProductionInstallation.Load(args, "server");
+using var runtimeLease = production?.AcquireRuntimeLease();
+if (production is not null)
+{
+    production.ValidatePrerequisites();
+    if (production.CheckOnly) { ProductionInstallation.WriteCheckResult(); return; }
+    production.RecordStartupIntent();
+}
+var builder = production is null ? WebApplication.CreateBuilder(args) : WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = [], ContentRootPath = AppContext.BaseDirectory, EnvironmentName = Environments.Production
+});
+if (production is not null)
+{
+    production.Apply(builder.Configuration);
+    if (production.Configuration.Persistence == "postgresql")
+    {
+        var pg = production.Configuration.PostgreSql;
+        builder.Configuration["Persistence:PostgreSql:ConnectionString"] = new Npgsql.NpgsqlConnectionStringBuilder
+        {
+            Host = pg.Host, Port = pg.Port, Database = pg.Database, Username = pg.Username,
+            Password = production.Secrets.Resolve(pg.PasswordSecret!), IncludeErrorDetail = false
+        }.ConnectionString;
+    }
+    ProductionInstallation.AddServiceLifetime(builder.Services, "server");
+    production.ConfigureLogging(builder.Logging);
+    builder.Environment.WebRootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", production.Configuration.WebBuild);
+}
 using var installationLease = BackupInstallation.Configure(builder.Configuration);
+production?.EnforcePublicTrust(builder.Configuration);
+if (production is not null) BackupInstallation.RefreshPortableConfiguration(builder.Configuration);
 builder.Services.AddSingleton<IPlatformMetricsV1, PlatformMetricsV1>();
 builder.Services.AddPlatformObservability();
 builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https =>
@@ -52,7 +92,9 @@ builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https
 var webBuild = builder.Configuration["Web:Build"] ?? "modern";
 WebUiStaticAssets.Configure(builder.Environment, webBuild);
 
-builder.Services.AddArchitectureTestModules();
+#if !HISPANIA_PRODUCTION_DISTRIBUTION
+if (production is null) builder.Services.AddArchitectureTestModules();
+#endif
 builder.Services.AddModuleRuntime();
 builder.Services.AddSingleton<LocalPlatformEventBus>();
 var platformDataPath = builder.Configuration["Platform:DataPath"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "platform");
@@ -83,7 +125,11 @@ var jobOptions = new PlatformJobOptionsV1(
 jobOptions.Validate();
 builder.Services.AddSingleton(jobOptions);
 builder.Services.AddSingleton<PlatformJobMetricsV1>();
-builder.Services.AddSingleton<IPlatformJobHandlerRegistryV1>(_ => new PlatformJobHandlerRegistryV1().Register(new PlatformTestHashHandlerV1()));
+#if HISPANIA_PRODUCTION_DISTRIBUTION
+builder.Services.AddSingleton<IPlatformJobHandlerRegistryV1>(_ => new PlatformJobHandlerRegistryV1());
+#else
+builder.Services.AddSingleton<IPlatformJobHandlerRegistryV1>(_ => production is null ? new PlatformJobHandlerRegistryV1().Register(new PlatformTestHashHandlerV1()) : new PlatformJobHandlerRegistryV1());
+#endif
 builder.Services.AddSingleton<IPlatformRemoteJobExecutorV1>(services => new DistributedPlatformJobExecutor(services.GetRequiredService<IDistributedWorkCoordinatorV1>(), metrics: services.GetRequiredService<IPlatformMetricsV1>()));
 builder.Services.AddPlatformJobsSqlite(builder.Configuration["Platform:Jobs:Path"] ?? Path.Combine(platformDataPath, "jobs.sqlite"));
 builder.Services.AddSingleton<LocalPlatformJobDispatcher>();
@@ -265,6 +311,9 @@ if (tmdbOptions.Enabled)
     builder.Services.AddHostedService(provider => provider.GetRequiredService<AutomaticMovieMetadataEnrichmentHostedService>());
 }
 
+#if !HISPANIA_PRODUCTION_DISTRIBUTION
+if (production is null)
+{
 var selectedModuleId = builder.Configuration["Modules:ArchitectureDemonstration"]
     ?? throw new InvalidOperationException("Modules:ArchitectureDemonstration must select a module ID.");
 
@@ -272,9 +321,28 @@ builder.Services.AddSingleton<IArchitectureDemonstrationService>(serviceProvider
     serviceProvider.GetRequiredService<IModuleResolver>()
         .Resolve<IArchitectureDemonstrationService>(selectedModuleId));
 
+}
+
+#endif
 var app = builder.Build();
+if (production?.BootstrapOnly == true)
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var identity = scope.ServiceProvider.GetRequiredService<Hispania.Platform.Contracts.Identity.IIdentityCommandV1>();
+    var settings = production.Configuration;
+    var created = await identity.CreateUserAsync(settings.BootstrapUsername!, settings.BootstrapUsername!, production.Secrets.Resolve(settings.BootstrapPasswordSecret!), "local-production-bootstrap", CancellationToken.None);
+    if (!created.Succeeded) throw new DeploymentException(2, "Local administrator provisioning failed; check username uniqueness and password policy. No credentials are printed.");
+    var authorization = scope.ServiceProvider.GetRequiredService<Hispania.Platform.Contracts.Authorization.IAuthorizationAdministrationV1>();
+    if (!await authorization.BootstrapAdministratorAsync(created.Value!.Id, production.Secrets.Resolve(settings.BootstrapSecret!), CancellationToken.None))
+        throw new DeploymentException(4, "Administrator bootstrap was rejected or already consumed; inspect the provisioned user through authorized Identity operations.");
+    Console.WriteLine("Administrator bootstrap completed; remove bootstrap secret references and transient provisioning secrets before normal startup.");
+    await app.DisposeAsync();
+    return;
+}
 app.UsePlatformErrorBoundary();
-await SeedInventoryDemoAsync(app.Services);
+#if !HISPANIA_PRODUCTION_DISTRIBUTION
+if (production is null) await SeedInventoryDemoAsync(app.Services);
+#endif
 
 app.UseMiddleware<PlatformCorrelationMiddleware>();
 app.MapPlatformObservability();
@@ -289,7 +357,9 @@ app.MapGet("/internal/metadata-enrichment", (IServiceProvider services) =>
     var enrichment = services.GetService<AutomaticMovieMetadataEnrichmentHostedService>();
     return enrichment is null ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable) : Results.Ok(enrichment.LastRun);
 });
-app.MapGet("/internal/module-test", (IArchitectureDemonstrationService service) => Results.Ok(service.GetResponse()));
+#if !HISPANIA_PRODUCTION_DISTRIBUTION
+if (production is null) app.MapGet("/internal/module-test", (IArchitectureDemonstrationService service) => Results.Ok(service.GetResponse()));
+#endif
 app.MapPublicModuleHealth();
 app.MapModuleAdminEndpoints();
 app.MapDistributedWorkerEndpoints();
@@ -321,8 +391,11 @@ if (!string.IsNullOrWhiteSpace(testShutdownToken))
 }
 app.MapFallbackToFile("index.html");
 
-app.Run();
+await app.RunAsync();
 
+}
+
+#if !HISPANIA_PRODUCTION_DISTRIBUTION
 static async Task SeedInventoryDemoAsync(IServiceProvider services)
 {
     await using var scope = services.CreateAsyncScope();
@@ -349,3 +422,5 @@ static async Task SeedInventoryDemoAsync(IServiceProvider services)
         await command.AssociateAssetAsync(item.Id, new AssetReference(stored.Id));
     }
 }
+
+#endif

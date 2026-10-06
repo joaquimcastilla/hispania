@@ -8,7 +8,7 @@ The inventory includes `IndependentGreetingModuleV2`: it identifies the second d
 
 Known inconsistencies: Worker generation 1 is duplicated in coordinator and agent (tested equality); package format checks repeat literal 1 (preserved); host 1.0.0 is legacy package bounds; Manifest has no independent schema field; unversioned HTTP DTOs coexist with V1 CLR records; Jobs payload suffix has no JobType version negotiation; instrument 1.0.0 is scope identity. Do not infer stable SemVer from any of these. No mass renames are required.
 
-Inventory: 412 entries; 110 version-named CLR declarations; 38 candidate entries. Phase 17 adds one experimental backup format, without modifying historical Phase 15 evidence or declaring Public Stable.
+Inventory: 413 entries; 110 version-named CLR declarations; 38 candidate entries. Phase 17 adds the experimental backup format and Phase 18 adds the independent experimental configuration schema, without modifying historical Phase 15 evidence or declaring Public Stable.
 
 | ID / contract | Owner | Technical version | Exposure / stability | Consumers | Serialization | Commitment / break policy | Interpretation |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -424,3 +424,7 @@ Inventory: 412 entries; 110 version-named CLR declarations; 38 candidate entries
 | storage.handle | Platform assets/storage | URI format plus legacy hex; not SemVer | Public / Public Experimental | Filesystem provider, Asset metadata and registry | Data + behavioral | Keep legacy filesystem reader until migration; no path parsing by consumers; Owner review + explicit notes/migration; stable publication requires missing gates | A/B/C/D/E per named axis; no implied stable SemVer |
 | web.dto | Web/HTTP owners | private artifact 0.1.0; unversioned HTTP DTOs | Public / Public Experimental | Modern/Classic clients and server projections | Wire + behavioral | Coordinated distribution today; no published npm SDK; Owner review + explicit notes/migration; stable publication requires missing gates | A/B/C/D/E per named axis; no implied stable SemVer |
 | worker.fencing | Platform distributed runtime | lease generation, not product version | Public / Stable Candidate | Coordinator, WorkerAgent and remote Jobs bridge | Behavioral + wire + persisted data | Expired/cancelled/previous-generation results cannot commit; no exactly-once claim; Owner review + explicit notes/migration; stable publication requires missing gates | A/B/C/D/E per named axis; no implied stable SemVer |
+
+## Phase 18 production configuration
+
+`configuration.schema` — Configuration Schema Generation 1; Experimental, host-owned strict JSON/environment/CLI contract. Independent of distribution, backup and persistence; Public Stable remains 0.

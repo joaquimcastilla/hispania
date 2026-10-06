@@ -97,8 +97,9 @@ public sealed class DistributedWorkerAgent : IAsyncDisposable
             foreach (var item in active.Values) item.Cancellation.Cancel();
             try { await Task.WhenAll(active.Values.Select(static item => item.Task)).WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None).ConfigureAwait(false); }
             catch (Exception exception) when (exception is OperationCanceledException or TimeoutException or HttpRequestException) { }
-            try { using var _ = await client.PostAsync(NodePath("disconnect"), content: null, CancellationToken.None).ConfigureAwait(false); }
-            catch (HttpRequestException) { }
+            using var disconnectTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try { using var _ = await client.PostAsync(NodePath("disconnect"), content: null, disconnectTimeout.Token).ConfigureAwait(false); }
+            catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException) { }
         }
     }
 

@@ -123,6 +123,15 @@ internal static class BackupInstallation
 
     private static bool IsPortable(string key) => !Paths.ContainsKey(key) && PortablePrefixes.Any(prefix =>
         prefix.EndsWith(':') ? key.StartsWith(prefix, StringComparison.Ordinal) : key == prefix);
+
+    internal static void RefreshPortableConfiguration(IConfiguration configuration)
+    {
+        var root = NormalizeRoot(configuration["Backup:ManagedRoot"] ?? throw new InvalidDataException("Managed installation root is required."));
+        var values = configuration.AsEnumerable().Where(pair => IsPortable(pair.Key) && pair.Value is not null)
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal).ToDictionary(pair => pair.Key, pair => pair.Value);
+        if (values.Values.Any(value => value?.Contains("PRIVATE KEY", StringComparison.Ordinal) == true)) throw new InvalidDataException("Private keys are not portable backup configuration.");
+        WriteJson(Path.Combine(root, "portable.json"), values);
+    }
     private static StringComparison PathComparison => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
     private static StringComparer PathComparer => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 

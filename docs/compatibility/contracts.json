@@ -6181,6 +6181,21 @@
       "compatibilityCommitment": "Expired/cancelled/previous-generation results cannot commit; no exactly-once claim",
       "breakingChangePolicy": "Owner review + explicit notes/migration; stable publication requires missing gates",
       "interpretation": "A/B/C/D/E per named axis; no implied stable SemVer"
+    },
+    {
+      "id": "configuration.schema",
+      "contract": "Production installation configuration",
+      "source": "infrastructure/hosting/ProductionConfiguration.cs",
+      "kind": "Family",
+      "owner": "Production host infrastructure",
+      "technicalVersion": "Configuration Schema Generation 1",
+      "visibility": "Public",
+      "stability": "Experimental",
+      "consumers": "Server, WorkerAgent, installation operators",
+      "serialization": "JSON + environment + command line",
+      "compatibilityCommitment": "Strict known fields; defaults for omitted optional fields; unsupported generations reject before startup",
+      "breakingChangePolicy": "Incompatible configuration requires a new generation and explicit conversion or rejection policy",
+      "interpretation": "Configuration generation is independent of distribution, backup format and store schemas; no Public Stable declaration"
     }
   ]
 }

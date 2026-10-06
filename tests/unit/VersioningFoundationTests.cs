@@ -76,8 +76,8 @@ public sealed class VersioningFoundationTests
             Assert.Contains(value, File.ReadAllText(Path.Combine(root, "docs", doc)), StringComparison.Ordinal);
         var axisLines = File.ReadAllLines(Path.Combine(root, "docs", "VERSIONING.md"))
             .Where(line => line.StartsWith("| ", StringComparison.Ordinal) && !line.StartsWith("| Axis |", StringComparison.Ordinal) && !line.StartsWith("| ---", StringComparison.Ordinal)).ToArray();
-        Assert.Equal(23, axisLines.Length);
-        Assert.Equal(23, axisLines.Select(line => line.Split('|')[1].Trim()).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(24, axisLines.Length);
+        Assert.Equal(24, axisLines.Select(line => line.Split('|')[1].Trim()).Distinct(StringComparer.Ordinal).Count());
         Assert.Contains(axisLines, line => line.StartsWith("| Backup Format Generation |", StringComparison.Ordinal) && line.Contains("FormatGeneration = 1", StringComparison.Ordinal));
         using var catalog = ReadCatalog(root);
         var backup = catalog.RootElement.GetProperty("contracts").EnumerateArray().Single(row => row.GetProperty("id").GetString() == "backup.format");

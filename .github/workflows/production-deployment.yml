@@ -1,0 +1,107 @@
+name: Production Deployment
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-production:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: phase18_ci_fixture_only
+          POSTGRES_DB: postgres
+          POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      HISPANIA_PHASE18_POSTGRES_CONNECTION: Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=phase18_ci_fixture_only;Timeout=5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install native Media and offline backup prerequisites
+        run: sudo apt-get update && sudo apt-get install --yes ffmpeg postgresql-client-16
+      - run: npm ci
+        working-directory: apps/web
+      - name: Publish actual linux-x64 production artifact
+        shell: pwsh
+        run: ./tools/publish-production.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase18/linux-x64
+      - name: Publish exact archived Phase 17 predecessor
+        shell: pwsh
+        run: ./tools/publish-phase17-predecessor.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase18/predecessor-linux-x64
+      - name: Require clean-host, real systemd Server and Worker, rotation, upgrade and disaster recovery
+        shell: pwsh
+        run: ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/linux-x64 -PredecessorDirectory .artifacts/phase18/predecessor-linux-x64 -ResultsDirectory .artifacts/phase18/evidence -RequirePostgreSql -RequireNativeService
+      - name: Preserve production evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase18-linux-evidence
+          path: |
+            .artifacts/phase18/evidence
+            .artifacts/phase18/*.build-evidence.json
+            .artifacts/phase18/*.manifest.sha256
+            .artifacts/phase18/linux-x64/artifact-manifest.json
+
+  windows-production:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install FFmpeg tools
+        shell: pwsh
+        run: |
+          choco install ffmpeg --no-progress -y
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          'C:\ProgramData\chocolatey\bin' | Out-File -FilePath $env:GITHUB_PATH -Append
+      - run: npm ci
+        working-directory: apps/web
+      - name: Publish actual win-x64 production artifact
+        shell: pwsh
+        run: ./tools/publish-production.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase18/win-x64
+      - name: Publish exact archived Phase 17 predecessor
+        shell: pwsh
+        run: ./tools/publish-phase17-predecessor.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase18/predecessor-win-x64
+      - name: Require clean-host, real SCM Server and Worker, upgrade and disaster recovery
+        shell: pwsh
+        run: ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/win-x64 -PredecessorDirectory .artifacts/phase18/predecessor-win-x64 -ResultsDirectory .artifacts/phase18/evidence -RequireNativeService
+      - name: Preserve production evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase18-windows-evidence
+          path: |
+            .artifacts/phase18/evidence
+            .artifacts/phase18/*.build-evidence.json
+            .artifacts/phase18/*.manifest.sha256
+            .artifacts/phase18/win-x64/artifact-manifest.json

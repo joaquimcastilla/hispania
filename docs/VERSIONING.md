@@ -1,6 +1,6 @@
 # Versioning
 
-HISPANIA 0.7.0 is the documentation baseline for the integrated distribution, not a release publication. The authoritative distribution value is the root `version.json`. It deliberately does not set MSBuild `Version`, `AssemblyVersion`, npm versions, wire generations or manifest host bounds. Build/release tooling should consume that file when distribution artifacts are introduced. Assemblies retain their current build defaults; no independently published Platform/Module SDK release is established here.
+HISPANIA 0.7.0 is the documentation baseline for the integrated distribution, not a release publication. The authoritative distribution value is the root `version.json`. It deliberately does not set MSBuild `Version`, `AssemblyVersion`, npm versions, wire generations or manifest host bounds. Production publication tooling consumes that file for artifact metadata. Assemblies retain their current build defaults; no independently published Platform/Module SDK release is established here.
 
 | Axis | Current source/value | Meaning and consumers | Visibility / evolution |
 | --- | --- | --- | --- |
@@ -28,7 +28,9 @@ HISPANIA 0.7.0 is the documentation baseline for the integrated distribution, no
 | FFmpeg worker protocol | `FfmpegWorkerProtocolV1`, response ProtocolVersion=1 | Dedicated subprocess JSON adapter | Media-owned experimental wire generation, separate from generic workers; unchanged |
 | Backup Format Generation | `BackupInstallation.FormatGeneration = 1` | Offline installation bundle/manifest interpretation | Experimental integer generation; unsupported future generations reject before target writes; independent of distribution and component schemas |
 
-Phase 17 adds the 23rd version axis. The historical Phase 14/15/16 inventories had 22; their frozen evidence remains unchanged. No Public Stable declaration is added.
+| Configuration Schema Generation | `ProductionConfiguration.SchemaGeneration = 1` | Strict public production JSON, host configuration readers | Experimental integer generation; independent of distribution, backup and data schemas; unknown fields/generations rejected |
+
+Phase 18 adds the 24th version axis. Phase 17 adds the 23rd version axis. The historical Phase 14/15/16 inventories had 22; their frozen evidence remains unchanged. No Public Stable declaration is added.
 
 All values above require compatibility decisions appropriate to their consumers, including internal persisted state. Public CLR visibility alone is not a stable promise. V1/V2/Version1/Version2 declarations are enumerated in the [catalog](compatibility/CONTRACT-CATALOG.md); the machine catalog records their interpretation and source. A technical V2 is never sufficient evidence for SemVer 2.0.
 

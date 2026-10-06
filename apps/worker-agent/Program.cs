@@ -1,3 +1,4 @@
+using Hispania.Hosting;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
@@ -8,7 +9,32 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-var builder = Host.CreateApplicationBuilder(args);
+try { await RunHostAsync(args); }
+catch (Exception exception) when (ProductionInstallation.IsProduction(args))
+{
+    Environment.ExitCode = ProductionInstallation.ReportFailure(exception);
+}
+
+static async Task RunHostAsync(string[] args)
+{
+var production = ProductionInstallation.Load(args, "worker");
+using var runtimeLease = production?.AcquireRuntimeLease();
+if (production is not null)
+{
+    production.ValidatePrerequisites();
+    if (production.CheckOnly) { ProductionInstallation.WriteCheckResult(); return; }
+    production.RecordStartupIntent();
+}
+var builder = production is null ? Host.CreateApplicationBuilder(args) : Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+{
+    Args = [], ContentRootPath = AppContext.BaseDirectory, EnvironmentName = Environments.Production
+});
+if (production is not null)
+{
+    production.Apply(builder.Configuration);
+    ProductionInstallation.AddServiceLifetime(builder.Services, "worker");
+    production.ConfigureLogging(builder.Logging);
+}
 var coordinatorUri = builder.Configuration["DistributedWorker:CoordinatorUri"]
     ?? throw new InvalidOperationException("DistributedWorker:CoordinatorUri must be configured with an https:// URI.");
 var nodeId = builder.Configuration["DistributedWorker:NodeId"]
@@ -21,7 +47,9 @@ var workerExtensionIds = builder.Configuration.GetSection("Modules:WorkerExtensi
 var trustedPublishers = builder.Configuration.GetSection("Modules:TrustedPublisherKeys").Get<Dictionary<string, string>>() ?? new(StringComparer.Ordinal);
 var contractAssemblies = builder.Configuration.GetSection("DistributedWorker:ContractAssemblies").Get<string[]>() ?? [];
 
-using var clientCertificate = X509CertificateLoader.LoadPkcs12FromFile(certificatePath, certificatePassword, X509KeyStorageFlags.UserKeySet);
+// Windows Schannel uses the service identity's native key container; it is outside
+// managed backup state. Linux production can keep the private key ephemeral.
+using var clientCertificate = X509CertificateLoader.LoadPkcs12FromFile(certificatePath, certificatePassword, production is null || OperatingSystem.IsWindows() ? X509KeyStorageFlags.UserKeySet : X509KeyStorageFlags.EphemeralKeySet);
 var registry = new ModuleRegistry();
 var runtime = new ModuleRuntime(registry);
 var moduleHostPath = builder.Configuration["Modules:HostPath"] ?? Path.Combine(AppContext.BaseDirectory, "module-host", "Hispania.ModuleHost.dll");
@@ -42,7 +70,7 @@ var capabilityHandlers = new List<IDistributedCapabilityHandlerV1>();
 var maximumConcurrentJobs = Math.Clamp(builder.Configuration.GetValue("DistributedWorker:MaximumConcurrentJobs", 2), 1, 64);
 var capabilityProviderAssemblies = builder.Configuration.GetSection("DistributedWorker:CapabilityProviderAssemblies").Get<string[]>() ?? [];
 var providerContext = new DistributedWorkerCapabilityContextV1(new Uri(coordinatorUri), nodeId, clientCertificate, serverPins,
-    builder.Configuration.AsEnumerable().Where(static pair => pair.Value is not null).ToDictionary(static pair => pair.Key, static pair => pair.Value!, StringComparer.OrdinalIgnoreCase));
+    builder.Configuration.AsEnumerable().Where(static pair => pair.Value is not null && !pair.Key.Contains("Password", StringComparison.OrdinalIgnoreCase) && !pair.Key.Contains("Token", StringComparison.OrdinalIgnoreCase)).ToDictionary(static pair => pair.Key, static pair => pair.Value!, StringComparer.OrdinalIgnoreCase));
 foreach (var assemblyPath in capabilityProviderAssemblies)
 {
     var assembly = Assembly.LoadFrom(Path.GetFullPath(assemblyPath));
@@ -64,11 +92,11 @@ var options = new DistributedWorkerAgentOptions(new Uri(coordinatorUri), nodeId,
     TimeSpan.FromMilliseconds(builder.Configuration.GetValue("DistributedWorker:PollMilliseconds", 500)),
     TimeSpan.FromSeconds(builder.Configuration.GetValue("DistributedWorker:HeartbeatSeconds", 5)));
 
-using var stop = new CancellationTokenSource();
-Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; stop.Cancel(); };
 await using var agent = new DistributedWorkerAgent(options, executor);
-Console.WriteLine($"HISPANIA worker '{nodeId}' starting with {inventory.Capabilities.Count} active capabilities.");
-try { await agent.RunAsync(stop.Token).ConfigureAwait(false); }
+builder.Services.AddSingleton(agent);
+builder.Services.AddHostedService<WorkerAgentHostedService>();
+using var host = builder.Build();
+try { await host.RunAsync().ConfigureAwait(false); }
 finally { foreach (var handler in capabilityHandlers.OfType<IDisposable>()) handler.Dispose(); }
 return;
 
@@ -78,4 +106,11 @@ Type? ResolveContractType(string fullName)
     if (extensionContract.FullName == fullName) return extensionContract;
     return AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(fullName, throwOnError: false, ignoreCase: false))
         .FirstOrDefault(static type => type is not null);
+}
+
+}
+
+internal sealed class WorkerAgentHostedService(DistributedWorkerAgent agent) : BackgroundService
+{
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) => agent.RunAsync(stoppingToken);
 }
