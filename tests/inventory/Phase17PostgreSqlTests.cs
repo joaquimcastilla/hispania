@@ -4,6 +4,9 @@ using Hispania.Library.Persistence.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using Hispania.Media.Domain.Identity;
+using Hispania.Media.Domain.Enrichment;
+using Hispania.Metadata.Contracts;
 using Xunit;
 
 namespace Hispania.Inventory.Tests;
@@ -47,6 +50,13 @@ public sealed class Phase17PostgreSqlTests
                     await using var command = db.CreateCommand(); command.CommandText = File.ReadAllText(Path.Combine(repo, "compatibility", "data", "0.7", file)); await command.ExecuteNonQueryAsync();
                 }
             }
+            var work = new WorkId(Guid.Parse("00000000-0000-0000-0000-000000000047"));
+            var manualTitle = new MetadataAssertion(new MetadataAssertionId(Guid.NewGuid()), EnrichmentTarget.For(work), new MetadataField("title"), MetadataValue.Text("Manual PostgreSQL recovery title"), new MetadataProvenance(MetadataProvenanceOrigin.Manual, DateTimeOffset.UtcNow), MetadataAssertionStatus.Active, null);
+            await using (var sourceProvider = new ServiceCollection().AddPostgreSqlLibraryPersistence(sourceSettings.ConnectionString).BuildServiceProvider())
+            {
+                await sourceProvider.GetRequiredService<PostgreSqlMigrationRunner>().InitializeAsync(sourceProvider.GetRequiredService<EfLibraryCatalogStore>());
+                await sourceProvider.GetRequiredService<IMetadataEnrichmentStore>().ApplyAsync(new MetadataEnrichmentWrite([], [manualTitle], [], null));
+            }
             var before = await SnapshotAsync(sourceSettings.ConnectionString);
             var localBefore = Phase17BackupRestoreTests.Snapshot(fixture.Source);
             var dll = Path.Combine(repo, "apps", "server", "bin", "Debug", "net10.0", "Hispania.Server.dll");
@@ -60,7 +70,13 @@ public sealed class Phase17PostgreSqlTests
             await using var provider = new ServiceCollection().AddPostgreSqlLibraryPersistence(targetSettings.ConnectionString).BuildServiceProvider();
             var runner = provider.GetRequiredService<PostgreSqlMigrationRunner>(); var store = provider.GetRequiredService<EfLibraryCatalogStore>();
             await runner.InitializeAsync(store);
-            Assert.Contains(store.GetAll(), entry => entry.Media.Work.Id.Value == Guid.Parse("00000000-0000-0000-0000-000000000047"));
+            Assert.Contains(store.GetAll(), entry => entry.Media.Work.Id == work);
+            var metadata = await provider.GetRequiredService<IMetadataEnrichmentStore>().LoadForTargetAsync(EnrichmentTarget.For(work));
+            Assert.Equal(manualTitle.Id, Assert.Single(metadata.Assertions).Id);
+            Assert.Equal("Manual PostgreSQL recovery title", Assert.Single(metadata.Assertions).Value.TextValue);
+            Assert.Equal(MetadataProvenanceOrigin.Manual, Assert.Single(metadata.Assertions).Provenance.Origin);
+            var restoredSettings = await provider.GetRequiredService<IMetadataSettingsStore>().GetSettingsAsync(work);
+            Assert.True(restoredSettings.LockItemMetadata); Assert.Equal("es", restoredSettings.PreferredMetadataLanguage); Assert.Equal("ES", restoredSettings.MetadataCountryRegion);
             await using (var restored = new NpgsqlConnection(targetSettings.ConnectionString))
             {
                 await restored.OpenAsync(); await using var command = restored.CreateCommand();

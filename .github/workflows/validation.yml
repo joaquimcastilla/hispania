@@ -78,6 +78,13 @@ jobs:
         run: ./tools/test-phase16-historical-upgrades.ps1 -ResultsDirectory .artifacts/phase16-ci -RequirePostgreSql
       - name: Require Platform-only dependency boundary
         run: dotnet build Hispania.Platform.slnf
+      - name: Diagnose PostgreSQL server version (dedicated CI trust-auth fixture)
+        env:
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: hispania
+          PGDATABASE: hispania_tests
+        run: psql --no-psqlrc --tuples-only --no-align --command='SHOW server_version'
       - name: Require Phase 17 backup, process disaster, interruption and mixed-provider restore
         shell: pwsh
         run: ./tools/test-phase17-backup-restore.ps1 -ResultsDirectory .artifacts/phase17-ci -RequirePostgreSql

@@ -10,6 +10,8 @@ namespace Hispania.Inventory.Tests;
 [Trait("Category", "Phase17BackupRestore")]
 public sealed class Phase17BackupRestoreTests
 {
+    private readonly Xunit.Abstractions.ITestOutputHelper output;
+    public Phase17BackupRestoreTests(Xunit.Abstractions.ITestOutputHelper output) => this.output = output;
     [Fact]
     public async Task HistoricalPopulatedInstallationRestoresOnlyFromBundleWithSemanticEquivalence()
     {
@@ -45,6 +47,10 @@ public sealed class Phase17BackupRestoreTests
     [InlineData("oversized")]
     [InlineData("duplicate-property")]
     [InlineData("playback-schema")]
+    [InlineData("negative-size")]
+    [InlineData("overflow-size")]
+    [InlineData("wrong-size")]
+    [InlineData("unknown-required")]
     public async Task HostileOrIncompleteBundleFailsBeforeAnyTargetModification(string corruption)
     {
         using var fixture = new Installation();
@@ -71,6 +77,10 @@ public sealed class Phase17BackupRestoreTests
                 switch (corruption)
                 {
                     case "format": manifest["BackupFormatGeneration"] = 2; break;
+                    case "negative-size": first["Size"] = -1; break;
+                    case "overflow-size": first["Size"] = System.Text.Json.Nodes.JsonNode.Parse("9223372036854775808"); break;
+                    case "wrong-size": first["Size"] = 1; break;
+                    case "unknown-required": manifest["RequiredComponents"]!.AsArray().Add("Unknown.Required"); break;
                     case "hash": first["Sha256"] = "not-a-hash"; break;
                     case "duplicate-file": manifest["Files"]!.AsArray().Add(first.DeepClone()); break;
                     case "duplicate-component": manifest["RequiredComponents"]!.AsArray().Add("Assets"); break;
@@ -204,6 +214,46 @@ public sealed class Phase17BackupRestoreTests
         Assert.False(Directory.Exists(fixture.Bundle)); Assert.Equal(before, Snapshot(fixture.Source));
     }
 
+    [Fact]
+    public async Task SymbolicAliasesAreRejectedBeforeCaptureOrRestore()
+    {
+        using var fixture = new Installation();
+        var alias = Path.Combine(fixture.Root, "alias");
+        try { Directory.CreateSymbolicLink(alias, fixture.Source); }
+        catch (Exception error) when (OperatingSystem.IsWindows() && error is UnauthorizedAccessException or IOException)
+        {
+            output.WriteLine("COVERAGE LIMITATION: Windows runner cannot create a symbolic link; no symlink security assertion executed.");
+            return;
+        }
+        try
+        {
+            await Assert.ThrowsAnyAsync<Exception>(() => BackupInstallation.CreateAsync(alias, fixture.Bundle, default));
+            Assert.False(Directory.Exists(fixture.Bundle));
+            await BackupInstallation.CreateAsync(fixture.Source, fixture.Bundle, default);
+            await Assert.ThrowsAnyAsync<Exception>(() => BackupInstallation.RestoreAsync(fixture.Bundle, Path.Combine(alias, "restored"), default));
+            Assert.False(Directory.Exists(Path.Combine(fixture.Source, "restored")));
+            File.CreateSymbolicLink(Path.Combine(fixture.Bundle, "linked-payload"), Path.Combine(fixture.Source, "portable.json"));
+            await Assert.ThrowsAnyAsync<Exception>(() => BackupInstallation.RestoreAsync(fixture.Bundle, fixture.Target, default));
+            Assert.False(Directory.Exists(fixture.Target));
+        }
+        finally { Directory.Delete(alias); }
+    }
+
+    [Fact]
+    public async Task RestoreAndStartupRespectTheSameInstallationExclusion()
+    {
+        using var fixture = new Installation();
+        await BackupInstallation.CreateAsync(fixture.Source, fixture.Bundle, default);
+        using (BackupInstallation.Lock(fixture.Target))
+        {
+            await Assert.ThrowsAsync<IOException>(() => BackupInstallation.RestoreAsync(fixture.Bundle, fixture.Target, default));
+            Assert.Throws<IOException>(() => BackupInstallation.Configure(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Backup:ManagedRoot"] = fixture.Target }).Build()));
+            Assert.False(Directory.Exists(fixture.Target));
+        }
+        await BackupInstallation.RestoreAsync(fixture.Bundle, fixture.Target, default);
+        Assert.Equal(Snapshot(fixture.Source), Snapshot(fixture.Target));
+    }
+
     internal static SqliteConnection Open(string path)
     {
         var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString()); db.Open(); return db;
@@ -213,7 +263,8 @@ public sealed class Phase17BackupRestoreTests
         var rows = new List<string>();
         foreach (var path in Directory.EnumerateFiles(root, "*.sqlite", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
         {
-            using var db = Open(path); using var tablesQuery = db.CreateCommand(); tablesQuery.CommandText = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name";
+            using var db = Open(path); using (var integrity = db.CreateCommand()) { integrity.CommandText = "PRAGMA integrity_check"; Assert.Equal("ok", integrity.ExecuteScalar()); integrity.CommandText = "PRAGMA foreign_key_check"; using var violations = integrity.ExecuteReader(); Assert.False(violations.Read()); }
+            using var tablesQuery = db.CreateCommand(); tablesQuery.CommandText = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name";
             var tables = new List<string>(); using (var r = tablesQuery.ExecuteReader()) while (r.Read()) tables.Add(r.GetString(0));
             foreach (var table in tables)
             {

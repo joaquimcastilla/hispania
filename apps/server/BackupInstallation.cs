@@ -215,7 +215,7 @@ internal static class BackupInstallation
                 if (!toolMajorMatch.Success || !int.TryParse(serverVersion, out var serverNumber) || int.Parse(toolMajorMatch.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) != serverNumber / 10000)
                     throw new InvalidDataException("PostgreSQL client and server major versions must match.");
                 var migration = (await PostgreSqlAsync("psql", ["--no-psqlrc", "--tuples-only", "--no-align", "--command=SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\" ORDER BY \"MigrationId\""], token)).Trim();
-                if (migration != "20260926104649_InitialPostgreSql") throw new InvalidDataException("Unsupported PostgreSQL migration lineage.");
+                Hispania.Library.Persistence.PostgreSql.PostgreSqlMigrationRunner.ValidateBackupHistory(migration);
                 postgresSchema = migration + "|" + tooling;
                 await PostgreSqlAsync("pg_dump", ["--format=custom", "--no-owner", "--no-acl", "--file=" + Path.Combine(staging, "media.dump")], token);
             }
@@ -264,7 +264,7 @@ internal static class BackupInstallation
                 throw new InvalidDataException("Payload integrity failed.");
             if (Databases.ContainsKey(file.Path) && CheckDatabase(path) != file.Schema) throw new InvalidDataException("Schema metadata mismatch.");
             if (file.Path == "playback.json" && CheckPlaybackSchema(path) != file.Schema) throw new InvalidDataException("Playback schema metadata mismatch.");
-            if (file.Path == "media.dump" && (file.Schema is null || !file.Schema.StartsWith("20260926104649_InitialPostgreSql|pg_dump ", StringComparison.Ordinal))) throw new InvalidDataException("Unsupported PostgreSQL schema metadata.");
+            if (file.Path == "media.dump") Hispania.Library.Persistence.PostgreSql.PostgreSqlMigrationRunner.ValidateBackupMetadata(file.Schema);
         }
         var actual = EnumerateSafe(bundle).Select(path => Path.GetRelativePath(bundle, path).Replace('\\', '/')).Where(path => path != "manifest.json").ToHashSet(PathComparer);
         if (!seen.SetEquals(actual)) throw new InvalidDataException("Unlisted or missing payload.");
@@ -403,33 +403,8 @@ internal static class BackupInstallation
         var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
         db.Open(); return db;
     }
-    private static string CheckDatabase(string path)
-    {
-        using var db = OpenDatabase(path); using var command = db.CreateCommand();
-        command.CommandText = "PRAGMA integrity_check";
-        using (var reader = command.ExecuteReader()) { if (!reader.Read() || reader.GetString(0) != "ok" || reader.Read()) throw new InvalidDataException("SQLite integrity failed."); }
-        command.CommandText = "PRAGMA foreign_key_check";
-        using (var reader = command.ExecuteReader()) if (reader.Read()) throw new InvalidDataException("SQLite foreign-key integrity failed.");
-        command.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('hispania_schema_history','__EFMigrationsHistory') ORDER BY name";
-        var tables = new List<string>(); using (var reader = command.ExecuteReader()) while (reader.Read()) tables.Add(reader.GetString(0));
-        var records = new List<string>();
-        var efLineage = new[] { "20260922000100_initial", "20260922000200_metadata_enrichment", "20260922000300_rich_metadata", "20260922000400_metadata_settings", "20260923000500_person_metadata" };
-        var efLegacy = new[] { "0001_initial", "0002_metadata_enrichment", "0003_rich_metadata", "0004_metadata_settings", "0005_person_metadata" };
-        var efIndex = 0;
-        foreach (var table in tables)
-        {
-            command.CommandText = table == "hispania_schema_history" ? "SELECT owner,version,migration_id FROM hispania_schema_history ORDER BY owner,version" : "SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId";
-            using var reader = command.ExecuteReader();
-            while (reader.Read())
-            {
-                if (table == "hispania_schema_history" && (reader.GetInt32(1) != 1 || reader.GetString(2) != "0001_baseline07_adoption")) throw new InvalidDataException("Unsupported SQLite schema.");
-                if (table == "__EFMigrationsHistory" && (efIndex >= efLineage.Length || (reader.GetString(0) != efLineage[efIndex] && reader.GetString(0) != efLegacy[efIndex]))) throw new InvalidDataException("Unsupported Media migration lineage.");
-                if (table == "__EFMigrationsHistory") efIndex++;
-                records.Add(string.Join(':', Enumerable.Range(0, reader.FieldCount).Select(i => reader.GetValue(i).ToString())));
-            }
-        }
-        return records.Count == 0 ? "legacy:0" : string.Join('|', records);
-    }
+    private static string CheckDatabase(string path) => Hispania.Platform.Persistence.Sqlite.SqliteBackupInspection.Inspect(path,
+        Path.GetFileName(path) == "media.sqlite" ? Hispania.Library.Persistence.Sqlite.SqliteMigrationRunner.InspectBackupHistory : null);
     private static string ComponentFor(string path)
     {
         if (Databases.TryGetValue(path, out var component)) return component;

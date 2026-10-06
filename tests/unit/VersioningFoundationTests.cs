@@ -74,6 +74,15 @@ public sealed class VersioningFoundationTests
         Assert.True(File.Exists(Path.Combine(root, version.RootElement.GetProperty("policy").GetString()!)));
         foreach (var doc in new[] { "VERSIONING.md", "COMPATIBILITY-POLICY.md", "VERSION-MAP.md", "PLATFORM-1.0-SCOPE.md" })
             Assert.Contains(value, File.ReadAllText(Path.Combine(root, "docs", doc)), StringComparison.Ordinal);
+        var axisLines = File.ReadAllLines(Path.Combine(root, "docs", "VERSIONING.md"))
+            .Where(line => line.StartsWith("| ", StringComparison.Ordinal) && !line.StartsWith("| Axis |", StringComparison.Ordinal) && !line.StartsWith("| ---", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(23, axisLines.Length);
+        Assert.Equal(23, axisLines.Select(line => line.Split('|')[1].Trim()).Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains(axisLines, line => line.StartsWith("| Backup Format Generation |", StringComparison.Ordinal) && line.Contains("FormatGeneration = 1", StringComparison.Ordinal));
+        using var catalog = ReadCatalog(root);
+        var backup = catalog.RootElement.GetProperty("contracts").EnumerateArray().Single(row => row.GetProperty("id").GetString() == "backup.format");
+        Assert.Equal("Experimental", backup.GetProperty("stability").GetString());
+        Assert.Contains("independent", backup.GetProperty("interpretation").GetString()!, StringComparison.OrdinalIgnoreCase);
         var props = File.ReadAllText(Path.Combine(root, "Directory.Build.props"));
         Assert.DoesNotContain("<Version>", props, StringComparison.Ordinal);
         Assert.DoesNotContain("<AssemblyVersion>", props, StringComparison.Ordinal);
