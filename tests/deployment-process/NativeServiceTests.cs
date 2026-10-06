@@ -23,13 +23,19 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
         // systemd PrivateTmp intentionally hides /tmp; use the runner's explicit service root.
         var root = Environment.GetEnvironmentVariable("HISPANIA_PHASE18_SERVICE_ROOT") ?? throw new InvalidOperationException("Native service gate requires a provisioned service root outside private runner directories and /tmp.");
         using var fixture = new ArtifactProcessTests.HostFixture(directoryRoot: root);
+        var canary = "PHASE18_SUPER_SECRET_CANARY_NATIVE_" + Guid.NewGuid().ToString("N");
+        var canaryPath = Path.Combine(fixture.Home, "secrets", "NATIVE_CANARY.secret");
+        File.WriteAllText(canaryPath, canary); WorkerDeploymentTests.Protect(canaryPath);
+        var retainedBackup = Path.Combine(fixture.Home, "backups", "native-retain.txt");
+        File.WriteAllText(retainedBackup, "retained backup evidence");
+        fixture.WriteConfiguration(new { bootstrapSecret = "file:NATIVE_CANARY" });
         using var serverCertificate = WorkerDeploymentTests.Certificate("native-coordinator");
         using var clientCertificate = WorkerDeploymentTests.Certificate("native-worker");
         WebApplication? coordinator = null;
         var negotiations = 0;
         if (role == "worker")
         {
-            File.WriteAllBytes(Path.Combine(fixture.Home, "secrets", "client.pfx"), clientCertificate.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Pfx));
+            File.WriteAllBytes(Path.Combine(fixture.Home, "secrets", "client.pfx"), clientCertificate.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Pfx, canary));
             WorkerDeploymentTests.Protect(Path.Combine(fixture.Home, "secrets", "client.pfx"));
             var builder = WebApplication.CreateBuilder(); builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel(options => options.ListenLocalhost(fixture.Port, listen => listen.UseHttps(https =>
@@ -43,7 +49,7 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
             coordinator.MapPost("/internal/worker/v1/native-worker/heartbeat", () => Results.Ok(new { cancelledJobIds = Array.Empty<string>() }));
             coordinator.MapPost("/internal/worker/v1/native-worker/disconnect", () => Results.NoContent());
             await coordinator.StartAsync();
-            fixture.WriteConfiguration(new { role, worker = new { coordinatorUri = $"https://localhost:{fixture.Port}", nodeId = "native-worker", certificateFile = "client.pfx", coordinatorCertificateSha256Pins = new[] { Convert.ToHexString(SHA256.HashData(serverCertificate.RawData)) } } });
+            fixture.WriteConfiguration(new { role, worker = new { coordinatorUri = $"https://localhost:{fixture.Port}", nodeId = "native-worker", certificateFile = "client.pfx", passwordSecret = "file:NATIVE_CANARY", coordinatorCertificateSha256Pins = new[] { Convert.ToHexString(SHA256.HashData(serverCertificate.RawData)) } } });
         }
         var installed = false;
         try
@@ -72,9 +78,16 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
             var timer = Stopwatch.StartNew(); await ServiceAsync("stop", fixture.Home, role);
             Assert.True(timer.Elapsed < TimeSpan.FromSeconds(40));
             output.WriteLine("{0} {1}: native start/readiness/restart passed; graceful stop {2:F3}s.", OperatingSystem.IsWindows() ? "SCM" : "systemd", role, timer.Elapsed.TotalSeconds);
+            if (OperatingSystem.IsLinux())
+                Assert.DoesNotContain(canary, await RunAsync("sudo", ["journalctl", "--unit=hispania-" + role + ".service", "--no-pager"]), StringComparison.Ordinal);
+            else
+                foreach (var log in Directory.EnumerateFiles(Path.Combine(fixture.Home, "logs"), "*", SearchOption.AllDirectories)) Assert.DoesNotContain(canary, File.ReadAllText(log), StringComparison.Ordinal);
             using (Hispania.Hosting.InstallationOperations.Lock(fixture.Home)) { }
             await ServiceAsync("uninstall", fixture.Home, role); installed = false;
             Assert.True(File.Exists(Path.Combine(fixture.Home, "config", "production.json")));
+            Assert.Equal("retained backup evidence", File.ReadAllText(retainedBackup));
+            if (OperatingSystem.IsLinux()) await RunAsync("sudo", ["test", "-f", canaryPath]);
+            else Assert.True(File.Exists(canaryPath));
             if (role == "server") Assert.True(File.Exists(Path.Combine(fixture.Home, "state", "platform", "identity.sqlite")));
         }
         catch
