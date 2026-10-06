@@ -455,3 +455,7 @@ The independent 15-artifact populated corpus and mandatory Linux PostgreSQL gate
 ## Phase 17 — offline installation backup boundary
 
 Host composition owns canonical destination mapping and preservation of configured source paths and an exclusive installation lock. The backup path executes before runtime composition and uses SQLite backup APIs, owner-local Assets validation and logical PostgreSQL tooling; no domain is added to Platform dependencies. Full bundles are staged, verified and published by rename. Restore requires an absent local root and empty configured PostgreSQL database, with a persistent incomplete-restore marker and no global ACID claim. See [ADR-0042](adr/ADR-0042-backup-restore-and-disaster-recovery.md) and [Phase 17](PHASE-17-BACKUP-RESTORE.md) for support and pending gates.
+
+## Phase 18 production deployment
+
+Host-owned infrastructure/hosting separates strict generation-1 operational configuration, secret references and managed state. Server/Worker share SCM/systemd lifetimes; migrations remain owner-local and Platform gains no Media/Inventory dependency. Child paths derive from the executable root. See [Phase 18](PHASE-18-PRODUCTION-DEPLOYMENT.md) and [ADR-0043](adr/ADR-0043-configuration-secrets-and-production-deployment.md).

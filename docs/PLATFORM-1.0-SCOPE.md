@@ -39,3 +39,7 @@ Option B: `core/kernel/Hispania.Kernel.csproj` is an empty SDK library with no s
 ## Phase 17 — backup implementation status
 
 Distribution 0.7.0 adds experimental Backup Format Generation 1, without a Public Stable promotion. Required closure is a coherent complete backup and destructive clean-host reconstruction with semantic recovery and mixed-provider evidence. The current offline managed-root implementation is under validation; it does not establish 1.0 readiness. [Phase 17](PHASE-17-BACKUP-RESTORE.md) records exact exclusions and remaining acceptance. No Phase 18 work is introduced.
+
+## Phase 18 production deployment
+
+Distribution 0.7.0 remains pre-1.0; no Public Stable promotion. Configuration, secrets, services and restore-backed upgrade add operational evidence after mandatory CI. They establish no HA, cloud secret management, release authenticity or mixed-version ecosystem guarantee. See [Phase 18](PHASE-18-PRODUCTION-DEPLOYMENT.md) and [ADR-0043](adr/ADR-0043-configuration-secrets-and-production-deployment.md).

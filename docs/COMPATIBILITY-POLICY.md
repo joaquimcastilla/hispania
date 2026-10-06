@@ -52,3 +52,7 @@ The independent 15-artifact populated corpus and mandatory Linux PostgreSQL gate
 ## Phase 17 — restore compatibility
 
 Generation-1 bundles reject unsupported formats, future distribution/schema metadata, duplicate paths and integrity failure before switching an application root. Restore may materialize known legacy owner schemas and subsequently run Phase 16 migrations. SHA-256 is integrity evidence, not backup authentication. Clean-root offline restore is experimental; distribution remains 0.7.0. See [Phase 17](PHASE-17-BACKUP-RESTORE.md).
+
+## Phase 18 production deployment
+
+Distribution 0.7.0 and Configuration Schema Generation 1 are independent. Strict production JSON rejects unknown fields/generations; omitted optional fields use typed defaults. No implicit configuration migration. Private material is reprovisioned after Phase 17 restore. After new-host startup, rollback requires verified backup plus old binaries because owner migrations remain forward-only. See [Phase 18](PHASE-18-PRODUCTION-DEPLOYMENT.md) and [ADR-0043](adr/ADR-0043-configuration-secrets-and-production-deployment.md).

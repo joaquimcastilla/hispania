@@ -48,3 +48,7 @@ The independent 15-artifact populated corpus and mandatory Linux PostgreSQL gate
 ## Phase 17 — backup format axis
 
 Backup Format Generation 1 belongs to offline host operations and is independent of distribution 0.7.0 and component schemas. There are now 23 version axes and zero Public Stable declarations. See [Phase 17](PHASE-17-BACKUP-RESTORE.md) for managed-layout support and pending acceptance.
+
+## Phase 18 production deployment
+
+Configuration Schema Generation 1 is the independent 24th axis. Distribution remains 0.7.0, Backup Format Generation remains 1 and Public Stable remains 0. Frozen compatibility corpus identities are unchanged; configuration.schema is Experimental. See [Phase 18](PHASE-18-PRODUCTION-DEPLOYMENT.md) and [ADR-0043](adr/ADR-0043-configuration-secrets-and-production-deployment.md).

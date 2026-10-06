@@ -418,3 +418,7 @@ The independent 15-artifact populated corpus and mandatory Linux PostgreSQL gate
 ## Phase 17 — installed bytes and trust during disaster recovery
 
 Managed-root backup preserves installed extension files byte-for-byte, including original package digests/signatures and manifests. Public trusted publisher keys, trusted extension IDs and revocations are portable; private signing keys and worker private credentials are externally reprovisioned. Normal discovery/activation checks still apply after restore; process lifecycle state is not made durable. This is an experimental operational boundary, not a new module catalog. See [Phase 17](PHASE-17-BACKUP-RESTORE.md).
+
+## Phase 18 production deployment
+
+ModuleHost is a child from the verified artifact, not a separate service. Mutable extensions use the Phase 17 state root and existing signature/trust authorization. Worker capability providers use explicit artifact-relative paths and coordinator mTLS pins. Host secret providers do not add a public module SDK or dependency lifecycle. See [Phase 18](PHASE-18-PRODUCTION-DEPLOYMENT.md) and [ADR-0043](adr/ADR-0043-configuration-secrets-and-production-deployment.md).

@@ -22,3 +22,7 @@ Recorded evidence is from Phase 13; Phase 14 local execution is separately repor
 ## Phase 17 — operational backup support under validation
 
 Offline full bundles support the explicitly configured managed single-host root: Platform/Inventory SQLite, Media SQLite or logical PostgreSQL, filesystem Storage and installed extension bytes/public trust configuration. PostgreSQL 16 client tooling and externally reprovisioned libpq credentials are required by the Linux mixed-provider gate. Scattered source paths are preserved from the original host configuration through a machine-local descriptor; external Media source bytes are reprovisioned. No online/global-ACID/overwrite/merge/partial restore is claimed. See [Phase 17](PHASE-17-BACKUP-RESTORE.md); complete closure remains pending.
+
+## Phase 18 production deployment
+
+Publications target win-x64/linux-x64 with the .NET 10 ASP.NET Core runtime. Local artifact/process evidence is distinct from actual SCM/systemd and password-auth PostgreSQL operation. Mandatory Production Deployment CI must establish those native gates before operational support is called validated. Linux ARM64 remains experimental/unvalidated. See [Phase 18](PHASE-18-PRODUCTION-DEPLOYMENT.md) and [ADR-0043](adr/ADR-0043-configuration-secrets-and-production-deployment.md).
