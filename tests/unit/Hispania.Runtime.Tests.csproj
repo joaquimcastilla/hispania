@@ -5,6 +5,8 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="../../docs/compatibility/web/schema1/*.json" Link="web-schema1/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="../web-contribution-fixtures/WebPackageFixture.cs" Link="WebPackageFixture.cs" />
     <ProjectReference Include="../package-lifecycle-process-host/Hispania.PackageLifecycle.ProcessHost.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\apps\module-host\Hispania.ModuleHost.csproj" ReferenceOutputAssembly="false" />
     <Compile Remove="MediaDomainTests.cs;TimelineAndCoverageTests.cs;TechnicalRepresentationAndSourceTests.cs;PublicationAndCreatorTests.cs;EnrichmentTests.cs" />

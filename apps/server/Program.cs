@@ -168,6 +168,7 @@ builder.Services.AddSingleton<Hispania.ModuleSystem.Contracts.IDistributedWorkCo
 builder.Services.AddHostedService(services => new DistributedWorkLeaseMonitor(
     services.GetRequiredService<Hispania.ModuleSystem.Contracts.IDistributedWorkCoordinatorV1>(),
     TimeSpan.FromSeconds(builder.Configuration.GetValue("DistributedWorkers:LeaseMonitorSeconds", 1))));
+builder.Services.AddSingleton<IModule, WebContributionHostModule>();
 builder.Services.AddSingleton<ModuleExtensionCatalog>(services => new ModuleExtensionCatalog(
     builder.Configuration["Modules:ExtensionsPath"] ?? Path.Combine(AppContext.BaseDirectory, "extensions"),
     new Version(1, 0, 0),
@@ -342,6 +343,12 @@ if (production?.BootstrapOnly == true)
     return;
 }
 app.UsePlatformErrorBoundary();
+app.Use(async (http, next) =>
+{
+    http.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    http.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://image.tmdb.org blob: data:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+    await next();
+});
 #if !HISPANIA_PRODUCTION_DISTRIBUTION
 if (production is null) await SeedInventoryDemoAsync(app.Services);
 #endif
@@ -349,6 +356,8 @@ if (production is null) await SeedInventoryDemoAsync(app.Services);
 app.UseMiddleware<PlatformCorrelationMiddleware>();
 app.MapPlatformObservability();
 app.MapPlatformAdmin();
+app.MapWebContributions();
+app.MapPackageSetAdmin();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 

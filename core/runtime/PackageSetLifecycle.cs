@@ -85,11 +85,26 @@ public sealed partial class ModuleExtensionCatalog
             manifest.MaximumHostVersion is not null && (!Version.TryParse(manifest.MaximumHostVersion, out var maximum) || hostVersion > maximum)) return "Host compatibility bounds rejected.";
         if (manifest.Runtime is not ("dotnet-inprocess-trusted" or "dotnet-outofprocess")) return "Unsupported extension runtime.";
         if (manifest.RequiredModuleHostProtocol is not null && manifest.RequiredModuleHostProtocol != ModuleWorkerProtocolV1.Version) return "Unsupported ModuleHost protocol generation requirement.";
+        if (manifest.Requires.Any(requirement => requirement.StartsWith(WebContributionSchema.Capability + "@", StringComparison.Ordinal) && requirement != WebContributionSchema.Requirement))
+            return "Unsupported required Dynamic Web capability generation.";
+        if (RequiresWeb(manifest) && !SupportsWeb) return "Required Dynamic Web host capability is unavailable.";
         return null;
     }
 
-    public async Task ApplyPackageSetAsync(PackageOperationPlan plan, IReadOnlySet<string>? enabledIds = null,
+    public Task ApplyPackageSetAsync(PackageOperationPlan plan, IReadOnlySet<string>? enabledIds = null,
         bool allowDowngrade = false, CancellationToken cancellationToken = default)
+        => ApplyPackageSetCoreAsync(plan, enabledIds, allowDowngrade, cancellationToken);
+
+    /// <summary>Apply one operator enable policy change against the authoritative state under the mutation gate.</summary>
+    public async Task SetPackageEnabledAsync(string id, bool enabled, bool uninstall = false, CancellationToken cancellationToken = default)
+    {
+        PackageDependencyResolver.ValidateId(id);
+        var plan = await PlanPackageSetAsync([], new Dictionary<string, string>(), uninstall ? new HashSet<string>(StringComparer.Ordinal) { id } : null, cancellationToken).ConfigureAwait(false);
+        await ApplyPackageSetCoreAsync(plan, null, false, cancellationToken, (id, enabled && !uninstall)).ConfigureAwait(false);
+    }
+
+    private async Task ApplyPackageSetCoreAsync(PackageOperationPlan plan, IReadOnlySet<string>? enabledIds,
+        bool allowDowngrade, CancellationToken cancellationToken, (string Id, bool Enabled)? enabledChange = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         await activationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -108,6 +123,13 @@ public sealed partial class ModuleExtensionCatalog
             await AuditPackageOperationAsync("apply", "attempt", "package-set").ConfigureAwait(false);
             var operationId = Guid.NewGuid().ToString("N");
             var desiredEnabled = enabledIds ?? previous.Packages.Where(entry => entry.Enabled).Select(entry => entry.Manifest.Id).ToHashSet(StringComparer.Ordinal);
+            if (enabledChange is { } policyChange)
+            {
+                if (!previous.Packages.Any(entry => entry.Manifest.Id == policyChange.Id)) throw new InvalidOperationException("Package policy target is not installed.");
+                var changed = desiredEnabled.ToHashSet(StringComparer.Ordinal);
+                if (policyChange.Enabled) changed.Add(policyChange.Id); else changed.Remove(policyChange.Id);
+                desiredEnabled = changed;
+            }
             if (desiredEnabled.Any(id => !plan.Selected.Any(candidate => candidate.Id == id))) throw new InvalidOperationException("Enabled ID is not in the selected set.");
             var next = new PackageSetState(1, plan.Selected.Select(candidate => new PackageSetEntry(candidate.Manifest, candidate.ArtifactHash,
                 Path.Combine(candidate.Id, candidate.Version).Replace('\\', '/'), desiredEnabled.Contains(candidate.Id), allowlist.Contains(candidate.Id))).ToArray());
@@ -128,6 +150,7 @@ public sealed partial class ModuleExtensionCatalog
                 await using var archive = File.OpenRead(candidate.Location);
                 var staged = await stagedInstaller.InstallAsync(archive, cancellationToken).ConfigureAwait(false);
                 ValidateBackupPackage(staged.Manifest, staged.Directory);
+                ValidateRequiredWeb(staged.Manifest, staged.Directory);
                 var artifact = Path.Combine(stageRoot, candidate.ArtifactHash + ".hispania");
                 await CopyDurableAsync(candidate.Location, artifact, cancellationToken).ConfigureAwait(false);
                 await using var retainedBytes = File.OpenRead(artifact);
@@ -256,6 +279,7 @@ public sealed partial class ModuleExtensionCatalog
             if (!allowlist.Contains(id)) throw new InvalidOperationException("Package is not authorized.");
             ValidatePublisherTrust(manifest);
             ValidateActivePackageDependencies(manifest);
+            ValidateRequiredWeb(manifest, ResolveStoredDirectory(entry.RelativeDirectory));
             if (loaded.TryGetValue(id, out var existing))
             {
                 if (!SameManifest(existing.Manifest, manifest) || !runtime.GetHealth(id).IsHealthy) throw new InvalidOperationException("Loaded package does not match healthy committed state.");
@@ -270,14 +294,16 @@ public sealed partial class ModuleExtensionCatalog
         }
     }
 
-    private void ValidateActivePackageDependencies(ModuleManifest manifest)
+    private void ValidateActivePackageDependencies(ModuleManifest manifest, HashSet<string>? checkedIds = null)
     {
+        checkedIds ??= new HashSet<string>(StringComparer.Ordinal) { manifest.Id };
         foreach (var dependency in PackageDependencyResolver.Dependencies(manifest))
         {
             if (!loaded.TryGetValue(dependency.PackageId, out var provider) || !provider.Running || !runtime.GetHealth(dependency.PackageId).IsHealthy)
                 throw new InvalidOperationException("DependencyUnhealthy: required package is not active and healthy.");
             if (!allowlist.Contains(dependency.PackageId)) throw new InvalidOperationException("UnauthorizedDependency.");
             ValidatePublisherTrust(provider.Manifest);
+            if (checkedIds.Add(provider.Manifest.Id)) ValidateActivePackageDependencies(provider.Manifest, checkedIds);
             // Validate just the version here; the committed graph has already validated transitive edges.
             var range = PackageDependencyResolver.ParseRange(dependency.VersionRange);
             if (!range.Satisfies(NuGet.Versioning.NuGetVersion.Parse(PackageDependencyResolver.CandidateVersion(new(provider.Manifest, "active", "")).ToFullString())))
@@ -293,7 +319,7 @@ public sealed partial class ModuleExtensionCatalog
         var healthy = runtime.ListHealth().Where(health => health.IsHealthy).Select(health => health.Descriptor.Id).ToHashSet(StringComparer.Ordinal);
         var journal = ReadState<PackageOperationJournal>(PackageJournalPath);
         if (journal is not null) ValidateJournal(journal);
-        return state.Packages.Select(entry =>
+        var result = state.Packages.Select(entry =>
         {
             var status = "Resolved";
             if (!allowlist.Contains(entry.Manifest.Id)) status = "UnauthorizedDependency";
@@ -318,6 +344,16 @@ public sealed partial class ModuleExtensionCatalog
                 Healthy = loadedIds.Contains(entry.Manifest.Id) && healthy.Contains(entry.Manifest.Id)
             };
         }).ToArray();
+        // Propagate existing Phase19 decisions through the same dependency graph, not a Web graph.
+        foreach (var id in PackageDependencyResolver.TopologicalOrder(state.Packages.Select(ToCandidate).ToArray()))
+        {
+            var index = Array.FindIndex(result, row => row.PackageId == id);
+            if (result[index].Status != "Resolved") continue;
+            var entry = state.Packages.Single(entry => entry.Manifest.Id == id);
+            var blocked = PackageDependencyResolver.Dependencies(entry.Manifest).Select(dependency => result.Single(row => row.PackageId == dependency.PackageId)).FirstOrDefault(row => row.Status != "Resolved");
+            if (blocked is not null) result[index] = result[index] with { Status = blocked.Status };
+        }
+        return result;
     }
 
     private PackageSetState ReadPackageState()

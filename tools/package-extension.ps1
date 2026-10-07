@@ -50,6 +50,11 @@ try {
     $json = $manifest | ConvertTo-Json -Depth 32
     [System.IO.File]::WriteAllText((Join-Path $staging 'module.json'), $json, [System.Text.UTF8Encoding]::new($false))
     Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $outputFullPath -CompressionLevel Optimal
+    if ($manifest.files.Contains('web/contributions.json') -or @($manifest.requires) -contains 'hispania.web.contributions@1.0') {
+        $preflightProject = Join-Path $PSScriptRoot 'package-preflight/Hispania.PackagePreflight.csproj'
+        & dotnet run --project $preflightProject --configuration Release -- $outputFullPath
+        if ($LASTEXITCODE -ne 0) { throw 'Offline Web contribution validation failed; do not distribute the rejected archive.' }
+    }
 }
 finally {
     if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }

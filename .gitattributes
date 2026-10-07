@@ -7,3 +7,6 @@ compatibility/baseline-0.7.json -text
 
 compatibility/data-baseline-0.7.json -text
 compatibility/data/0.7/*.sql whitespace=cr-at-eol,-blank-at-eof
+
+# Independent Web corpus also authenticates exact UTF-8 bytes.
+docs/compatibility/web/schema1/*.json -text

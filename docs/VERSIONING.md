@@ -30,7 +30,9 @@ HISPANIA 0.7.0 is the documentation baseline for the integrated distribution, no
 
 | Configuration Schema Generation | `ProductionConfiguration.SchemaGeneration = 1` | Strict public production JSON, host configuration readers | Experimental integer generation; independent of distribution, backup and data schemas; unknown fields/generations rejected |
 
-Phase 18 adds the 24th version axis. Phase 17 adds the 23rd version axis. The historical Phase 14/15/16 inventories had 22; their frozen evidence remains unchanged. No Public Stable declaration is added.
+| Web Contribution Schema Generation | `WebContributionSchema.Generation = 1` | Signed declarative package payload and shared Shell contract | Public Experimental integer generation; future schemas rejected as a whole; independent of Package Format and bundle version |
+
+Phase 20 adds the 25th version axis. Phase 18 adds the 24th version axis. Phase 17 adds the 23rd version axis. The historical Phase 14/15/16 inventories had 22; their frozen evidence remains unchanged. No Public Stable declaration is added.
 
 All values above require compatibility decisions appropriate to their consumers, including internal persisted state. Public CLR visibility alone is not a stable promise. V1/V2/Version1/Version2 declarations are enumerated in the [catalog](compatibility/CONTRACT-CATALOG.md); the machine catalog records their interpretation and source. A technical V2 is never sufficient evidence for SemVer 2.0.
 

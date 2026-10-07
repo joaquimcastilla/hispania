@@ -68,6 +68,35 @@ public static class PackageArchiveInspector
                 if (!pe.HasMetadata) throw new InvalidDataException("Entry assembly is not a managed DLL.");
             }
         }
+        if (manifest.Requires.Contains(WebContributionSchema.Requirement, StringComparer.Ordinal))
+        {
+            if (!entries.TryGetValue(WebContributionSchema.Path, out var web) || web.Length > WebContributionValidator.MaximumBytes)
+                throw new InvalidDataException("Missing or oversized required Web descriptor.");
+            await using var input = web.Open();
+            using var content = new MemoryStream();
+            var buffer = new byte[8192];
+            int read;
+            while ((read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                if (content.Length + read > WebContributionValidator.MaximumBytes) throw new InvalidDataException("Required Web descriptor exceeds size limit.");
+                content.Write(buffer, 0, read);
+            }
+            var descriptor = WebContributionValidator.Parse(manifest, content.ToArray());
+            long assetBytes = 0;
+            foreach (var asset in descriptor.Contributions.Select(page => page.Navigation.Asset).OfType<string>().Distinct(StringComparer.Ordinal))
+            {
+                if (!entries.TryGetValue(asset, out var assetEntry) || assetEntry.Length > 1024 * 1024) throw new InvalidDataException("Missing or oversized Web asset.");
+                await using var assetInput = assetEntry.Open();
+                using var assetContent = new MemoryStream();
+                while ((read = await assetInput.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+                {
+                    assetBytes += read;
+                    if (assetContent.Length + read > 1024 * 1024 || assetBytes > 4 * 1024 * 1024) throw new InvalidDataException("Web assets exceed size limits.");
+                    assetContent.Write(buffer, 0, read);
+                }
+                WebContributionValidator.ValidatePng(assetContent.ToArray());
+            }
+        }
         return new(manifest, digest, Path.GetFullPath(path));
     }
 
