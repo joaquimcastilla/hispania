@@ -84,6 +84,36 @@ public sealed class PackageLifecycleIntegrationTests
         Assert.Contains(fixture.Catalog.InspectPackageGraph(), row => row.PackageId == BaseId && row.Status == "UnauthorizedDependency");
     }
 
+    [Theory]
+    [InlineData("compatible")][InlineData("missing")][InlineData("conflict")]
+    public async Task PlanningPreservesInstalledBytesGraphTrustAuthorizationAndActiveSet(string scenario)
+    {
+        using var fixture = new Fixture();
+        await fixture.Catalog.ApplyPackageSetAsync(await fixture.Plan(), new HashSet<string> { BaseId, ConsumerId });
+        var next = scenario == "missing"
+            ? fixture.Archive(ConsumerId, "2.0.0", typeof(PackageConsumerModule), [new("test.missing", "[1.0.0]")])
+            : fixture.Archive(BaseId, scenario == "conflict" ? "2.0.0" : "1.4.0", typeof(PackageBaseModule));
+        string Snapshot() => JsonSerializer.Serialize(new
+        {
+            Files = Directory.GetFiles(fixture.Installed, "*", SearchOption.AllDirectories)
+                .Order(StringComparer.Ordinal).Select(path => new
+                {
+                    Path = Path.GetRelativePath(fixture.Installed, path).Replace('\\', '/'),
+                    Hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)))
+                }).ToArray(),
+            Graph = fixture.Catalog.InspectPackageGraph(),
+            Active = fixture.Registry.List().Select(module => module.Descriptor.Id).Order(StringComparer.Ordinal).ToArray(),
+            PublicKeys = fixture.Keys.OrderBy(pair => pair.Key, StringComparer.Ordinal).ToArray()
+        }, Json);
+        var before = Snapshot();
+        var target = scenario == "missing" ? ConsumerId : BaseId;
+        var version = scenario == "compatible" ? "1.4.0" : "2.0.0";
+        var plan = await fixture.Catalog.PlanPackageSetAsync([next], new Dictionary<string, string> { [target] = $"[{version}]" });
+        Assert.Equal(scenario == "compatible", plan.Resolved);
+        Assert.Equal(before, Snapshot());
+        Assert.Equal("consumer", Message(fixture.Catalog));
+    }
+
     [Fact]
     public async Task FailedHealthRollsBackTheWholeGraph()
     {

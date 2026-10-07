@@ -28,7 +28,17 @@ public sealed class PackageLifecycleResolverTests
     [Fact] public void CandidateEnumerationOrderIsIrrelevant()
     {
         var candidates = new[] { Candidate("test.a", "1.0.0", new PackageDependency("test.b", "[1.0.0,2.0.0)")), Candidate("test.b", "1.2.0"), Candidate("test.b", "1.9.0") };
-        Assert.Equal(Resolve(candidates).Selected.Select(item => item.ArtifactHash), Resolve(candidates.Reverse().ToArray()).Selected.Select(item => item.ArtifactHash));
+        var expected = Resolve(candidates);
+        Assert.Equal(["test.b", "test.a"], expected.ActivationOrder);
+        Assert.Equal(["1.0.0", "1.9.0"], expected.Selected.Select(item => item.Version));
+        for (var repetition = 0; repetition < 20; repetition++)
+        {
+            var actual = Resolve(repetition % 2 == 0 ? candidates : candidates.Reverse().ToArray());
+            Assert.Equal(expected.Selected.Select(item => item.ArtifactHash), actual.Selected.Select(item => item.ArtifactHash));
+            Assert.Equal(expected.ActivationOrder, actual.ActivationOrder);
+            Assert.Equal(expected.DeactivationOrder, actual.DeactivationOrder);
+            Assert.Equal(expected.Findings, actual.Findings);
+        }
     }
     [Fact] public void SameVersionDifferentBytesIsAmbiguous() => Assert.Equal("AmbiguousArtifact", Assert.Single(Resolve([Candidate("test.a"), Candidate("test.a") with { ArtifactHash = "different" }]).Findings).Code);
     [Fact] public void StableRangeNeverSelectsPrerelease() => Assert.Equal("1.0.0", Assert.Single(Resolve([Candidate("test.a"), Candidate("test.a", "2.0.0-rc.1")]).Selected).Version);
