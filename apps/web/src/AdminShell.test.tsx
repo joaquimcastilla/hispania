@@ -20,7 +20,7 @@ it("hides Admin for a domain user while keeping the catalog usable", async () =>
 });
 it.each(adminRoutes)("protects direct $path without administrative grants", async route => {
   const fetch = setup(route.path, ["media.library.read"]); render(<App />);
-  expect(await screen.findByRole("heading", { name: "Acceso denegado" })).toBeInTheDocument(); expect(fetch).toHaveBeenCalledTimes(1);
+  expect(await screen.findByRole("heading", { name: "Acceso denegado" })).toBeInTheDocument(); expect(fetch.mock.calls.filter(call => String(call[0]) !== "/api/v1/web/contributions")).toHaveLength(1);
 });
 it("opens only Jobs for a partial administrator entering /admin", async () => {
   const fetch = setup("/admin", ["platform.jobs.read"]); render(<App variant="classic" />);
@@ -79,7 +79,7 @@ it("renders one overview snapshot and registered navigation for an administrator
   render(<App />); expect(await screen.findByText("5/5")).toBeInTheDocument();
   const nav = within(screen.getByRole("navigation", { name: "Administración" }));
   for (const route of adminRoutes) expect(nav.getByRole("link", { name: route.label })).toHaveAttribute("href", route.path);
-  expect(fetch).toHaveBeenCalledTimes(2); await userEvent.setup().click(screen.getByRole("button", { name: "Actualizar" })); await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+  expect(fetch.mock.calls.filter(call => String(call[0]) !== "/api/v1/web/contributions")).toHaveLength(2); await userEvent.setup().click(screen.getByRole("button", { name: "Actualizar" })); await waitFor(() => expect(fetch.mock.calls.filter(call => String(call[0]) !== "/api/v1/web/contributions")).toHaveLength(3));
 });
 it.each([false, true])("separates job read from manage (%s) and keeps conflict errors visible", async manage => {
   setup("/admin/jobs", ["platform.jobs.read", ...(manage ? ["platform.jobs.manage"] : [])], (path, init) => init?.method === "POST" ? response({ error: "private exception /private/path" }, 409) : response([{ jobId: "job1", jobType: "test", status: "Pending", createdAt: "2026-10-04", scheduledAt: "2026-10-04", attemptCount: 0, maxAttempts: 3, executor: "local" }]));

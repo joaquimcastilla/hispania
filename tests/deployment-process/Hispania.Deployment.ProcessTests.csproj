@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><IsPackable>false</IsPackable><NoWarn>$(NoWarn);CA1861</NoWarn></PropertyGroup>
   <ItemGroup>
+    <Compile Include="../web-contribution-fixtures/WebPackageFixture.cs" Link="WebPackageFixture.cs" />
     <ProjectReference Include="../../infrastructure/hosting/Hispania.Hosting.csproj" />
     <ProjectReference Include="../../core/runtime/Hispania.Runtime.csproj" />
     <ProjectReference Include="../../modules/extension-demo/Hispania.ExtensionDemo.csproj" />

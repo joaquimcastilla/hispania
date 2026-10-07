@@ -54,6 +54,12 @@ jobs:
       - name: Require Phase 19 package lifecycle, historical reader and crash recovery
         shell: pwsh
         run: ./tools/test-phase19-package-lifecycle.ps1
+      - name: Install real Chromium for Phase20
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - name: Require Phase20 signed Web schema, predecessor safety and Modern/Classic browser lifecycle
+        shell: pwsh
+        run: ./tools/test-phase20-dynamic-web.ps1
       - name: Require Phase 14 catalog, distribution semantics and candidate API review
         shell: pwsh
         run: |
@@ -180,6 +186,15 @@ jobs:
           foreach ($pattern in @('*DistributedWorkerProcessIntegrationTests*', '*DistributedCoordinatorPersistenceTests*', '*DistributedMediaTransferTests*')) {
             if (@($results | Where-Object { $_.testName -like $pattern }).Count -eq 0) { throw "Required distributed worker test '$pattern' did not pass or was not discovered." }
           }
+      - name: Preserve Phase 20 browser and runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase20-linux-evidence
+          path: |
+            .artifacts/phase20-gate/*.trx
+            .artifacts/phase20-browser-results.json
+            .artifacts/phase20-browser
       - run: dotnet test Hispania.CrossPlatform.slnf --no-build
 
   validate-windows-launcher:
@@ -211,6 +226,12 @@ jobs:
       - name: Require Phase 19 package lifecycle, historical reader and crash recovery
         shell: pwsh
         run: ./tools/test-phase19-package-lifecycle.ps1
+      - name: Install real Chromium for Phase20
+        working-directory: apps/web
+        run: npx playwright install chromium
+      - name: Require Phase20 signed Web schema, predecessor safety and Modern/Classic browser lifecycle
+        shell: pwsh
+        run: ./tools/test-phase20-dynamic-web.ps1
       - name: Require Phase 17 portable backup, process disaster and interruption
         shell: pwsh
         run: ./tools/test-phase17-backup-restore.ps1 -ResultsDirectory .artifacts/phase17-ci
@@ -312,6 +333,15 @@ jobs:
           foreach ($pattern in @('*DistributedWorkerProcessIntegrationTests*', '*DistributedCoordinatorPersistenceTests*', '*DistributedMediaTransferTests*')) {
             if (@($results | Where-Object { $_.testName -like $pattern }).Count -eq 0) { throw "Required distributed worker test '$pattern' did not pass or was not discovered." }
           }
+      - name: Preserve Phase 20 browser and runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase20-windows-evidence
+          path: |
+            .artifacts/phase20-gate/*.trx
+            .artifacts/phase20-browser-results.json
+            .artifacts/phase20-browser
       - name: Run the complete .NET suite on Windows
         # Keep process-heavy integration projects from starving each other on hosted Windows.
         # Preserve every test and its existing cancellation/request deadlines.

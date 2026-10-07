@@ -8,10 +8,10 @@ afterEach(() => { vi.unstubAllGlobals(); window.sessionStorage.clear(); window.h
 it("protects the observability route without fetching administrative details", async () => {
   window.sessionStorage.setItem("hispania.identity.session", "opaque-session");
   window.history.replaceState({}, "", "/admin/observability");
-  const fetch = vi.fn(async () => response({ user: { displayName: "User" }, effectivePermissions: ["media.library.read"] }));
+  const fetch = vi.fn(async (input: RequestInfo | URL) => String(input) === "/api/v1/web/contributions" ? response({ schemaGeneration: 1, contributions: [] }) : response({ user: { displayName: "User" }, effectivePermissions: ["media.library.read"] }));
   vi.stubGlobal("fetch", fetch); render(<App />);
   expect(await screen.findByRole("heading", { name: "Acceso denegado" })).toBeInTheDocument();
-  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch.mock.calls.filter(call => String(call[0]) !== "/api/v1/web/contributions")).toHaveLength(1);
 });
 
 it("shows safe aggregate observability in the Classic shell using a Session", async () => {

@@ -1,3 +1,4 @@
+import { DynamicNavigation } from "./DynamicWeb";
 import { useAuth } from "./AuthContext";
 import { LoginPage } from "./LoginPage";
 import { adminRoutes, adminEntryPath } from "./webModules";
@@ -21,6 +22,6 @@ export function AdminShell({ path, variant }: { path: string; variant: "modern" 
   const Page = route.component;
   return <main className={`authorization-admin admin-${variant}`}>
     <header className="authorization-header"><a href="/">HISPANIA</a><strong>Platform Administration</strong><span>{auth.currentUser.user.displayName}</span><button type="button" onClick={() => void auth.logout()}>Cerrar sesión</button></header>
-    <div className="platform-admin-layout"><nav className="admin-navigation" aria-label="Administración">{adminRoutes.filter(item => auth.hasPermission(item.permission)).map(item => <a key={item.path} href={item.path} aria-current={item.path === route.path ? "page" : undefined}>{item.label}</a>)}</nav><div className="admin-page"><Page key={route.path} /></div></div>
+    <div className="platform-admin-layout"><nav className="admin-navigation" aria-label="Administración">{adminRoutes.filter(item => auth.hasPermission(item.permission)).map(item => <a key={item.path} href={item.path} aria-current={item.path === route.path ? "page" : undefined}>{item.label}</a>)}<DynamicNavigation section="AdminNavigation" /></nav><div className="admin-page"><Page key={route.path} /></div></div>
   </main>;
 }

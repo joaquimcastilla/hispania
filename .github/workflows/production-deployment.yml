@@ -60,12 +60,15 @@ jobs:
       - name: Publish exact archived Phase 17 predecessor
         shell: pwsh
         run: ./tools/publish-phase17-predecessor.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase18/predecessor-linux-x64
+      - name: Publish exact Phase 19 Web predecessor
+        shell: pwsh
+        run: ./tools/publish-phase19-predecessor.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase20/predecessor-linux-x64
       - name: Require clean-host, real systemd Server and Worker, rotation, upgrade and disaster recovery
         shell: pwsh
         run: |
           sudo install -d -m 0755 -o (id -un) -g (id -gn) $env:HISPANIA_PHASE18_SERVICE_ROOT
           if ($LASTEXITCODE -ne 0) { throw 'Native service fixture root provisioning failed.' }
-          ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/linux-x64 -PredecessorDirectory .artifacts/phase18/predecessor-linux-x64 -ResultsDirectory .artifacts/phase18/evidence -RequirePostgreSql -RequireNativeService
+          ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/linux-x64 -PredecessorDirectory .artifacts/phase18/predecessor-linux-x64 -WebPredecessorDirectory .artifacts/phase20/predecessor-linux-x64 -ResultsDirectory .artifacts/phase18/evidence -RequirePostgreSql -RequireNativeService
       - name: Clean native fixture root and service user
         if: always()
         run: |
@@ -122,11 +125,14 @@ jobs:
       - name: Publish exact archived Phase 17 predecessor
         shell: pwsh
         run: ./tools/publish-phase17-predecessor.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase18/predecessor-win-x64
+      - name: Publish exact Phase 19 Web predecessor
+        shell: pwsh
+        run: ./tools/publish-phase19-predecessor.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase20/predecessor-win-x64
       - name: Require clean-host, real SCM Server and Worker, upgrade and disaster recovery
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path $env:HISPANIA_PHASE18_SERVICE_ROOT -Force | Out-Null
-          ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/win-x64 -PredecessorDirectory .artifacts/phase18/predecessor-win-x64 -ResultsDirectory .artifacts/phase18/evidence -RequireNativeService
+          ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/win-x64 -PredecessorDirectory .artifacts/phase18/predecessor-win-x64 -WebPredecessorDirectory .artifacts/phase20/predecessor-win-x64 -ResultsDirectory .artifacts/phase18/evidence -RequireNativeService
       - name: Preserve production evidence
         if: always()
         uses: actions/upload-artifact@v6

@@ -11,8 +11,11 @@ export const shellRoutes: readonly ShellRoute[] = [
   { section: "inventory", path: "/erp/inventory", label: "Inventario", area: "erp" },
 ];
 
-export function routeForPath(path: string): ShellRoute | undefined {
-  return shellRoutes.find(route => route.path === path);
+export function routeForPath(path: string, contributions?: readonly import("./DynamicWeb").WebContribution[]): (ShellRoute & { contribution?: import("./DynamicWeb").WebContribution }) | undefined {
+  const builtIn = shellRoutes.find(route => route.path === path);
+  if (builtIn) return builtIn;
+  const contribution = contributions?.find(item => item.page.route === path);
+  return contribution ? { section: "home", path, label: contribution.page.title, area: "platform", contribution } : undefined;
 }
 
 export const moduleNavigation = shellRoutes.filter(route => route.area === "media");

@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)][string]$ArtifactDirectory,
     [Parameter(Mandatory)][string]$PredecessorDirectory,
     [string]$ResultsDirectory='.artifacts/phase18-gate',
+    [string]$WebPredecessorDirectory,
     [switch]$RequirePostgreSql,
     [switch]$RequireNativeService
 )
@@ -27,6 +28,10 @@ try {
     Test-Suite 'tests/deployment/Hispania.Deployment.Tests.csproj' 'Category=Phase18ProductionDeployment' 'configuration-secrets' 28
     Test-Suite 'tests/deployment-process/Hispania.Deployment.ProcessTests.csproj' 'Category=Phase18ProductionDeployment' 'published-processes' 10
     Test-Suite 'tests/deployment-process/Hispania.Deployment.ProcessTests.csproj' 'Category=Phase19PackageDistribution' 'package-distribution-upgrade' 2
+    if ($WebPredecessorDirectory) {
+        $env:HISPANIA_PHASE20_PREDECESSOR=[IO.Path]::GetFullPath($WebPredecessorDirectory)
+        Test-Suite 'tests/deployment-process/Hispania.Deployment.ProcessTests.csproj' 'Category=Phase20WebDistribution' 'web-distribution-upgrade' 2
+    }
     if ($RequirePostgreSql) {
         if (-not $env:HISPANIA_PHASE18_POSTGRES_CONNECTION) { throw 'A password-auth PostgreSQL fixture is mandatory; trust auth cannot prove credential rotation.' }
         foreach ($tool in @('pg_dump','pg_restore')) { Get-Command $tool -ErrorAction Stop | Out-Null }

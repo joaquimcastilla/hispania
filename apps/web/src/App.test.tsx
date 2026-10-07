@@ -12,6 +12,7 @@ function stubAppFetch(mock: (...args: any[]) => any, permissions = ["platform.ad
   vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === "/api/identity/me") return catalogResponse({ user: { id: { value: "test-user" }, username: "test", displayName: "Test", status: "Enabled" }, session: { id: { value: "test-session" }, userId: { value: "test-user" }, expiresAt: "2099-01-01T00:00:00Z" }, effectivePermissions: permissions });
+    if (url === "/api/v1/web/contributions") return catalogResponse({ schemaGeneration: 1, contributions: [] });
     if (url.endsWith("/stream")) return Promise.resolve({ ok: true, blob: async () => new Blob(["video"]) } as Response);
     return mock(input, init);
   }));

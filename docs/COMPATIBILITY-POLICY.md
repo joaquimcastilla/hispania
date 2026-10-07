@@ -61,3 +61,10 @@ Distribution 0.7.0 and Configuration Schema Generation 1 are independent. Strict
 ## Phase 19 package lifecycle
 
 Format 2 adds authenticated package SemVer/dependencies while format 1 and immutable Phase 15 signatures remain supported. Local deterministic planning, a pinned graph, staged operations, current-policy rollback/recovery and Phase 17 graph verification remain experimental. Distribution 0.7.0, 24 axes and zero Public Stable are unchanged. See [Phase 19](PHASE-19-PACKAGE-LIFECYCLE.md) and [ADR-0044](adr/ADR-0044-package-dependencies-and-lifecycle.md); local acceptance and both-OS CI are separate evidence.
+
+
+## Phase 20 — Dynamic Web Modules (Experimental)
+
+[Phase 20](PHASE-20-DYNAMIC-WEB-MODULES.md) adds signed declarative Web Schema Generation 1 as independent compatibility axis 25. Package Format 2, distribution 0.7.0 and private npm 0.1.0 remain unchanged; zero contracts are Public Stable. Required UI uses existing host/CLR capability negotiation; optional future UI is blocked independently of a healthy backend. Modern and Classic share one existing routing/registry composition and fixed authorized Platform operations. No package JavaScript, raw HTML/CSS, remote URLs, Node runtime or hostile-code browser sandbox is introduced.
+
+The package catalog, journal, trust/authorization and dependency graph remain authoritative; immutable UI projections and parsed-descriptor caches are ephemeral. Actual browser, portable restore and verified predecessor distribution-upgrade tests accompany preserved Phase 14–19 gates. Windows local evidence and pending Linux/native/live-PostgreSQL CI are distinguished in the local acceptance report. See [ADR 0045](adr/ADR-0045-dynamic-web-contributions.md), [author guide](DYNAMIC-WEB-AUTHOR-GUIDE.md) and [operator guide](DYNAMIC-WEB-OPERATOR-GUIDE.md).
