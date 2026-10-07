@@ -43,6 +43,9 @@ public static class PlatformAdminEndpoints
                 provider = asset.ProviderId, asset.CreatedAtUtc, asset.UpdatedAtUtc });
         }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.AssetsWrite, false));
 
+        group.MapGet("/modules/packages/graph", (ModuleExtensionCatalog catalog) => Results.Ok(catalog.InspectPackageGraph()))
+            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.Admin, false));
+
         group.MapGet("/modules", (IModuleRuntime runtime, ModuleExtensionCatalog catalog) =>
         {
             var extensions = catalog.Discover().Where(extension => !extension.Manifest.Id.StartsWith("invalid:", StringComparison.Ordinal)).ToArray();

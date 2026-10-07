@@ -180,7 +180,9 @@ builder.Services.AddSingleton<ModuleExtensionCatalog>(services => new ModuleExte
     builder.Configuration.GetSection("Modules:RevokedPublisherIds").Get<string[]>(),
     builder.Configuration.GetValue("Modules:RequirePublisherSignature", false),
     builder.Configuration.GetSection("Modules:OutOfProcessResources").Get<OutOfProcessResourceLimits>(),
-    builder.Configuration.GetSection("Modules:OutOfProcessRestarts").Get<OutOfProcessRestartPolicy>()));
+    builder.Configuration.GetSection("Modules:OutOfProcessRestarts").Get<OutOfProcessRestartPolicy>(),
+    services.GetRequiredService<Hispania.Platform.Contracts.Audit.IPlatformAuditWriter>()));
+builder.Services.AddHostedService<PackageLifecycleHostedService>();
 var libraryOptions = builder.Configuration.GetSection("Library").Get<LibraryOptions>() ?? new LibraryOptions();
 if (libraryOptions.Roots.Count == 0)
 {

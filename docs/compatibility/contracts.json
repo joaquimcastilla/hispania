@@ -3,21 +3,6 @@
   "distributionSource": "version.json",
   "contracts": [
     {
-      "id": "backup.format",
-      "contract": "Offline installation backup format",
-      "source": "apps/server/BackupInstallation.cs",
-      "kind": "Format",
-      "owner": "Host operations",
-      "technicalVersion": "Backup Format Generation 1",
-      "visibility": "Operator tooling",
-      "stability": "Experimental",
-      "consumers": "Offline backup verify and clean-root restore",
-      "serialization": "Directory bundle and bounded JSON manifest",
-      "compatibilityCommitment": "Reject unsupported generations and integrity failures before target switch; no global ACID",
-      "breakingChangePolicy": "Explicit format generation and reader policy; preserve immutable historical baselines",
-      "interpretation": "Technical bundle generation independent of distribution and owner schema versions"
-    },
-    {
       "id": "application/inventory/InventoryService.cs#ItemCreatedV1",
       "contract": "ItemCreatedV1",
       "source": "application/inventory/InventoryService.cs",
@@ -196,6 +181,36 @@
       "compatibilityCommitment": "No cross-minor guarantee; preserve documented data/security invariants",
       "breakingChangePolicy": "0.x: deliberate owner review + notes/migration; no intentional compatible-line patch break",
       "interpretation": "A: technical CLR generation; D: experimental contract"
+    },
+    {
+      "id": "backup.format",
+      "contract": "Offline installation backup format",
+      "source": "apps/server/BackupInstallation.cs",
+      "kind": "Format",
+      "owner": "Host operations",
+      "technicalVersion": "Backup Format Generation 1",
+      "visibility": "Operator tooling",
+      "stability": "Experimental",
+      "consumers": "Offline backup verify and clean-root restore",
+      "serialization": "Directory bundle and bounded JSON manifest",
+      "compatibilityCommitment": "Reject unsupported generations and integrity failures before target switch; no global ACID",
+      "breakingChangePolicy": "Explicit format generation and reader policy; preserve immutable historical baselines",
+      "interpretation": "Technical bundle generation independent of distribution and owner schema versions"
+    },
+    {
+      "id": "configuration.schema",
+      "contract": "Production installation configuration",
+      "source": "infrastructure/hosting/ProductionConfiguration.cs",
+      "kind": "Family",
+      "owner": "Production host infrastructure",
+      "technicalVersion": "Configuration Schema Generation 1",
+      "visibility": "Public",
+      "stability": "Experimental",
+      "consumers": "Server, WorkerAgent, installation operators",
+      "serialization": "JSON + environment + command line",
+      "compatibilityCommitment": "Strict known fields; defaults for omitted optional fields; unsupported generations reject before startup",
+      "breakingChangePolicy": "Incompatible configuration requires a new generation and explicit conversion or rejection policy",
+      "interpretation": "Configuration generation is independent of distribution, backup format and store schemas; no Public Stable declaration"
     },
     {
       "id": "contracts/architecture-test/IArchitectureDemonstrationService.cs#IArchitectureDemonstrationService",
@@ -2288,11 +2303,26 @@
       "source": "contracts/module-system/ModuleManifest.cs",
       "kind": "CLR",
       "owner": "Platform extensibility/distributed runtime",
-      "technicalVersion": "No independent manifest schema field; PackageFormatVersion=1; Version is module implementation identity",
+      "technicalVersion": "PackageFormatVersion 1 historical / 2 authenticated package dependencies; CLR Version remains separate from strict SemVer PackageVersion",
       "visibility": "Public",
       "stability": "Public Experimental",
       "consumers": "ModuleHost, WorkerAgent, coordinator and module authors",
       "serialization": "JSON manifest; canonical signed metadata for packaged extensions",
+      "compatibilityCommitment": "No cross-minor guarantee; preserve documented data/security invariants",
+      "breakingChangePolicy": "0.x: deliberate owner review + notes/migration; no intentional compatible-line patch break",
+      "interpretation": "D: experimental contract; no encoded version"
+    },
+    {
+      "id": "contracts/module-system/ModuleManifest.cs#PackageDependency",
+      "contract": "PackageDependency",
+      "source": "contracts/module-system/ModuleManifest.cs",
+      "kind": "CLR",
+      "owner": "Platform extensibility/distributed runtime",
+      "technicalVersion": "Unversioned CLR declaration; no independently published SDK version",
+      "visibility": "Public",
+      "stability": "Public Experimental",
+      "consumers": "ModuleHost, WorkerAgent, coordinator and module authors",
+      "serialization": "Yes: JSON/wire or persisted DTO; see owning axis and owner codec",
       "compatibilityCommitment": "No cross-minor guarantee; preserve documented data/security invariants",
       "breakingChangePolicy": "0.x: deliberate owner review + notes/migration; no intentional compatible-line patch break",
       "interpretation": "D: experimental contract; no encoded version"
@@ -6098,7 +6128,7 @@
       "source": "contracts/module-system/ModuleManifest.cs",
       "kind": "Family",
       "owner": "Platform extensibility",
-      "technicalVersion": "No independent manifest schema field; PackageFormatVersion=1; Version is module implementation identity",
+      "technicalVersion": "PackageFormatVersion 1 historical / 2 authenticated package dependencies; CLR Version remains separate from strict SemVer PackageVersion",
       "visibility": "Public",
       "stability": "Public Experimental",
       "consumers": "Installer, catalog, ModuleHost, module publishers",
@@ -6181,21 +6211,6 @@
       "compatibilityCommitment": "Expired/cancelled/previous-generation results cannot commit; no exactly-once claim",
       "breakingChangePolicy": "Owner review + explicit notes/migration; stable publication requires missing gates",
       "interpretation": "A/B/C/D/E per named axis; no implied stable SemVer"
-    },
-    {
-      "id": "configuration.schema",
-      "contract": "Production installation configuration",
-      "source": "infrastructure/hosting/ProductionConfiguration.cs",
-      "kind": "Family",
-      "owner": "Production host infrastructure",
-      "technicalVersion": "Configuration Schema Generation 1",
-      "visibility": "Public",
-      "stability": "Experimental",
-      "consumers": "Server, WorkerAgent, installation operators",
-      "serialization": "JSON + environment + command line",
-      "compatibilityCommitment": "Strict known fields; defaults for omitted optional fields; unsupported generations reject before startup",
-      "breakingChangePolicy": "Incompatible configuration requires a new generation and explicit conversion or rejection policy",
-      "interpretation": "Configuration generation is independent of distribution, backup format and store schemas; no Public Stable declaration"
     }
   ]
 }

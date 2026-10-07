@@ -5,6 +5,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../package-lifecycle-process-host/Hispania.PackageLifecycle.ProcessHost.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\apps\module-host\Hispania.ModuleHost.csproj" ReferenceOutputAssembly="false" />
     <Compile Remove="MediaDomainTests.cs;TimelineAndCoverageTests.cs;TechnicalRepresentationAndSourceTests.cs;PublicationAndCreatorTests.cs;EnrichmentTests.cs" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

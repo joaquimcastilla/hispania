@@ -450,6 +450,7 @@ internal static class BackupInstallation
     {
         var extensions = Path.Combine(root, "extensions");
         if (!Directory.Exists(extensions)) return;
+        Hispania.Runtime.ModuleExtensionCatalog.ValidateBackupPackageSet(extensions);
         foreach (var path in EnumerateSafe(extensions).Where(path => Path.GetFileName(path).Equals("module.json", StringComparison.OrdinalIgnoreCase)))
         {
             token.ThrowIfCancellationRequested();

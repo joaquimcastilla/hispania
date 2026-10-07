@@ -14,7 +14,7 @@ public sealed record DiscoveredExtension(ModuleManifest Manifest, string Manifes
 }
 
 /// <summary>Discovers inert manifests and activates only host-allowlisted packages/factories.</summary>
-public sealed class ModuleExtensionCatalog : IDisposable
+public sealed partial class ModuleExtensionCatalog : IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     private readonly string directory;
@@ -31,16 +31,26 @@ public sealed class ModuleExtensionCatalog : IDisposable
     private readonly bool requirePublisherSignature;
     private readonly OutOfProcessResourceLimits resourceLimits;
     private readonly OutOfProcessRestartPolicy restartPolicy;
+    private readonly Hispania.Platform.Contracts.Audit.IPlatformAuditWriter? packageAuditWriter;
     private readonly object syncRoot = new();
     private readonly SemaphoreSlim activationGate = new(1, 1);
     private readonly Dictionary<string, DiscoveredExtension> discovered = new(StringComparer.Ordinal);
     private readonly Dictionary<string, LoadedExtension> loaded = new(StringComparer.Ordinal);
 
-    public ModuleExtensionCatalog(string directory, Version hostVersion, IModuleRuntime runtime, IModuleRegistry registry, IReadOnlyDictionary<string, Func<IModule>> trustedFactories, IEnumerable<string>? allowedExtensionIds = null, string? moduleHostPath = null, IReadOnlyDictionary<string, string>? trustedPublisherKeys = null, IEnumerable<string>? revokedPublisherIds = null, bool requirePublisherSignature = false, OutOfProcessResourceLimits? resourceLimits = null, OutOfProcessRestartPolicy? restartPolicy = null)
+    // Preserve the predecessor CLR constructor signature for already compiled host composition consumers.
+    public ModuleExtensionCatalog(string directory, Version hostVersion, IModuleRuntime runtime, IModuleRegistry registry,
+        IReadOnlyDictionary<string, Func<IModule>> trustedFactories, IEnumerable<string>? allowedExtensionIds, string? moduleHostPath,
+        IReadOnlyDictionary<string, string>? trustedPublisherKeys, IEnumerable<string>? revokedPublisherIds, bool requirePublisherSignature,
+        OutOfProcessResourceLimits? resourceLimits, OutOfProcessRestartPolicy? restartPolicy)
+        : this(directory, hostVersion, runtime, registry, trustedFactories, allowedExtensionIds, moduleHostPath, trustedPublisherKeys,
+            revokedPublisherIds, requirePublisherSignature, resourceLimits, restartPolicy, null) { }
+
+    public ModuleExtensionCatalog(string directory, Version hostVersion, IModuleRuntime runtime, IModuleRegistry registry, IReadOnlyDictionary<string, Func<IModule>> trustedFactories, IEnumerable<string>? allowedExtensionIds = null, string? moduleHostPath = null, IReadOnlyDictionary<string, string>? trustedPublisherKeys = null, IEnumerable<string>? revokedPublisherIds = null, bool requirePublisherSignature = false, OutOfProcessResourceLimits? resourceLimits = null, OutOfProcessRestartPolicy? restartPolicy = null, Hispania.Platform.Contracts.Audit.IPlatformAuditWriter? packageAuditWriter = null)
     {
         this.directory = Path.GetFullPath(directory);
         this.hostVersion = hostVersion;
         this.runtime = runtime;
+        this.packageAuditWriter = packageAuditWriter;
         this.registry = registry;
         this.moduleHostPath = Path.GetFullPath(moduleHostPath ?? Path.Combine(AppContext.BaseDirectory, "module-host", "Hispania.ModuleHost.dll"));
         this.trustedPublisherKeys = new Dictionary<string, string>(trustedPublisherKeys ?? new Dictionary<string, string>(StringComparer.Ordinal), StringComparer.Ordinal);
@@ -53,14 +63,22 @@ public sealed class ModuleExtensionCatalog : IDisposable
         this.trustedFactories = trustedFactories;
         allowlist = new HashSet<string>(trustedFactories.Keys, StringComparer.Ordinal);
         if (allowedExtensionIds is not null) allowlist.UnionWith(allowedExtensionIds);
-        installer = new ExtensionPackageInstaller(this.directory, hostVersion, allowlist, ValidateContracts);
+        installer = new ExtensionPackageInstaller(this.directory, hostVersion, allowlist, manifest => manifest.PackageFormatVersion == 2
+            ? "Format 2 requires a planned package-set operation." : ValidateContracts(manifest));
     }
 
     public async Task<InstalledExtensionPackage> InstallAsync(Stream package, CancellationToken cancellationToken = default)
     {
-        var installed = await installer.InstallAsync(package, cancellationToken).ConfigureAwait(false);
-        _ = Discover();
-        return installed;
+        await activationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            using var mutationLock = await AcquirePackageMutationLockAsync(cancellationToken).ConfigureAwait(false);
+            EnsureNoIncompleteOperation();
+            var installed = await installer.InstallAsync(package, cancellationToken).ConfigureAwait(false);
+            _ = Discover();
+            return installed;
+        }
+        finally { activationGate.Release(); }
     }
 
     public async Task<bool> UninstallAsync(string id, string version, CancellationToken cancellationToken = default)
@@ -68,6 +86,10 @@ public sealed class ModuleExtensionCatalog : IDisposable
         await activationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            using var mutationLock = await AcquirePackageMutationLockAsync(cancellationToken).ConfigureAwait(false);
+            RejectManagedMutation(id);
+            if (Discover().Any(extension => extension.Manifest.Id != id && PackageDependencyResolver.Dependencies(extension.Manifest).Any(dependency => dependency.PackageId == id)))
+                throw new InvalidOperationException("An installed dependent blocks uninstall.");
             if (!allowlist.Contains(id)) throw new InvalidOperationException("Extension is not in the host allowlist.");
             if (!Version.TryParse(version, out var parsed)) throw new ArgumentException("Invalid extension version.", nameof(version));
             var packageDirectory = Path.GetFullPath(Path.Combine(directory, id, parsed.ToString()));
@@ -92,11 +114,13 @@ public sealed class ModuleExtensionCatalog : IDisposable
     public IReadOnlyCollection<DiscoveredExtension> Discover()
     {
         Directory.CreateDirectory(directory);
+        var committed = ReadState<PackageSetState>(PackageCatalogPath);
+        if (committed is not null) ValidateStoredGraph(committed);
         var manifests = new List<DiscoveredExtension>();
         foreach (var path in Directory.EnumerateFiles(directory, "module.json", SearchOption.AllDirectories).OrderBy(x => x, StringComparer.Ordinal))
         {
             var relativePath = Path.GetRelativePath(directory, path);
-            if (relativePath.Split(Path.DirectorySeparatorChar)[0].StartsWith(".staging-", StringComparison.Ordinal)) continue;
+            if (relativePath.Split(Path.DirectorySeparatorChar)[0].StartsWith('.')) continue;
             try
             {
                 var manifest = JsonSerializer.Deserialize<ModuleManifest>(File.ReadAllText(path), JsonOptions)
@@ -116,9 +140,10 @@ public sealed class ModuleExtensionCatalog : IDisposable
             discovered.Clear();
             foreach (var group in manifests.GroupBy(extension => extension.Manifest.Id, StringComparer.Ordinal))
             {
-                var versionGroups = group.GroupBy(extension => extension.Manifest.Version, StringComparer.Ordinal)
-                    .OrderByDescending(items => Version.TryParse(items.Key, out var version) ? version : new Version(0, 0)).ToArray();
-                var preferredVersion = versionGroups.FirstOrDefault()?.Key;
+                var versionGroups = group.GroupBy(extension => extension.Manifest.PackageVersion ?? extension.Manifest.Version, StringComparer.Ordinal)
+                    .OrderByDescending(items => NuGet.Versioning.NuGetVersion.TryParse(items.Key, out var version) ? version : new NuGet.Versioning.NuGetVersion(0, 0, 0), NuGet.Versioning.VersionComparer.VersionRelease).ToArray();
+                var selected = committed?.Packages.FirstOrDefault(entry => entry.Manifest.Id == group.Key);
+                var preferredVersion = selected is null ? versionGroups.FirstOrDefault()?.Key : selected.Manifest.PackageVersion ?? selected.Manifest.Version;
                 foreach (var versionGroup in versionGroups)
                 {
                     var packages = versionGroup.OrderBy(extension => extension.ManifestPath, StringComparer.Ordinal).ToArray();
@@ -186,7 +211,21 @@ public sealed class ModuleExtensionCatalog : IDisposable
         {
             string[] activeIds;
             lock (syncRoot) activeIds = loaded.Where(pair => pair.Value.Module is not null && pair.Value.Manifest.PublisherId == publisherId).Select(pair => pair.Key).ToArray();
-            foreach (var id in activeIds) await DeactivateCoreAsync(id, cancellationToken).ConfigureAwait(false);
+            var impacted = activeIds.ToHashSet(StringComparer.Ordinal);
+            bool changed;
+            do
+            {
+                changed = false;
+                foreach (var pair in loaded)
+                    if (PackageDependencyResolver.Dependencies(pair.Value.Manifest).Any(dependency => impacted.Contains(dependency.PackageId))) changed |= impacted.Add(pair.Key);
+            } while (changed);
+            var ordered = loaded.Values.Select(extension => new PackageCandidate(extension.Manifest with
+            {
+                Dependencies = extension.Manifest.Dependencies.Where(loaded.ContainsKey).ToArray(),
+                PackageDependencies = extension.Manifest.PackageDependencies?.Where(dependency => loaded.ContainsKey(dependency.PackageId)).ToArray()
+            }, "loaded", extension.PackageDirectory)).ToArray();
+            foreach (var id in PackageDependencyResolver.TopologicalOrder(ordered).Reverse().Where(impacted.Contains))
+                await DeactivateCoreAsync(id, cancellationToken).ConfigureAwait(false);
         }
         finally { activationGate.Release(); }
     }
@@ -196,7 +235,10 @@ public sealed class ModuleExtensionCatalog : IDisposable
         await activationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            using var mutationLock = await AcquirePackageMutationLockAsync(cancellationToken).ConfigureAwait(false);
+            RejectManagedMutation(id);
             var extension = GetDiscovered(id);
+            if (extension.Manifest.PackageFormatVersion == 2) throw new InvalidOperationException("Format 2 activation requires a committed package graph.");
             if (!extension.Compatible) throw new InvalidOperationException(extension.RejectionReason ?? "Extension is incompatible.");
             if (!allowlist.Contains(id)) throw new InvalidOperationException("Extension is not present in the host allowlist.");
             ValidatePublisherTrust(extension.Manifest);
@@ -234,11 +276,14 @@ public sealed class ModuleExtensionCatalog : IDisposable
         DiscoveredExtension? rollbackTarget = null;
         try
         {
+            using var mutationLock = await AcquirePackageMutationLockAsync(cancellationToken).ConfigureAwait(false);
+            RejectManagedMutation(id);
             var installedVersions = Discover();
             if (!allowlist.Contains(id)) throw new InvalidOperationException("Extension is not present in the host allowlist.");
             if (!Version.TryParse(version, out var targetVersion)) throw new ArgumentException("Invalid target extension version.", nameof(version));
             var target = installedVersions.FirstOrDefault(item => item.Manifest.Id == id && Version.TryParse(item.Manifest.Version, out var current) && current == targetVersion)
                 ?? throw new ModuleNotFoundException($"{id}@{version}");
+            if (target.Manifest.PackageFormatVersion == 2) throw new InvalidOperationException("Format 2 update requires a package-set plan.");
             if (!target.Compatible) throw new InvalidOperationException(target.RejectionReason ?? "Target extension version is incompatible.");
             ValidatePublisherTrust(target.Manifest);
             LoadedExtension? previousLoaded;
@@ -349,6 +394,7 @@ public sealed class ModuleExtensionCatalog : IDisposable
     private LoadedExtension CreateLoadedModule(DiscoveredExtension extension)
     {
         var manifest = extension.Manifest;
+        ValidatePublisherTrust(manifest);
         if (manifest.EntryAssembly is null || manifest.EntryType is null) throw new InvalidOperationException("This manifest has no loadable package entry point.");
         var packageDirectory = Path.GetDirectoryName(extension.ManifestPath)!;
         VerifyPackageIntegrity(manifest, packageDirectory);
@@ -379,7 +425,7 @@ public sealed class ModuleExtensionCatalog : IDisposable
     public async Task<DiscoveredExtension> DeactivateAsync(string id, CancellationToken cancellationToken)
     {
         await activationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try { return await DeactivateCoreAsync(id, cancellationToken).ConfigureAwait(false); }
+        try { RejectManagedMutation(id); return await DeactivateCoreAsync(id, cancellationToken).ConfigureAwait(false); }
         finally { activationGate.Release(); }
     }
 
@@ -412,6 +458,7 @@ public sealed class ModuleExtensionCatalog : IDisposable
         await activationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            RejectManagedMutation(id);
             await DeactivateCoreAsync(id, cancellationToken).ConfigureAwait(false);
             if (!loaded.Remove(id, out var extension)) return false;
             runtime.UnregisterStoppedModule(id);
@@ -433,6 +480,10 @@ public sealed class ModuleExtensionCatalog : IDisposable
                     throw new InvalidOperationException($"Module '{id}' is not active with contract {typeof(TContract).FullName}.");
                 return new ExtensionLease<TContract>(staticContract, static () => { });
             }
+            if (extension.Manifest.PackageFormatVersion == 2 || File.Exists(PackageCatalogPath) && ReadPackageState().Packages.Any(entry => entry.Manifest.Id == id))
+                ValidatePackageExecutionJournal();
+            ValidatePublisherTrust(extension.Manifest);
+            if (extension.Manifest.PackageFormatVersion == 2) ValidateActivePackageDependencies(extension.Manifest);
             if (runtime.GetHealth(id).State != ModuleLifecycleState.Running)
                 throw new InvalidOperationException($"Module '{id}' is {runtime.GetHealth(id).State} and is not accepting operations.");
             var module = extension.Module ?? registry.GetById(id);
@@ -447,13 +498,14 @@ public sealed class ModuleExtensionCatalog : IDisposable
 
     private string? Validate(ModuleManifest manifest, string manifestDirectory)
     {
+        try { PackageDependencyResolver.ValidateManifest(manifest); }
+        catch (InvalidDataException exception) { return exception.Message; }
         if (string.IsNullOrWhiteSpace(manifest.Id) || string.IsNullOrWhiteSpace(manifest.Name)) return "Module id and name are required.";
         if (!Version.TryParse(manifest.Version, out var version) || version.Major < 0) return "Invalid module version.";
         if (!Version.TryParse(manifest.MinimumHostVersion, out var minimum) || hostVersion < minimum) return $"Requires host version {manifest.MinimumHostVersion} or newer.";
         if (manifest.MaximumHostVersion is not null && (!Version.TryParse(manifest.MaximumHostVersion, out var maximum) || hostVersion > maximum)) return $"Requires host version {manifest.MaximumHostVersion} or older.";
         if (manifest.Implements is null || manifest.Provides is null || manifest.Requires is null || manifest.Dependencies is null || manifest.DependencyMinimumVersions is null || manifest.OptionalDependencies is null || manifest.Permissions is null) return "Manifest arrays cannot be null.";
         if (manifest.Runtime is not ("dotnet-inprocess-trusted" or "dotnet-outofprocess")) return $"Unsupported runtime '{manifest.Runtime}'.";
-        if (manifest.EntryAssembly is not null && manifest.PackageFormatVersion != 1) return $"Unsupported package format version {manifest.PackageFormatVersion}.";
         if (manifest.EntryAssembly is not null)
         {
             if (manifest.EntryType is null) return "EntryType is required when EntryAssembly is declared.";
@@ -472,7 +524,7 @@ public sealed class ModuleExtensionCatalog : IDisposable
     {
         var status = GetPublisherStatus(manifest);
         if (status == PublisherSignatureStatus.Trusted) return;
-        if (status == PublisherSignatureStatus.NoSignature && !requirePublisherSignature) return;
+        if (status == PublisherSignatureStatus.NoSignature && !requirePublisherSignature && manifest.PackageFormatVersion == 1) return;
         throw new InvalidOperationException(status switch
         {
             PublisherSignatureStatus.NoSignature => "Package publisher signature is required by host policy.",
@@ -563,7 +615,8 @@ public sealed class ModuleExtensionCatalog : IDisposable
     {
         ArgumentNullException.ThrowIfNull(manifest);
         if (manifest.EntryAssembly is null) return;
-        if (manifest.PackageFormatVersion != 1 || manifest.Files is null || !manifest.Files.ContainsKey(manifest.EntryAssembly))
+        PackageDependencyResolver.ValidateManifest(manifest);
+        if (manifest.Files is null || !manifest.Files.ContainsKey(manifest.EntryAssembly))
             throw new InvalidDataException("Installed backup package has an unsupported format or missing entry payload.");
         VerifyPackageIntegrity(manifest, packageDirectory);
     }
@@ -588,11 +641,14 @@ public sealed class ModuleExtensionCatalog : IDisposable
 
     private DiscoveredExtension[] Snapshot() => discovered.Values.OrderBy(x => x.Manifest.Id, StringComparer.Ordinal).Select(extension =>
     {
+        var selectedSet = ReadState<PackageSetState>(PackageCatalogPath);
         var registered = registry.List().FirstOrDefault(module => module.Descriptor.Id == extension.Manifest.Id);
         var matchesVersion = registered is not null && Version.TryParse(extension.Manifest.Version, out var version) && registered.Descriptor.Version == version;
+        if (loaded.TryGetValue(extension.Manifest.Id, out var generation)) matchesVersion &= SameManifest(generation.Manifest, extension.Manifest);
         var state = matchesVersion ? runtime.GetHealth(extension.Manifest.Id).State : (ModuleLifecycleState?)null;
-        var isLoaded = loaded.TryGetValue(extension.Manifest.Id, out var dynamicModule) && dynamicModule.Module is not null && dynamicModule.Module.Descriptor.Version == Version.Parse(extension.Manifest.Version);
-        return extension with { State = state, Installed = extension.Manifest.EntryAssembly is not null, Loaded = isLoaded || matchesVersion };
+        var isLoaded = generation?.Module is not null && SameManifest(generation.Manifest, extension.Manifest);
+        var installed = extension.Manifest.EntryAssembly is not null && (selectedSet is null || selectedSet.Packages.Any(entry => SameManifest(entry.Manifest, extension.Manifest)));
+        return extension with { State = state, Installed = installed, Loaded = isLoaded || matchesVersion };
     }).ToArray();
 
     private static async Task<bool> WaitForUnloadAsync(WeakReference context, CancellationToken cancellationToken)
@@ -645,6 +701,11 @@ public sealed class ModuleExtensionCatalog : IDisposable
 public sealed class ExtensionLease<TContract>(TContract Contract, Action release) : IDisposable where TContract : class
 {
     private Action? releaseOnce = release;
-    public TContract Value { get; } = Contract;
-    public void Dispose() => Interlocked.Exchange(ref releaseOnce, null)?.Invoke();
+    private TContract? contract = Contract;
+    public TContract Value => contract ?? throw new ObjectDisposedException(nameof(ExtensionLease<>));
+    public void Dispose()
+    {
+        contract = null;
+        Interlocked.Exchange(ref releaseOnce, null)?.Invoke();
+    }
 }

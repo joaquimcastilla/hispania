@@ -88,7 +88,7 @@ Each machine entry records owner, technical version, exposure, stability, consum
 
 The inventory includes `IndependentGreetingModuleV2`: it identifies the second demonstration implementation behind the same `IExtensionDemoV1`, not a V2 stable SDK. Demo manifest filenames and module implementation versions are separate from CLR contract identity. No Version1/Version2 declaration exists at this checkpoint. Tests/fixtures are excluded deliberately. Counts are generated from source, not the approximate audit total.
 
-Known inconsistencies: Worker generation 1 is duplicated in coordinator and agent (tested equality); package format checks repeat literal 1 (preserved); host 1.0.0 is legacy package bounds; Manifest has no independent schema field; unversioned HTTP DTOs coexist with V1 CLR records; Jobs payload suffix has no JobType version negotiation; instrument 1.0.0 is scope identity. Do not infer stable SemVer from any of these. No mass renames are required.
+Known inconsistencies: Worker generation 1 is duplicated in coordinator and agent (tested equality); package format 1 remains readable and format 2 adds signed package dependencies; host 1.0.0 is legacy package bounds; Manifest has no independent schema field; unversioned HTTP DTOs coexist with V1 CLR records; Jobs payload suffix has no JobType version negotiation; instrument 1.0.0 is scope identity. Do not infer stable SemVer from any of these. No mass renames are required.
 
 """
     head += f"Inventory: {len(rows)} entries; {len(versioned)} version-named CLR declarations; " + str(sum(r["stability"] == "Stable Candidate" for r in rows)) + " candidate entries.\n\n"

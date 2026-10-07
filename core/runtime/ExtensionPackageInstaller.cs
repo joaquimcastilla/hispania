@@ -55,6 +55,7 @@ public sealed class ExtensionPackageInstaller
             if (entry.Length < 0 || expandedBytes > MaximumExpandedBytes) throw new InvalidDataException("Expanded package size exceeds the configured limit.");
         }
         if (!entries.TryGetValue("module.json", out var manifestEntry)) throw new InvalidDataException("Package must contain a root module.json.");
+        if (manifestEntry.Length > 1024 * 1024) throw new InvalidDataException("Package manifest exceeds the size limit.");
         ModuleManifest manifest;
         await using (var manifestStream = manifestEntry.Open())
         {
@@ -72,7 +73,7 @@ public sealed class ExtensionPackageInstaller
         if (!manifest.Files.TryGetValue(manifest.EntryAssembly!, out _)) throw new InvalidDataException("Entry assembly is not covered by the package integrity manifest.");
 
         var version = Version.Parse(manifest.Version);
-        var destination = Path.GetFullPath(Path.Combine(root, manifest.Id, version.ToString()));
+        var destination = Path.GetFullPath(Path.Combine(root, manifest.Id, manifest.PackageVersion ?? version.ToString()));
         EnsureWithinRoot(destination);
         if (Directory.Exists(destination)) throw new IOException($"Extension version '{manifest.Id}@{version}' is already installed.");
         Directory.CreateDirectory(root);
@@ -130,6 +131,7 @@ public sealed class ExtensionPackageInstaller
 
     private void ValidateManifest(ModuleManifest manifest)
     {
+        PackageDependencyResolver.ValidateManifest(manifest);
         if (string.IsNullOrWhiteSpace(manifest.Id) || manifest.Id.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_')))
             throw new InvalidDataException("Invalid module id.");
         if (!Version.TryParse(manifest.Version, out _) || !Version.TryParse(manifest.MinimumHostVersion, out var minimum) || hostVersion < minimum)
@@ -137,7 +139,6 @@ public sealed class ExtensionPackageInstaller
         if (manifest.MaximumHostVersion is not null && (!Version.TryParse(manifest.MaximumHostVersion, out var maximum) || hostVersion > maximum))
             throw new InvalidDataException("Host version is outside the extension compatibility range.");
         if (manifest.Runtime is not ("dotnet-inprocess-trusted" or "dotnet-outofprocess")) throw new InvalidDataException("Unsupported extension runtime.");
-        if (manifest.PackageFormatVersion != 1) throw new InvalidDataException($"Unsupported extension package format version {manifest.PackageFormatVersion}.");
         if (manifest.Implements is null || manifest.Provides is null || manifest.Requires is null || manifest.Dependencies is null || manifest.OptionalDependencies is null || manifest.Permissions is null)
             throw new InvalidDataException("Manifest arrays cannot be null.");
         foreach (var contract in manifest.Implements.Concat(manifest.Provides).Concat(manifest.Requires))
