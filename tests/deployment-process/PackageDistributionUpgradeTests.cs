@@ -1,4 +1,7 @@
 using System.IO.Compression;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Hispania.ExtensionDemo;
@@ -18,8 +21,13 @@ public sealed class PackageDistributionUpgradeTests
     [InlineData(false)][InlineData(true)]
     public async Task OfflineDistributionSwitchPreservesHistoricalFormatGraphAndRevalidatesOptionalHostBounds(bool incompatible)
     {
-        using var fixture = new ArtifactProcessTests.HostFixture();
-        using (var initial = fixture.Start()) { await fixture.ReadyAsync(initial); await fixture.StopAsync(initial); }
+        var predecessor = Environment.GetEnvironmentVariable("HISPANIA_PHASE18_PREDECESSOR") ?? throw new InvalidOperationException("Mandatory archived predecessor missing.");
+        Assert.Equal("c3a827a4b828cff37785884e889689af7cc5fce2", ArtifactManifest.Verify(predecessor).GitSha);
+        using var fixture = new ArtifactProcessTests.HostFixture(incompatible ? ArtifactProcessTests.Artifact : predecessor);
+        var library = Path.Combine(fixture.Home, "library-source");
+        Directory.CreateDirectory(library);
+        var legacyArgs = new[] { $"--contentRoot={Path.Combine(fixture.Home, "app", "server")}", $"--webroot={Path.Combine(fixture.Home, "app", "server", "wwwroot", "modern")}", $"--urls=http://127.0.0.1:{fixture.Port}", $"--Backup:ManagedRoot={Path.Combine(fixture.Home, "state")}", "--Library:Roots:0:Key=legacy", $"--Library:Roots:0:Path={library}", "--Ffprobe:ExecutablePath=ffprobe", "--Ffmpeg:ExecutablePath=ffmpeg", "--Modules:ArchitectureDemonstration=hispania.architecture-test.a" };
+        using (var initial = fixture.Start(incompatible ? null : legacyArgs)) { await fixture.ReadyAsync(initial); await fixture.StopAsync(initial); }
         using var rsa = RSA.Create(2048);
         var keys = new Dictionary<string, string> { ["TEST-ONLY-distribution-package"] = rsa.ExportSubjectPublicKeyInfoPem() };
         var root = Path.Combine(fixture.Home, "state", "extensions");
@@ -53,10 +61,55 @@ public sealed class PackageDistributionUpgradeTests
             await previous.StopManagedPackagesAsync();
         }
         fixture.WriteConfiguration(new { trustedExtensionIds = new[] { manifest.Id }, trustedPublisherKeys = keys });
+        var portablePath = Path.Combine(fixture.Home, "state", "portable.json");
+        var portable = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(portablePath), Json)!;
+        portable["Modules:TrustedExtensionIds:0"] = manifest.Id;
+        portable["Modules:TrustedPublisherKeys:TEST-ONLY-distribution-package"] = keys["TEST-ONLY-distribution-package"];
+        portable["Modules:RequirePublisherSignature"] = "true";
+        File.WriteAllText(portablePath, JsonSerializer.Serialize(portable, Json));
+        var adminToken = Guid.NewGuid().ToString("N");
+        var environment = new Dictionary<string, string> { ["Modules__AdminToken"] = adminToken };
+        fixture.Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+        async Task AssertOperationalAsync()
+        {
+            using var response = await fixture.Client.GetAsync($"/internal/admin/modules/extensions/{manifest.Id}/greeting");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var greeting = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("base", greeting.GetProperty("message").GetString());
+        }
+        if (!incompatible)
+        {
+            var historicalEnvironment = new Dictionary<string, string>(environment)
+            {
+                ["Modules__ExtensionsPath"] = root,
+                ["Modules__TrustedExtensionIds__0"] = manifest.Id,
+                ["Modules__TrustedPublisherKeys__TEST-ONLY-distribution-package"] = keys["TEST-ONLY-distribution-package"],
+                ["Modules__RequirePublisherSignature"] = "true"
+            };
+            using var historical = fixture.Start(legacyArgs, historicalEnvironment);
+            await fixture.ReadyAsync(historical);
+            using var discovered = await fixture.Client.GetAsync("/internal/admin/modules/extensions");
+            Assert.Equal(HttpStatusCode.OK, discovered.StatusCode);
+            Assert.Contains(manifest.Id, await discovered.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+            using var activation = await fixture.Client.PostAsync($"/internal/admin/modules/extensions/{manifest.Id}/activate", null);
+            Assert.Equal(HttpStatusCode.OK, activation.StatusCode);
+            await AssertOperationalAsync();
+            await fixture.StopAsync(historical);
+        }
         var before = File.ReadAllBytes(Path.Combine(root, ".package-state", "catalog.json"));
         var bundle = await InstallationOperations.UpgradeAsync(ArtifactProcessTests.Artifact, fixture.Home);
         Assert.True(File.Exists(Path.Combine(bundle, "extensions", ".package-state", "catalog.json")));
-        using (var switched = fixture.Start()) { await fixture.ReadyAsync(switched); await fixture.StopAsync(switched); }
+        using (var switched = fixture.Start(environment: environment))
+        {
+            await fixture.ReadyAsync(switched);
+            if (!incompatible)
+            {
+                // Production intentionally disables the legacy bearer mutation/greeting surface.
+                var health = await fixture.Client.GetFromJsonAsync<JsonElement>("/internal/modules/health");
+                Assert.Contains(health.EnumerateArray(), row => row.GetProperty("descriptor").GetProperty("id").GetString() == manifest.Id && row.GetProperty("isHealthy").GetBoolean());
+            }
+            await fixture.StopAsync(switched);
+        }
         Assert.Equal(before, File.ReadAllBytes(Path.Combine(root, ".package-state", "catalog.json")));
         using var current = Catalog(root, new Version(1, 0, 0), keys);
         if (incompatible)
@@ -64,7 +117,13 @@ public sealed class PackageDistributionUpgradeTests
             await Assert.ThrowsAsync<InvalidOperationException>(() => current.RecoverPackageSetAsync());
             Assert.Equal("HostIncompatible", Assert.Single(current.InspectPackageGraph()).Status);
         }
-        else { await current.RecoverPackageSetAsync(); Assert.Equal("Resolved", Assert.Single(current.InspectPackageGraph()).Status); await current.StopManagedPackagesAsync(); }
+        else
+        {
+            await current.RecoverPackageSetAsync();
+            Assert.Equal("Resolved", Assert.Single(current.InspectPackageGraph()).Status);
+            using (var lease = current.Acquire<IExtensionDemoV1>(manifest.Id)) Assert.Equal("base", lease.Value.GetMessage());
+            await current.StopManagedPackagesAsync();
+        }
     }
 
     private static ModuleExtensionCatalog Catalog(string root, Version host, Dictionary<string, string> keys)
