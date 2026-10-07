@@ -24,7 +24,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Phase 19 package lifecycle tests failed.' }
     $trx = [xml](Get-Content -LiteralPath (Join-Path $results 'phase19-package-lifecycle.trx') -Raw)
     $tests = @($trx.TestRun.Results.UnitTestResult)
-    if ($tests.Count -lt 69 -or @($tests | Where-Object outcome -ne 'Passed').Count -ne 0) { throw 'Phase 19 requires all resolver, lifecycle, historical reader and real process tests without skips.' }
+    if ($tests.Count -lt 71 -or @($tests | Where-Object outcome -ne 'Passed').Count -ne 0) { throw 'Phase 19 requires all resolver, lifecycle, historical reader and real process tests without skips.' }
     dotnet test (Join-Path $repo 'tests/inventory/Hispania.Inventory.Tests.csproj') --filter FullyQualifiedName~Phase19PackageBackupTests --results-directory $results --logger 'trx;LogFileName=phase19-package-backup.trx'
     if ($LASTEXITCODE -ne 0) { throw 'Phase 19 real installation backup/restore failed.' }
     $backup = [xml](Get-Content -LiteralPath (Join-Path $results 'phase19-package-backup.trx') -Raw)

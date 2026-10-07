@@ -14,6 +14,41 @@ public sealed class PackageLifecycleIntegrationTests
     private const string ConsumerId = "test.package.consumer";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    [Theory]
+    [InlineData(false)][InlineData(true)]
+    public async Task ForgedZipManifestLengthIsRejectedBeforeAnyInstallation(bool install)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "hispania-manifest-limit-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "TEST-ONLY-forged-length.hispania");
+        try
+        {
+            using (var output = File.Create(path))
+            using (var archive = new ZipArchive(output, ZipArchiveMode.Create))
+            using (var writer = new StreamWriter(archive.CreateEntry("module.json").Open()))
+                writer.Write(new string(' ', 1024 * 1024 + 1) + "{}");
+            var bytes = File.ReadAllBytes(path);
+            for (var offset = 0; offset <= bytes.Length - 28; offset++)
+            {
+                var signature = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(offset, 4));
+                if (signature == 0x04034b50) System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 22, 4), 2);
+                if (signature == 0x02014b50) System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 24, 4), 2);
+            }
+            File.WriteAllBytes(path, bytes);
+            using (var archive = ZipFile.OpenRead(path)) Assert.Equal(2, archive.GetEntry("module.json")!.Length);
+            var destination = Path.Combine(root, "installed");
+            if (install)
+            {
+                var installer = new ExtensionPackageInstaller(destination, new Version(1, 0, 0), [], _ => null);
+                await using var input = File.OpenRead(path);
+                await Assert.ThrowsAnyAsync<JsonException>(() => installer.InstallAsync(input));
+            }
+            else await Assert.ThrowsAnyAsync<JsonException>(() => PackageArchiveInspector.InspectAsync(path));
+            Assert.False(Directory.Exists(destination));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Fact]
     public async Task SignedGraphInstallsInertThenEnablesInOrderAndBlocksIndividualUninstall()
     {

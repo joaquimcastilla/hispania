@@ -85,10 +85,10 @@ Local acceptance on 2026-10-07:
 
 | Gate | Result |
 | --- | --- |
-| Phase 19 resolver/lifecycle/historical reader/real crash | 69/69 passed, no skips |
+| Phase 19 resolver/lifecycle/historical reader/real crash | 71/71 passed, no skips |
 | Phase 19 real installation backup/restore | 2/2 passed, no skips |
 | Phase 19 published distribution switch/blocked optional package | 2/2 passed, no skips |
-| Complete .NET suite | 741 passed, zero failed, two existing PostgreSQL infrastructure skips |
+| Complete .NET suite | 743 passed, zero failed, two existing PostgreSQL infrastructure skips |
 | Full solution and Platform builds | Zero warnings/errors |
 | Phase 14/15/16 portable/17 portable regression cases | 3/16/36/45 passed within the complete suite |
 | Phase 18 configuration and published processes | 28/28 and 10/10 passed, no skips |
@@ -96,7 +96,7 @@ Local acceptance on 2026-10-07:
 | Closure and 20 concurrency repetitions | 210/210 passed |
 | Frozen corpus | 27 fixtures; both historical hashes unchanged; Python negatives 10/10 |
 
-The bounded resolver measurement was 67.328 ms for 81 packages/80 edges on this machine; it is not a performance guarantee. Local logs/TRX are retained under ignored `.artifacts/phase19-*`; publications and the detailed local report are under `.artifacts/phase19/`. Local publications preserve the actual `sourceDirty` flag; preexisting user documentation means they cannot be claimed as reproducible clean release artifacts.
+The bounded resolver measurement was 67.328 ms for 81 packages/80 edges on this machine; it is not a performance guarantee. Two additional negative ZIP cases confirm .NET 10 bounds a forged entry length and rejects its truncated manifest in both inspection and installation before any destination is created. Local logs/TRX are retained under ignored `.artifacts/phase19-*`; publications and the detailed local report are under `.artifacts/phase19/`. Local publications preserve the actual `sourceDirty` flag; preexisting user documentation means they cannot be claimed as reproducible clean release artifacts.
 
 Production `npm audit --omit=dev` reports zero vulnerabilities. Full build audit still reports one high development advisory in source-map-js 1.2.1 in the current build, not only the archived predecessor. No lockfile or frozen artifact was rewritten in this phase.
 
