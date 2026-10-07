@@ -24,13 +24,17 @@ dotnet (Join-Path $repo 'tests/web-contribution-fixtures/bin/Debug/net10.0/Hispa
 if ($LASTEXITCODE -ne 0) { throw 'Fixture generation failed.' }
 dotnet run --project (Join-Path $repo 'tools/package-preflight/Hispania.PackagePreflight.csproj') --configuration Release -- (Join-Path $fixtures '1.0.0.hispania')
 if ($LASTEXITCODE -ne 0) { throw 'Offline package author tooling failed.' }
+foreach ($case in (Get-Content -Raw (Join-Path $fixtures 'preflight-matrix.json') | ConvertFrom-Json -AsHashtable).GetEnumerator()) {
+    dotnet run --project (Join-Path $repo 'tools/package-preflight/Hispania.PackagePreflight.csproj') --configuration Release --no-build -- (Join-Path $fixtures $case.Key)
+    if (($case.Value -and $LASTEXITCODE -ne 0) -or (-not $case.Value -and $LASTEXITCODE -ne 1)) { throw "Actual preflight/runtime matrix disagrees for $($case.Key)." }
+}
 dotnet (Join-Path $reader 'Hispania.HistoricalWeb.Reader.dll') (Join-Path $fixtures '1.0.0.hispania') (Join-Path $results ('old-installed-' + [Guid]::NewGuid().ToString('N'))) (Join-Path $fixtures 'keys.json')
 if ($LASTEXITCODE -ne 0) { throw 'Required Web predecessor safety failed.' }
 dotnet test (Join-Path $repo 'tests/unit/Hispania.Runtime.Tests.csproj') --filter FullyQualifiedName~WebContribution --results-directory $results --logger 'trx;LogFileName=phase20-web.trx'
 if ($LASTEXITCODE -ne 0) { throw 'Web contribution runtime tests failed.' }
 $trx = [xml](Get-Content -LiteralPath (Join-Path $results 'phase20-web.trx') -Raw)
 $tests = @($trx.TestRun.Results.UnitTestResult)
-if ($tests.Count -lt 35 -or @($tests | Where-Object outcome -ne 'Passed').Count -ne 0) { throw 'Phase20 runtime gate forbids missing/skipped tests.' }
+if ($tests.Count -lt 49 -or @($tests | Where-Object outcome -ne 'Passed').Count -ne 0) { throw 'Phase20 runtime gate forbids missing/skipped tests.' }
 dotnet test (Join-Path $repo 'tests/inventory/Hispania.Inventory.Tests.csproj') --filter FullyQualifiedName~Phase20WebBackup --results-directory $results --logger 'trx;LogFileName=phase20-backup.trx'
 if ($LASTEXITCODE -ne 0) { throw 'Phase20 actual backup/restore and future-schema isolation failed.' }
 $backup = [xml](Get-Content -LiteralPath (Join-Path $results 'phase20-backup.trx') -Raw)

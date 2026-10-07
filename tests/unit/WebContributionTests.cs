@@ -11,6 +11,34 @@ public sealed class WebContributionTests(ITestOutputHelper output)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     [Theory]
+    [InlineData("/")][InlineData("/login")][InlineData("/admin")][InlineData("/api")][InlineData("/health")]
+    [InlineData("/erp/inventory")][InlineData("/extensions/test.package.web//dashboard")]
+    [InlineData("/extensions/test.package.web/%64ashboard")][InlineData("/extensions/test.package.web/./dashboard")]
+    [InlineData("/extensions/test.package.web/other/../dashboard")][InlineData("/extensions/test.package.web/Dashboard")]
+    [InlineData("//example.com/dashboard")][InlineData("https://example.com/dashboard")]
+    public void ReservedOrNoncanonicalRoutesCannotShadowHostOrAliasAContribution(string route)
+    {
+        var page = WebPackageFixture.Document().Contributions[0];
+        var document = new WebContributionDocument(1, [page with { Route = route }]);
+        Assert.Throws<InvalidDataException>(() => WebContributionValidator.Parse(WebPackageFixture.Manifest(), JsonSerializer.SerializeToUtf8Bytes(document, Json)));
+    }
+
+    [Fact]
+    public async Task ValidRegistryRebuildPreservesTheEntireLogicalSnapshotAfterRestart()
+    {
+        using var fixture = new WebPackageFixture();
+        await fixture.Catalog.ApplyPackageSetAsync(await fixture.Plan(fixture.Archive()), new HashSet<string> { WebPackageFixture.Id });
+        var before = JsonSerializer.Serialize(await fixture.Catalog.InspectWebContributionsAsync(), Json);
+        await fixture.Catalog.StopManagedPackagesAsync();
+        var registry = new ModuleRegistry(); registry.Register(new WebContributionHostModule()); var runtime = new ModuleRuntime(registry);
+        await runtime.StartModuleAsync("platform.web.contributions", default);
+        using var restarted = new ModuleExtensionCatalog(fixture.Installed, new Version(1, 0, 0), runtime, registry,
+            new Dictionary<string, Func<IModule>>(), [WebPackageFixture.Id], trustedPublisherKeys: fixture.Keys, requirePublisherSignature: true);
+        await restarted.RecoverPackageSetAsync();
+        Assert.Equal(before, JsonSerializer.Serialize(await restarted.InspectWebContributionsAsync(), Json));
+        await restarted.StopManagedPackagesAsync();
+    }
+    [Theory]
     [InlineData("future")][InlineData("component")][InlineData("route")][InlineData("collision")]
     [InlineData("javascript")][InlineData("data")][InlineData("file")][InlineData("permission")]
     [InlineData("traversal")][InlineData("encoded")][InlineData("absolute")][InlineData("oversized")]

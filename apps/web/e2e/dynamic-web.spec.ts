@@ -32,6 +32,9 @@ test("real signed package lifecycle, Session RBAC, safe rendering and CSP", asyn
     `--Modules:ExtensionsPath=${join(root, "state", "extensions")}`, "--Modules:TrustedExtensionIds:0=test.package.web", "--Modules:RequirePublisherSignature=true",
     `--Modules:TrustedPublisherKeys:TEST-ONLY-web=${keys["TEST-ONLY-web"]}`];
   let child: ChildProcess | undefined; let logs = "";
+  let probingCsp = false;
+  const unexpectedCsp: string[] = [];
+  page.on("console", message => { if (!probingCsp && /content security policy|violates.*directive/i.test(message.text())) unexpectedCsp.push(message.text()); });
   try {
     child = spawn("dotnet", args, { cwd: serverDir, windowsHide: true, env: { ...process.env, ASPNETCORE_ENVIRONMENT: "Production" } });
     child.stdout?.on("data", data => { logs += String(data); }); child.stderr?.on("data", data => { logs += String(data); });
@@ -69,16 +72,24 @@ test("real signed package lifecycle, Session RBAC, safe rendering and CSP", asyn
     await page.getByRole("button", { name: "Comprobar estado" }).click(); await expect(page.getByText("Acción aceptada")).toBeVisible();
     const response = await request.get(base + route); const csp = response.headers()["content-security-policy"];
     expect(csp).toContain("script-src 'self'"); expect(csp).not.toContain("unsafe-eval");
+    expect(unexpectedCsp).toEqual([]);
+    probingCsp = true;
     // DevTools evaluate itself bypasses unsafe-eval checks; run the probe as an actual origin script.
     await page.route("**/assets/csp-probe.js", route => route.fulfill({ contentType: "text/javascript", body:
       "window.cspProbe = {eval: false, inline: false}; try { eval('1+1'); } catch { window.cspProbe.eval = true; } window.injected=false; const s=document.createElement('script'); s.textContent='window.injected=true'; document.body.append(s); window.cspProbe.inline=!window.injected;" }));
     await page.evaluate(() => { const script = document.createElement("script"); script.src = "/assets/csp-probe.js"; document.body.append(script); });
     await expect.poll(() => page.evaluate(() => (window as unknown as { cspProbe: unknown }).cspProbe)).toEqual({ inline: true, eval: true });
+    probingCsp = false;
     // New UI reaches staging but unhealthy backend must restore Version One.
     expect((await upload("1.1.0")).status()).toBe(409); await page.reload(); await expect(page.getByRole("heading", { name: "Version One", exact: true })).toBeVisible();
     expect((await upload("2.0.0")).ok()).toBeTruthy(); await page.reload(); await expect(page.getByRole("heading", { name: "Version Two", exact: true })).toBeVisible();
     expect((await request.get(base + oldAsset)).status()).toBe(404);
+    const newAsset = await page.getByRole("link", { name: "Version Two", exact: true }).locator("img").getAttribute("src");
+    const newPng = await request.get(base + newAsset);
+    expect(newPng.status()).toBe(200);
+    expect((await newPng.body()).equals(await png.body())).toBe(false);
     expect((await upload("3.0.0")).status()).toBe(409); await page.reload(); await expect(page.getByRole("heading", { name: "Version Two", exact: true })).toBeVisible();
+    expect((await (await request.get(base + newAsset)).body()).equals(await newPng.body())).toBe(true);
     expect((await lifecycle("disable")).status()).toBe(204);
     expect((await request.post(base + operation, { headers })).status()).toBe(404);
     await page.reload(); await expect(page.getByRole("heading", { name: "Página no encontrada" })).toBeVisible();
@@ -116,6 +127,13 @@ test("real signed package lifecycle, Session RBAC, safe rendering and CSP", asyn
     await expect(page.getByRole("heading", { name: "Version Two", exact: true })).toBeVisible();
     expect((await lifecycle("uninstall")).status()).toBe(204); await page.reload(); await expect(page.getByRole("heading", { name: "Página no encontrada" })).toBeVisible();
     expect((await upload("2.0.0")).ok()).toBeTruthy(); expect((await lifecycle("enable")).status()).toBe(204);
+    for (const [version, title] of [["10.0.0", "<script>window.__xss=1</script>"], ["11.0.0", '<img src=x onerror="window.__xss=1">']]) {
+      expect((await upload(version)).ok()).toBeTruthy(); await page.reload();
+      await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
+      expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
+      expect(unexpectedCsp).toEqual([]);
+    }
     expect((await request.delete(base + "/internal/admin/modules/publishers/TEST-ONLY-web", { headers: { Authorization: `Bearer ${token}` } })).ok()).toBeTruthy();
     await page.reload(); await expect(page.getByRole("heading", { name: "Página no encontrada" })).toBeVisible();
     expect((await request.post(base + operation, { headers })).status()).toBe(404);

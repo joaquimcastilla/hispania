@@ -44,11 +44,11 @@ public sealed class WebPackageFixture : IDisposable
             MinimumHostVersion = "1.0.0", Runtime = "dotnet-inprocess-trusted", EntryAssembly = "Hispania.ExtensionDemo.dll", EntryType = type.FullName,
             SharedAssemblies = ["Hispania.ExtensionDemo.Contracts"], PackageFormatVersion = 2, PackageVersion = version, PackageDependencies = dependencies ?? [] };
     }
-    public string Archive(string version = "1.0.0", WebContributionDocument? document = null, bool unhealthy = false, bool required = true, byte[]? assetBytes = null, PackageDependency[]? dependencies = null)
+    public string Archive(string version = "1.0.0", WebContributionDocument? document = null, bool unhealthy = false, bool required = true, byte[]? assetBytes = null, PackageDependency[]? dependencies = null, byte[]? descriptorBytes = null)
     {
         var payload = new Dictionary<string, byte[]> { ["Hispania.ExtensionDemo.dll"] = File.ReadAllBytes(typeof(PackageWebModule).Assembly.Location),
             ["Hispania.ExtensionDemo.Contracts.dll"] = File.ReadAllBytes(typeof(IExtensionDemoV1).Assembly.Location),
-            [WebContributionSchema.Path] = JsonSerializer.SerializeToUtf8Bytes(document ?? Document(), Json) };
+            [WebContributionSchema.Path] = descriptorBytes ?? JsonSerializer.SerializeToUtf8Bytes(document ?? Document(), Json) };
         foreach (var asset in (document ?? Document()).Contributions.Select(page => page.Navigation.Asset).OfType<string>().Distinct(StringComparer.Ordinal))
             payload[asset] = assetBytes ?? Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/bJkAAAAASUVORK5CYII=");
         var manifest = Manifest(!required ? typeof(OptionalPackageWebModule) : unhealthy ? typeof(UnhealthyPackageWebModule) : typeof(PackageWebModule), required, version, dependencies) with
