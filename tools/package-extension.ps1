@@ -34,7 +34,7 @@ if ($SigningKeyPath) {
     Add-Type -Path $contractAssembly
     $options = [System.Text.Json.JsonSerializerOptions]::new()
     $options.PropertyNameCaseInsensitive = $true
-    $options.PropertyNamingPolicy = [System.Text.Json.JsonNamingPolicy]::Web
+    $options.PropertyNamingPolicy = [System.Text.Json.JsonNamingPolicy]::CamelCase
     $manifestJson = $manifest | ConvertTo-Json -Depth 64
     $typedManifest = [System.Text.Json.JsonSerializer]::Deserialize($manifestJson, [Hispania.ModuleSystem.Contracts.ModuleManifest], $options)
     $privateKey = Get-Content -Raw -LiteralPath $keyPath
