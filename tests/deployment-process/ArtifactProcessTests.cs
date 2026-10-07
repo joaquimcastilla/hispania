@@ -223,7 +223,9 @@ public sealed class ArtifactProcessTests
             Home = Path.Combine(directoryRoot ?? Path.GetTempPath(), "hispania-phase18 isolated ñ " + Guid.NewGuid().ToString("N"));
             using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); Port = ((IPEndPoint)listener.LocalEndpoint).Port;
             InstallationOperations.Install(artifact ?? Artifact, Home, "server");
-            Client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{Port}"), Timeout = TimeSpan.FromSeconds(3) };
+            // Application requests include deliberate 600,000-iteration PBKDF2 password verification.
+            // The short readiness polling budget must not become an authentication performance SLA.
+            Client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{Port}"), Timeout = TimeSpan.FromSeconds(30) };
             WriteConfiguration(new { });
         }
         internal void WriteConfiguration(object options)
@@ -255,7 +257,10 @@ public sealed class ArtifactProcessTests
             while (DateTimeOffset.UtcNow < deadline)
             {
                 if (process.HasExited) throw new InvalidOperationException("Host exited: " + await process.StandardError.ReadToEndAsync() + await process.StandardOutput.ReadToEndAsync());
-                try { using var response = await Client.GetAsync("/readyz"); if (response.IsSuccessStatusCode) return; } catch (HttpRequestException) { }
+                using var probeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                try { using var response = await Client.GetAsync("/readyz", probeTimeout.Token); if (response.IsSuccessStatusCode) return; }
+                catch (HttpRequestException) { }
+                catch (OperationCanceledException) when (probeTimeout.IsCancellationRequested) { }
                 await Task.Delay(100);
             }
             throw new InvalidOperationException("Artifact failed to become Ready within 45 seconds.");
