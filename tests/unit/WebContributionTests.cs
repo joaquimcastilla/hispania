@@ -11,6 +11,18 @@ public sealed class WebContributionTests(ITestOutputHelper output)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     [Theory]
+    [InlineData("space")][InlineData("empty-segment")][InlineData("unicode")]
+    [InlineData("long")][InlineData("long-segment")][InlineData("many-segments")]
+    public void DeclaringMalformedPermissionsDoesNotMakeThemValidWebPermissions(string scenario)
+    {
+        var suffix = scenario switch { "space" => "bad permission", "empty-segment" => ".bad", "unicode" => "permisión",
+            "long" => new string('a', 129), "long-segment" => new string('a', 33), _ => "a.b.c.d.e.f.g.h" };
+        var permission = $"extensions.{WebPackageFixture.Id}.{suffix}";
+        var manifest = WebPackageFixture.Manifest() with { Permissions = [permission] };
+        var page = WebPackageFixture.Document().Contributions[0] with { Permission = permission };
+        Assert.Throws<InvalidDataException>(() => WebContributionValidator.Parse(manifest, JsonSerializer.SerializeToUtf8Bytes(new WebContributionDocument(1, [page]), Json)));
+    }
+    [Theory]
     [InlineData("/")][InlineData("/login")][InlineData("/admin")][InlineData("/api")][InlineData("/health")]
     [InlineData("/erp/inventory")][InlineData("/extensions/test.package.web//dashboard")]
     [InlineData("/extensions/test.package.web/%64ashboard")][InlineData("/extensions/test.package.web/./dashboard")]

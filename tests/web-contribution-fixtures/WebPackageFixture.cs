@@ -39,7 +39,7 @@ public sealed class WebPackageFixture : IDisposable
     public static ModuleManifest Manifest(Type? type = null, bool required = true, string version = "1.0.0", PackageDependency[]? dependencies = null)
     {
         type ??= typeof(PackageWebModule);
-        return new() { Id = Id, Name = "TEST ONLY Web package", Version = "1.0.0", Implements = [], Provides = [],
+        return new() { Id = Id, Name = "<img src=x onerror=\"window.__xss=1\">", Version = "1.0.0", Implements = [], Provides = [],
             Requires = required ? [WebContributionSchema.Requirement] : [], Permissions = [Permission],
             MinimumHostVersion = "1.0.0", Runtime = "dotnet-inprocess-trusted", EntryAssembly = "Hispania.ExtensionDemo.dll", EntryType = type.FullName,
             SharedAssemblies = ["Hispania.ExtensionDemo.Contracts"], PackageFormatVersion = 2, PackageVersion = version, PackageDependencies = dependencies ?? [] };

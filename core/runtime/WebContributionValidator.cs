@@ -31,6 +31,7 @@ public static class WebContributionValidator
                 if (!ids.Add(page.Id)) throw new InvalidDataException("Duplicate contribution ID.");
                 if (page.Route != $"/extensions/{manifest.Id}/{page.Id}" || !routes.Add(page.Route)) throw new InvalidDataException("Route must belong to its package and contribution.");
                 Text(page.Title, 128);
+                if (!ValidPermission(page.Permission)) throw new InvalidDataException("Malformed permission identifier.");
                 // Declarations never grant permissions. Reuse Platform permission identifiers.
                 if (page.Permission is not ("platform.observability.read" or "platform.jobs.read" or "platform.jobs.manage") &&
                     !(page.Permission?.StartsWith($"extensions.{manifest.Id}.", StringComparison.Ordinal) == true && manifest.Permissions.Contains(page.Permission, StringComparer.Ordinal)))
@@ -68,6 +69,13 @@ public static class WebContributionValidator
     {
         if (string.IsNullOrWhiteSpace(value) || value.Length > maximum || value.Any(c => c < 32 && c is not '\n' and not '\t'))
             throw new InvalidDataException("Display text is missing or exceeds bounds.");
+    }
+    private static bool ValidPermission(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 128) return false;
+        var segments = value.Split('.');
+        return segments.Length is >= 2 and <= 8 && segments.All(segment => segment.Length is >= 1 and <= 32 &&
+            segment.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_'));
     }
     public static void ValidateAssetPath(string path)
     {

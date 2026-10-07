@@ -34,7 +34,7 @@ dotnet test (Join-Path $repo 'tests/unit/Hispania.Runtime.Tests.csproj') --filte
 if ($LASTEXITCODE -ne 0) { throw 'Web contribution runtime tests failed.' }
 $trx = [xml](Get-Content -LiteralPath (Join-Path $results 'phase20-web.trx') -Raw)
 $tests = @($trx.TestRun.Results.UnitTestResult)
-if ($tests.Count -lt 49 -or @($tests | Where-Object outcome -ne 'Passed').Count -ne 0) { throw 'Phase20 runtime gate forbids missing/skipped tests.' }
+if ($tests.Count -lt 55 -or @($tests | Where-Object outcome -ne 'Passed').Count -ne 0) { throw 'Phase20 runtime gate forbids missing/skipped tests.' }
 dotnet test (Join-Path $repo 'tests/inventory/Hispania.Inventory.Tests.csproj') --filter FullyQualifiedName~Phase20WebBackup --results-directory $results --logger 'trx;LogFileName=phase20-backup.trx'
 if ($LASTEXITCODE -ne 0) { throw 'Phase20 actual backup/restore and future-schema isolation failed.' }
 $backup = [xml](Get-Content -LiteralPath (Join-Path $results 'phase20-backup.trx') -Raw)

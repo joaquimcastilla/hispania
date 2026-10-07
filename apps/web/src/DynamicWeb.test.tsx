@@ -4,6 +4,18 @@ import { afterEach, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { validContribution, type WebContribution } from "./DynamicWeb";
 
+const renderFailure = vi.hoisted(() => ({ enabled: false }));
+vi.mock("./AuthContext", async importOriginal => {
+  const actual = await importOriginal<typeof import("./AuthContext")>();
+  return { ...actual, useAuth: () => {
+    const auth = actual.useAuth();
+    return { ...auth, hasPermission: (permission: string) => {
+      if (renderFailure.enabled && permission === "platform.observability.read") throw new Error("TEST ONLY controlled component render failure");
+      return auth.hasPermission(permission);
+    } };
+  } };
+});
+
 const permission = "extensions.test.web.view";
 const contribution = (): WebContribution => ({ packageId: "test.web", packageVersion: "1.0.0", contentHash: "A".repeat(64),
   page: { id: "dashboard", route: "/extensions/test.web/dashboard", title: "<img onerror=alert(1)>", permission,
@@ -20,7 +32,17 @@ function setup(item = contribution(), permissions = [permission, "platform.obser
     return { ok: path.includes("operations") ? status < 400 : true, status: path.includes("operations") ? status : 200, json: async () => body } as Response;
   }); vi.stubGlobal("fetch", fetch); return fetch;
 }
-afterEach(() => { vi.unstubAllGlobals(); window.sessionStorage.clear(); window.history.replaceState({}, "", "/"); });
+afterEach(() => { renderFailure.enabled = false; vi.restoreAllMocks(); vi.unstubAllGlobals(); window.sessionStorage.clear(); window.history.replaceState({}, "", "/"); });
+it.each(["modern", "classic"] as const)("%s isolates an actual component render exception within the page boundary", async variant => {
+  setup(); renderFailure.enabled = true;
+  const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+  render(<App variant={variant} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Contribución no disponible.");
+  expect(screen.getByRole("link", { name: "HISPANIA" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "<img onerror=alert(1)>" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Check" })).not.toBeInTheDocument();
+  expect(errors).toHaveBeenCalled();
+});
 it.each(["modern", "classic"] as const)("%s renders manifest and backend strings as text and uses fixed authorized operations", async variant => {
   const fetch = setup(); render(<App variant={variant} />);
   expect(await screen.findByRole("heading", { name: "<img onerror=alert(1)>" })).toBeInTheDocument();
