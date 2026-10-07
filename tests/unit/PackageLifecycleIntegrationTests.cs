@@ -111,6 +111,28 @@ public sealed class PackageLifecycleIntegrationTests
         var plan = await fixture.Catalog.PlanPackageSetAsync([next], new Dictionary<string, string> { [target] = $"[{version}]" });
         Assert.Equal(scenario == "compatible", plan.Resolved);
         Assert.Equal(before, Snapshot());
+        if (!plan.Resolved)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Catalog.ApplyPackageSetAsync(plan));
+            Assert.Equal(before, Snapshot());
+        }
+        Assert.Equal("consumer", Message(fixture.Catalog));
+    }
+
+    [Fact]
+    public async Task HeldCallLeaseUsesConfiguredDrainTimeoutAndRecoversAfterRelease()
+    {
+        using var fixture = new Fixture(drainTimeout: TimeSpan.FromMilliseconds(200));
+        await fixture.Catalog.ApplyPackageSetAsync(await fixture.Plan(), new HashSet<string> { BaseId, ConsumerId });
+        var next = fixture.Archive(BaseId, "1.4.0", typeof(PackageBaseModule));
+        var plan = await fixture.Catalog.PlanPackageSetAsync([next], new Dictionary<string, string> { [BaseId] = "[1.4.0]" });
+        using (var lease = fixture.Catalog.Acquire<IExtensionDemoV1>(ConsumerId))
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fixture.Catalog.ApplyPackageSetAsync(plan).WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.Equal("consumer", lease.Value.GetMessage());
+        }
+        await fixture.Catalog.RecoverPackageSetAsync();
+        Assert.All(fixture.Catalog.InspectPackageGraph(), row => Assert.Equal("1.0.0", row.Version));
         Assert.Equal("consumer", Message(fixture.Catalog));
     }
 
@@ -461,7 +483,7 @@ public sealed class PackageLifecycleIntegrationTests
         public Dictionary<string, string> Keys { get; }
         public string BaseArchive { get; }
         public string ConsumerArchive { get; }
-        public Fixture(string[]? authorized = null, bool outOfProcess = false, bool requireSignature = true)
+        public Fixture(string[]? authorized = null, bool outOfProcess = false, bool requireSignature = true, TimeSpan? drainTimeout = null)
         {
             this.outOfProcess = outOfProcess;
             Directory.CreateDirectory(root);
@@ -469,7 +491,8 @@ public sealed class PackageLifecycleIntegrationTests
             Runtime = new(Registry);
             Catalog = new(Installed, new Version(1, 0, 0), Runtime, Registry, new Dictionary<string, Func<IModule>>(), authorized ?? [BaseId, ConsumerId],
                 moduleHostPath: Path.Combine(RepositoryRoot(), "apps", "module-host", "bin", new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name, "net10.0", "Hispania.ModuleHost.dll"),
-                trustedPublisherKeys: Keys, requirePublisherSignature: requireSignature);
+                trustedPublisherKeys: Keys, requirePublisherSignature: requireSignature,
+                resourceLimits: drainTimeout is null ? null : new OutOfProcessResourceLimits { MaximumRequestDuration = drainTimeout.Value });
             BaseArchive = Archive(BaseId, "1.0.0", typeof(PackageBaseModule));
             ConsumerArchive = Archive(ConsumerId, "1.0.0", typeof(PackageConsumerModule), [new(BaseId, "[1.0.0,2.0.0)")]);
         }
