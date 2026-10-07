@@ -7,9 +7,9 @@ HISPANIA 0.7.0 is the documentation baseline for the integrated distribution, no
 | HISPANIA Distribution Version | `version.json`: 0.7.0 | Integrated, tested server/runtime/web distribution; operators | Public pre-1.0 SemVer; patch preserves declared commitments, minor may break with notes |
 | Platform SDK Version | `contracts/platform/Hispania.Platform.Contracts.csproj`; no explicit release version | Cross-domain CLR abstractions consumed by suites | Public experimental; future independent SDK SemVer, no assembly-default maturity claim |
 | Module SDK Version | `contracts/module-system/Hispania.ModuleSystem.Contracts.csproj`; no explicit release version | Module authors' CLR boundary | Public experimental; future SDK SemVer only with packaging and API baseline |
-| Module Implementation Version | `ModuleDescriptor.Version`, `ModuleManifest.Version`, extension templates | Identifies implementation/package; lifecycle, dependencies and persisted experiment identity | Author-owned version; currently `System.Version`, not a complete SemVer parser (no prerelease/build labels). Future SemVer needs explicit parser/policy migration |
+| Module Implementation Version | `ModuleDescriptor.Version`, `ModuleManifest.Version`, extension templates | Identifies implementation/package; lifecycle, dependencies and persisted experiment identity | Author-owned version; CLR module identity remains `System.Version`; format-2 PackageVersion is independent strict SemVer 2 parsed by NuGet.Versioning |
 | Capability Contract Version | `ModuleCapability.Version`, manifest `Provides`/`Requires` ID@version | Resolver requests exact identity, such as planner@1.0 | Public experimental technical generation encoded as `System.Version`; no compatible-minor inference |
-| .hispania Package Format Version | `ModuleManifest.PackageFormatVersion = 1`; installer/catalog/ModuleHost | Container, canonical signature and digest interpretation | Public experimental integer generation; incompatible format gets a new generation plus reader/rejection policy |
+| .hispania Package Format Version | `ModuleManifest.PackageFormatVersion`: current formats 1 and 2; installer/catalog/ModuleHost | Container, canonical signature and digest interpretation | Public experimental integer generation; incompatible format gets a new generation plus reader/rejection policy |
 | Module Manifest Version | `ModuleManifest` | Metadata schema for discovery/install/activation | No separate field today; module `Version` is implementation identity, NOT schema. Evolve additive fields only after default/signature compatibility review; incompatible metadata requires a future explicit schema discriminant |
 | ModuleHost IPC Protocol Version | `ModuleWorkerProtocolV1.Version = 1` | Local bounded framed JSON; supervisor and ModuleHost | Public experimental integer wire generation; negotiate supported overlap, fail closed without overlap |
 | Worker Protocol Version | `DistributedWorkerAgent.ProtocolVersion`, `DistributedWorkerEndpoints.ProtocolVersion`, both 1 | Coordinator/WorkerAgent HTTP connect and execution envelopes | Public experimental generation; currently duplicated definitions guarded by tests; no distribution SemVer coupling |
@@ -37,7 +37,7 @@ All values above require compatibility decisions appropriate to their consumers,
 ```text
 HISPANIA distribution 0.7.0
 ├── Platform / Module SDK: no independent released SemVer yet
-├── package format generation 1 / module IPC generation 1
+├── package format generations 1 + 2 / module IPC generation 1
 ├── worker wire generation 1 / exact capability version
 ├── Events: envelope generation != EventType payload schema
 ├── Jobs: service generation != JobType payload identity

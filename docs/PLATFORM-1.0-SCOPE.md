@@ -43,3 +43,8 @@ Distribution 0.7.0 adds experimental Backup Format Generation 1, without a Publi
 ## Phase 18 production deployment
 
 Distribution 0.7.0 remains pre-1.0; no Public Stable promotion. Configuration, secrets, services and restore-backed upgrade add operational evidence after mandatory CI. They establish no HA, cloud secret management, release authenticity or mixed-version ecosystem guarantee. See [Phase 18](PHASE-18-PRODUCTION-DEPLOYMENT.md) and [ADR-0043](adr/ADR-0043-configuration-secrets-and-production-deployment.md).
+
+
+## Phase 19 package lifecycle
+
+Format 2 adds authenticated package SemVer/dependencies while format 1 and immutable Phase 15 signatures remain supported. Local deterministic planning, a pinned graph, staged operations, current-policy rollback/recovery and Phase 17 graph verification remain experimental. Distribution 0.7.0, 24 axes and zero Public Stable are unchanged. See [Phase 19](PHASE-19-PACKAGE-LIFECYCLE.md) and [ADR-0044](adr/ADR-0044-package-dependencies-and-lifecycle.md); local acceptance and both-OS CI are separate evidence.

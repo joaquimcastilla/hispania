@@ -459,3 +459,8 @@ Host composition owns canonical destination mapping and preservation of configur
 ## Phase 18 production deployment
 
 Host-owned infrastructure/hosting separates strict generation-1 operational configuration, secret references and managed state. Server/Worker share SCM/systemd lifetimes; migrations remain owner-local and Platform gains no Media/Inventory dependency. Child paths derive from the executable root. See [Phase 18](PHASE-18-PRODUCTION-DEPLOYMENT.md) and [ADR-0043](adr/ADR-0043-configuration-secrets-and-production-deployment.md).
+
+
+## Phase 19 package lifecycle
+
+Format 2 adds authenticated package SemVer/dependencies while format 1 and immutable Phase 15 signatures remain supported. Local deterministic planning, a pinned graph, staged operations, current-policy rollback/recovery and Phase 17 graph verification remain experimental. Distribution 0.7.0, 24 axes and zero Public Stable are unchanged. See [Phase 19](PHASE-19-PACKAGE-LIFECYCLE.md) and [ADR-0044](adr/ADR-0044-package-dependencies-and-lifecycle.md); local acceptance and both-OS CI are separate evidence.

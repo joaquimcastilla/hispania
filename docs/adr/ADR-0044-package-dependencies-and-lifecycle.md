@@ -1,6 +1,6 @@
 # ADR-0044: Package dependencies and lifecycle
 
-Status: Implementation in progress; acceptance requires the Phase 19 gates.
+Status: Accepted for experimental implementation; local acceptance passes, with both OS CI gates required before phase closure.
 
 ## Existing boundary audit
 

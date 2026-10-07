@@ -29,6 +29,8 @@ jobs:
       HISPANIA_POSTGRES_TEST_CONNECTION: Host=localhost;Port=5432;Database=hispania_tests;Username=hispania;Timeout=5
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
@@ -49,6 +51,9 @@ jobs:
       - name: Require PostgreSQL integration configuration
         run: test -n "$HISPANIA_POSTGRES_TEST_CONNECTION"
       - run: dotnet build Hispania.CrossPlatform.slnf --no-restore
+      - name: Require Phase 19 package lifecycle, historical reader and crash recovery
+        shell: pwsh
+        run: ./tools/test-phase19-package-lifecycle.ps1
       - name: Require Phase 14 catalog, distribution semantics and candidate API review
         shell: pwsh
         run: |
@@ -181,6 +186,8 @@ jobs:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
@@ -201,6 +208,9 @@ jobs:
       - run: dotnet build Hispania.CrossPlatform.slnf --no-restore
       - name: Build the complete solution on Windows
         run: dotnet build Hispania.sln
+      - name: Require Phase 19 package lifecycle, historical reader and crash recovery
+        shell: pwsh
+        run: ./tools/test-phase19-package-lifecycle.ps1
       - name: Require Phase 17 portable backup, process disaster and interruption
         shell: pwsh
         run: ./tools/test-phase17-backup-restore.ps1 -ResultsDirectory .artifacts/phase17-ci
