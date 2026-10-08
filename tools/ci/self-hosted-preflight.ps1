@@ -2,6 +2,10 @@ param([switch]$PostgreSqlOnly)
 $ErrorActionPreference='Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:GITHUB_REPOSITORY -ne 'joaquimcastilla/hispania' -or $env:GITHUB_REF -ne 'refs/heads/feature/phase-21-security-operations-hardening') { throw 'Only explicitly dispatched trusted Phase21 CI is supported.' }
 if ($IsLinux) {
+    # Existing shared /tmp fixture parents can belong to other operators. Do not
+    # change their permissions; use the job's own runner-managed temporary root.
+    $env:TMPDIR=$env:RUNNER_TEMP
+    "TMPDIR=$env:RUNNER_TEMP" | Add-Content -LiteralPath $env:GITHUB_ENV
     $configuration = Get-Content -LiteralPath /etc/hispania-phase21/postgres.json -Raw | ConvertFrom-Json
     foreach ($name in @('HISPANIA_POSTGRES_TEST_CONNECTION','HISPANIA_PHASE18_POSTGRES_CONNECTION')) {
         $value = [string]$configuration.$name
