@@ -14,9 +14,26 @@ if (-not $Server) {
     exit 0
 }
 $root = 'C:\ProgramData\HispaniaPhase18CI'
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public static class HispaniaCiFileLinks {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Information {
+        public uint Attributes;
+        public System.Runtime.InteropServices.ComTypes.FILETIME Created, Accessed, Written;
+        public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+    }
+    [DllImport("kernel32.dll", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetFileInformationByHandle(SafeFileHandle handle, out Information information);
+}
+'@
 $acl = [IO.Pipes.PipeSecurity]::new()
 foreach ($sid in @('S-1-5-20','S-1-5-18','S-1-5-32-544')) {
-    $acl.AddAccessRule([IO.Pipes.PipeAccessRule]::new([Security.Principal.SecurityIdentifier]::new($sid), [IO.Pipes.PipeAccessRights]::FullControl, 'Allow'))
+    $rights = if ($sid -eq 'S-1-5-20') { [IO.Pipes.PipeAccessRights]::ReadWrite } else { [IO.Pipes.PipeAccessRights]::FullControl }
+    $acl.AddAccessRule([IO.Pipes.PipeAccessRule]::new([Security.Principal.SecurityIdentifier]::new($sid), $rights, 'Allow'))
 }
 # Interactive elevated broker expires after eight hours. Runner identity stays NetworkService.
 $deadline = [DateTime]::UtcNow.AddHours(8)
@@ -33,16 +50,23 @@ while ([DateTime]::UtcNow -lt $deadline) {
             if (-not $line -or $line.Length -gt 2048) { throw 'Request bound' }
             $request = $line | ConvertFrom-Json
             if ($request.action -notin @('install','start','stop','restart','status','uninstall','reclaim') -or $request.role -notin @('server','worker')) { throw 'Operation rejected' }
-            $home = [IO.Path]::GetFullPath([string]$request.home)
-            if ([IO.Path]::GetDirectoryName($home) -cne $root -or [IO.Path]::GetFileName($home) -cnotmatch '^hispania-phase18 isolated ñ [0-9a-f]{32}$') { throw 'Fixture root rejected' }
-            foreach ($item in @((Get-Item -LiteralPath $root),(Get-Item -LiteralPath $home)) + @(Get-ChildItem -LiteralPath $home -Recurse -Force)) {
+            $fixtureHome = [IO.Path]::GetFullPath([string]$request.home)
+            if ([IO.Path]::GetDirectoryName($fixtureHome) -cne $root -or [IO.Path]::GetFileName($fixtureHome) -cnotmatch '^hispania-phase18 isolated ñ [0-9a-f]{32}$') { throw 'Fixture root rejected' }
+            foreach ($item in @((Get-Item -LiteralPath $root),(Get-Item -LiteralPath $fixtureHome)) + @(Get-ChildItem -LiteralPath $fixtureHome -Recurse -Force)) {
                 if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse point rejected' }
+                if (-not $item.PSIsContainer) {
+                    $handle = [IO.File]::OpenHandle($item.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+                    try {
+                        $information = [HispaniaCiFileLinks+Information]::new()
+                        if (-not [HispaniaCiFileLinks]::GetFileInformationByHandle($handle,[ref]$information) -or $information.Links -ne 1) { throw 'Hardlink or unreadable file rejected' }
+                    } finally { $handle.Dispose() }
+                }
             }
             if ($request.action -eq 'reclaim') {
-                & icacls.exe (Join-Path $home 'secrets') /reset /T /Q | Out-Null
+                & icacls.exe (Join-Path $fixtureHome 'secrets') /reset /T /Q | Out-Null
                 if ($LASTEXITCODE -ne 0) { throw 'ACL reclaim failed' }
             } else {
-                & (Join-Path $PSScriptRoot 'windows-service.ps1') -Action $request.action -InstallationHome $home -Role $request.role | Out-Null
+                & (Join-Path $PSScriptRoot 'windows-service.ps1') -Action $request.action -InstallationHome $fixtureHome -Role $request.role | Out-Null
             }
             $ok=$true
         } catch {

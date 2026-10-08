@@ -34,3 +34,19 @@ if ($IsLinux) {
 } elseif ($IsWindows) {
     if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-20') { throw 'Windows runner must retain NetworkService identity.' }
 }
+if ($env:HISPANIA_PHASE21_NATIVE_HELPER) {
+    $probe=[Diagnostics.ProcessStartInfo]::new()
+    $probe.UseShellExecute=$false; $probe.RedirectStandardOutput=$true; $probe.RedirectStandardError=$true
+    $probe.FileName=if ($IsWindows) { 'pwsh' } else { 'sudo' }
+    $arguments=if ($IsWindows) { @('-NoProfile','-File',$env:HISPANIA_PHASE21_NATIVE_HELPER,'-Action','status','-InstallationHome','C:\Windows','-Role','server') } else { @('-n',$env:HISPANIA_PHASE21_NATIVE_HELPER,'status','/tmp','server') }
+    foreach($argument in $arguments) { $probe.ArgumentList.Add($argument) }
+    $process=[Diagnostics.Process]::Start($probe)
+    try {
+        $stdout=$process.StandardOutput.ReadToEndAsync(); $stderr=$process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(20000)) { $process.Kill($true); throw 'Native helper transport deadline exceeded.' }
+        $output=$stdout.GetAwaiter().GetResult()+$stderr.GetAwaiter().GetResult()
+        $expected=if ($IsWindows) { 'Restricted SCM helper rejected or failed the operation' } else { 'Restricted native CI service operation failed' }
+        if ($process.ExitCode -eq 0 -or -not $output.Contains($expected,[StringComparison]::Ordinal)) { throw 'Native helper must be reachable by the runner and reject outside-root requests.' }
+        Write-Output 'Native helper outside-root negative passed under the actual runner identity.'
+    } finally { $process.Dispose() }
+}

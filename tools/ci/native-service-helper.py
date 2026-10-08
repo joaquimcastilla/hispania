@@ -34,19 +34,31 @@ def main():
     unit = 'hispania-' + role + '.service'
     def run(args):
         subprocess.run(args, env=env, cwd='/', check=True, timeout=55)
+    def reclaim(include_secrets):
+        runner = pwd.getpwnam('gha-hispania')
+        for current, dirs, files in os.walk(home, followlinks=False):
+            if not include_secrets and pathlib.Path(current) == home:
+                dirs[:] = [name for name in dirs if name != 'secrets']
+            for item in [pathlib.Path(current)] + [pathlib.Path(current) / x for x in files]:
+                os.chown(item, runner.pw_uid, runner.pw_gid, follow_symlinks=False)
+                os.chmod(item, item.stat().st_mode | stat.S_IRUSR | stat.S_IWUSR | (stat.S_IXUSR if item.is_dir() else 0))
     if action == 'journal':
         run(['/usr/bin/journalctl', '--unit=' + unit, '--no-pager', '--lines=80'])
     elif action == 'retained-secret':
         if not (home / 'secrets/NATIVE_CANARY.secret').is_file():
             raise ValueError('Retained secret missing')
     elif action == 'reclaim':
-        runner = pwd.getpwnam('gha-hispania')
-        for current, dirs, files in os.walk(home, followlinks=False):
-            for item in [pathlib.Path(current)] + [pathlib.Path(current) / x for x in files]:
-                os.chown(item, runner.pw_uid, runner.pw_gid, follow_symlinks=False)
-                os.chmod(item, item.stat().st_mode | stat.S_IRUSR | stat.S_IWUSR | (stat.S_IXUSR if item.is_dir() else 0))
+        reclaim(True)
     else:
         run(['/bin/sh', TRUSTED, action, str(home), role, 'hispania'])
+        if action == 'stop':
+            state = subprocess.check_output(['/usr/bin/systemctl', 'show', unit, '--property=ActiveState', '--value'], env=env, text=True, timeout=10)
+            if state.strip() != 'inactive':
+                raise ValueError('Cannot reclaim a running service fixture')
+            # The non-admin CI operator must still exercise the real offline lock
+            # and retained-state assertions. Secrets stay private to hispania until
+            # final uninstall/reclaim; no service is restarted after this handoff.
+            reclaim(False)
 
 try:
     main()

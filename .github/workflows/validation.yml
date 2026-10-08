@@ -197,6 +197,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: phase21-validation-${{ runner.os }}
+          include-hidden-files: true
           path: |
             .artifacts/phase*-ci/**/*.trx
             .artifacts/phase19-gate/*.trx
@@ -377,6 +378,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: phase21-validation-${{ runner.os }}
+          include-hidden-files: true
           path: |
             .artifacts/phase*-ci/**/*.trx
             .artifacts/phase19-gate/*.trx

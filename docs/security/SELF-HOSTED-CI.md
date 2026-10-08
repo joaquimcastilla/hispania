@@ -16,11 +16,11 @@ The Python setup action attempted to invoke an installer under Windows Restricte
 policy; preprovisioned Python avoids granting installer elevation or relaxing policy.
 
 An interactively UAC-elevated, eight-hour broker runs the protected copy of
-`tools/ci/windows-native-service-helper.ps1`. Its named pipe permits NetworkService,
-SYSTEM and Administrators. It accepts only install/start/stop/restart/status/
+`tools/ci/windows-native-service-helper.ps1`. Its named pipe grants NetworkService
+read/write and SYSTEM/Administrators full control. It accepts only install/start/stop/restart/status/
 uninstall/reclaim for server/worker, under `C:\ProgramData\HispaniaPhase18CI`,
 with exact `hispania-phase18 isolated ñ <32 lowercase hex>` fixture basenames.
-It rejects reparse points and invokes a protected deployment script; no submitted
+It rejects reparse points and hardlinked files and invokes a protected deployment script; no submitted
 PowerShell command or script path is accepted. Server and Worker stay LocalService.
 The broker is a temporary administrative process, not an elevated CI runner.
 
@@ -43,7 +43,10 @@ gha-hispania ALL=(root) NOPASSWD: /usr/local/sbin/hispania-phase21-service
 actions, role and exact fixture basenames under `/opt/hispania-phase18-ci`, rejects
 symlinks/hardlinks, uses fixed commands, a clean environment and a fixed root-owned
 script/template. It provides bounded journal queries, retained-secret existence and
-ownership reclamation solely for these fixtures. No runner sudo shell, generic
+ownership reclamation solely for these fixtures. After a verified inactive stop,
+the helper hands non-secret fixture files back to the CI operator for the real
+offline lock and retained-state checks; secrets remain owned/private to the
+service account until the final uninstall/reclaim. No runner sudo shell, generic
 chown, useradd, env, wildcard commands or unrestricted systemctl is granted.
 Native tests still execute all original lifecycle, identity, recovery configuration,
 readiness, stop, retained-state and secret-log assertions. The Linux service account
