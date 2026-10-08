@@ -9,8 +9,11 @@ The historical billing failure remains in the operator CI evidence ledger.
 Windows runner 21, `hispania-win-ci` (2.338.0), retains NetworkService. Shared
 PowerShell and FFmpeg binaries live in administrator-owned
 `C:\ProgramData\HispaniaPhase21CI`; NetworkService has read/execute access.
-The existing service is restarted to load the shared tool PATH. Python, .NET 10
-and Node 24 are selected by setup actions in runner-writable tool directories.
+The existing service is restarted to load the shared tool PATH. Native Python
+3.14.7 is copied as a read-only shared tool. .NET 10 and Node 24 are selected by
+setup actions in runner-writable tool directories. Linux uses Ubuntu Python 3.12.
+The Python setup action attempted to invoke an installer under Windows Restricted
+policy; preprovisioned Python avoids granting installer elevation or relaxing policy.
 
 An interactively UAC-elevated, eight-hour broker runs the protected copy of
 `tools/ci/windows-native-service-helper.ps1`. Its named pipe permits NetworkService,
