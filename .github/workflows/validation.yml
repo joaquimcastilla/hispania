@@ -89,10 +89,10 @@ jobs:
         shell: pwsh
         run: ./tools/test-phase17-backup-restore.ps1 -ResultsDirectory .artifacts/phase17-ci -RequirePostgreSql
       - name: Require Inventory, persistence, API restart, and architecture coverage
-        run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj
+        run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj --results-directory .artifacts/inventory-full --logger trx
       - name: Require Phase 13 closure, real crash recovery, safe errors and 20 concurrency repetitions
         shell: pwsh
-        run: ./tools/test-phase13-closure.ps1 -ResultsDirectory (Join-Path $env:RUNNER_TEMP 'phase13-closure')
+        run: ./tools/test-phase13-closure.ps1 -ResultsDirectory .artifacts/phase13-ci
       - name: Require Platform Admin RBAC, safe projections, expiry and partial-failure recovery
         shell: pwsh
         run: |
@@ -186,6 +186,9 @@ jobs:
             .artifacts/phase20-browser-results.json
             .artifacts/phase20-browser
       - run: dotnet test Hispania.CrossPlatform.slnf --no-build -m:1 --results-directory .artifacts/full-suite --logger trx
+      - name: Enforce exact historical skip policy and record full-suite totals
+        shell: pwsh
+        run: ./tools/ci/verify-full-suite.ps1
       - name: Require value-withheld synthetic leak detection
         shell: pwsh
         run: ./tools/ci/test-synthetic-canary.ps1
@@ -195,7 +198,9 @@ jobs:
         with:
           name: phase21-validation-${{ runner.os }}
           path: |
-            .artifacts/phase*-ci/*.trx
+            .artifacts/phase*-ci/**/*.trx
+            .artifacts/phase19-gate/*.trx
+            .artifacts/inventory-full
             .artifacts/phase21-security
             **/TestResults/*.trx
             .artifacts/full-suite
@@ -279,10 +284,10 @@ jobs:
       - name: Require Platform-only dependency boundary
         run: dotnet build Hispania.Platform.slnf
       - name: Require Inventory, persistence, API restart, and architecture coverage
-        run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj
+        run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj --results-directory .artifacts/inventory-full --logger trx
       - name: Require Phase 13 closure, real crash recovery, safe errors and 20 concurrency repetitions
         shell: pwsh
-        run: ./tools/test-phase13-closure.ps1 -ResultsDirectory (Join-Path $env:RUNNER_TEMP 'phase13-closure')
+        run: ./tools/test-phase13-closure.ps1 -ResultsDirectory .artifacts/phase13-ci
       - name: Require Platform Admin RBAC, safe projections, expiry and partial-failure recovery
         shell: pwsh
         run: |
@@ -361,6 +366,9 @@ jobs:
         # Keep process-heavy integration projects from starving each other on hosted Windows.
         # Preserve every test and its existing cancellation/request deadlines.
         run: dotnet test Hispania.sln --no-build -m:1 --results-directory .artifacts/full-suite --logger trx
+      - name: Enforce exact historical skip policy and record full-suite totals
+        shell: pwsh
+        run: ./tools/ci/verify-full-suite.ps1
       - name: Require value-withheld synthetic leak detection
         shell: pwsh
         run: ./tools/ci/test-synthetic-canary.ps1
@@ -370,7 +378,9 @@ jobs:
         with:
           name: phase21-validation-${{ runner.os }}
           path: |
-            .artifacts/phase*-ci/*.trx
+            .artifacts/phase*-ci/**/*.trx
+            .artifacts/phase19-gate/*.trx
+            .artifacts/inventory-full
             .artifacts/phase21-security
             **/TestResults/*.trx
             .artifacts/full-suite
