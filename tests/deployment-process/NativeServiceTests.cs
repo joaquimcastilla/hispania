@@ -60,8 +60,8 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
                 var name = role == "server" ? "HispaniaServer" : "HispaniaWorker";
                 var definition = await RunAsync("sc.exe", ["qc", name]);
                 Assert.Contains("NT AUTHORITY\\LocalService", definition, StringComparison.OrdinalIgnoreCase);
-                var recovery = await RunAsync("sc.exe", ["qfailure", name]);
-                Assert.Contains("RESTART", recovery, StringComparison.OrdinalIgnoreCase);
+                await RunAsync("sc.exe", ["qfailure", name]);
+                WindowsServiceRecovery.AssertConfigured(name);
                 output.WriteLine("SCM definition: LocalService confirmed; recovery definition validated; crash recovery runtime not exercised.");
             }
             else
@@ -73,8 +73,10 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
                 output.WriteLine("systemd definition: non-root hispania identity confirmed; app directory read-only for service user.");
             }
             await ServiceAsync("start", fixture.Home, role); await WaitAsync(1);
+            await LivenessAsync();
             await ServiceAsync("status", fixture.Home, role);
             await ServiceAsync("restart", fixture.Home, role); await WaitAsync(2);
+            await LivenessAsync();
             var timer = Stopwatch.StartNew(); await ServiceAsync("stop", fixture.Home, role);
             Assert.True(timer.Elapsed < TimeSpan.FromSeconds(40));
             output.WriteLine("{0} {1}: native start/readiness/restart passed; graceful stop {2:F3}s.", OperatingSystem.IsWindows() ? "SCM" : "systemd", role, timer.Elapsed.TotalSeconds);
@@ -131,6 +133,12 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
             if (OperatingSystem.IsLinux())
                 output.WriteLine(await NativeOperationAsync("journal", fixture.Home, role, () => RunAsync("sudo", ["journalctl", "--unit=hispania-" + role + ".service", "--no-pager", "--lines=80"])));
             throw new InvalidOperationException("Native service did not become Ready or negotiate within its startup deadline.");
+        }
+        async Task LivenessAsync()
+        {
+            if (role != "server") return;
+            using var response = await fixture.Client.GetAsync("/healthz");
+            Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
         }
     }
 
