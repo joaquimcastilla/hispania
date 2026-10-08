@@ -17,10 +17,12 @@ public static class IdentityEndpoints
                 _ => Results.BadRequest(new { error = "invalid_user" })
             };
             return Results.Created($"/api/identity/users/{result.Value!.Id.Value:D}", result.Value);
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.UsersWrite));
+        }).RequirePlatformPermission(PlatformPermissionIds.UsersWrite);
 
         group.MapPost("/login", async (LoginRequest request, HttpContext http, IIdentityCommandV1 commands, CancellationToken ct) =>
         {
+            var limited = SecurityAbuseLimiter.CheckAccount(http, request.Username);
+            if (limited is not null) return limited;
             var result = await commands.LoginAsync(request.Username, request.Password, Correlation(http), ct);
             return result.Succeeded ? Results.Ok(new { result.User, result.Session, result.SessionToken }) : Results.Json(new { error = "invalid_credentials" }, statusCode: StatusCodes.Status401Unauthorized);
         });

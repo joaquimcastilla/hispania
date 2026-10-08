@@ -115,6 +115,14 @@ public sealed class ProductionInstallation
             if (reference is not null) _ = Secrets.Resolve(reference);
         foreach (var path in new[] { Configuration.Tls.CertificateFile, Configuration.Worker.CertificateFile })
             if (path is not null) InstallationSecrets.ValidateProtectedFile(PrivateFile(path));
+        foreach (var entry in new[] { (Role: "server-tls", Path: Configuration.Tls.CertificateFile, Password: Configuration.Tls.PasswordSecret), (Role: "worker-mtls", Path: Configuration.Worker.CertificateFile, Password: Configuration.Worker.PasswordSecret) })
+        {
+            if (entry.Path is null) continue;
+            using var certificate = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12FromFile(PrivateFile(entry.Path), entry.Password is null ? null : Secrets.Resolve(entry.Password), System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.EphemeralKeySet);
+            var status = CertificateSecurityPolicy.Evaluate(certificate, DateTimeOffset.UtcNow);
+            if (status.Status is "expired" or "not-yet-valid") throw new DeploymentException(3, "Configured TLS certificate is outside its validity period; rotate private material before startup.");
+            Console.WriteLine(JsonSerializer.Serialize(new { operation = "certificate-check", role = entry.Role, status.Status, status.NotBefore, status.NotAfter, warningDays = CertificateSecurityPolicy.WarningDays }));
+        }
         var moduleHost = Path.Combine(AppContext.BaseDirectory, "module-host", "Hispania.ModuleHost.dll");
         if (!File.Exists(moduleHost)) throw new DeploymentException(5, "Missing ModuleHost child artifact; reinstall a complete publication.");
         if (Configuration.Role == "server")

@@ -262,6 +262,8 @@ internal static class BackupInstallation
             manifest.ConsistencyMode != "offline-exclusive-installation-lock" || manifest.Provider is not ("sqlite" or "postgresql") || manifest.StorageProvider != "filesystem" || manifest.CreatedUtc == default || manifest.CreatedUtc.Offset != TimeSpan.Zero ||
             manifest.Files is null || manifest.RequiredComponents is null || manifest.Reprovision is null || manifest.Warnings is null)
             throw new InvalidDataException("Unsupported backup metadata.");
+        if (manifest.Files.Length > 65536 || manifest.Files.Any(file => file is null || file.Size < 0) || manifest.Files.Sum(file => (decimal)file.Size) > 1024m * 1024 * 1024 * 1024)
+            throw new InvalidDataException("Backup exceeds the 65536-file or 1 TiB resource policy.");
         var expected = Databases.Values.Where(v => manifest.Provider == "sqlite" || v != "Media.SQLite").Concat(["Storage", "Configuration", "Extensions"])
             .Concat(manifest.Provider == "postgresql" ? ["Media.PostgreSQL"] : Array.Empty<string>()).Order(StringComparer.Ordinal).ToArray();
         var required = manifest.RequiredComponents.Where(c => c != "Playback").Order(StringComparer.Ordinal).ToArray();
@@ -460,13 +462,14 @@ internal static class BackupInstallation
             Hispania.Runtime.ModuleExtensionCatalog.ValidateBackupPackage(manifest, Path.GetDirectoryName(path)!);
         }
     }
-    private static IEnumerable<string> EnumerateSafe(string root)
+    private static IEnumerable<string> EnumerateSafe(string root, int depth = 0)
     {
+        if (depth > 64) throw new InvalidDataException("Backup directory depth exceeds the security limit.");
         RejectLinks(root);
         foreach (var entry in Directory.EnumerateFileSystemEntries(root).Order(StringComparer.Ordinal))
         {
             RejectLinks(entry);
-            if (Directory.Exists(entry)) { foreach (var nested in EnumerateSafe(entry)) yield return nested; }
+            if (Directory.Exists(entry)) { foreach (var nested in EnumerateSafe(entry, depth + 1)) yield return nested; }
             else yield return entry;
         }
     }
@@ -520,6 +523,17 @@ internal static class BackupInstallation
     private static void RestrictDirectory(string root)
     {
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        else
+        {
+            var security = new System.Security.AccessControl.DirectorySecurity();
+            security.SetAccessRuleProtection(true, false);
+            var current = System.Security.Principal.WindowsIdentity.GetCurrent().User!;
+            security.SetOwner(current);
+            foreach (var sid in new[] { current, new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.LocalSystemSid, null), new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid, null) })
+                security.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(sid, System.Security.AccessControl.FileSystemRights.FullControl,
+                    System.Security.AccessControl.InheritanceFlags.ContainerInherit | System.Security.AccessControl.InheritanceFlags.ObjectInherit, System.Security.AccessControl.PropagationFlags.None, System.Security.AccessControl.AccessControlType.Allow));
+            System.IO.FileSystemAclExtensions.SetAccessControl(new DirectoryInfo(root), security);
+        }
     }
     private static void RejectLinks(string path)
     {

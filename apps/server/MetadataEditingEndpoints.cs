@@ -11,7 +11,7 @@ public static class MetadataEditingEndpoints
     public static IEndpointRouteBuilder MapMetadataEditingEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/media/{mediaEntityId:guid}/metadata");
-        var adminGroup = group.MapGroup("").AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(MediaPermissionIds.Admin, allowLegacyAdminBearer: false));
+        var adminGroup = group.MapGroup("").RequirePlatformPermission(MediaPermissionIds.Admin, allowLegacyAdminBearer: false);
         adminGroup.MapGet("/edit", GetAsync);
         adminGroup.MapPut("/settings", UpdateSettingsAsync);
         adminGroup.MapPut("/locks/{fieldCode}", UpdateLockAsync);

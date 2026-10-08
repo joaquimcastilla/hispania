@@ -1,11 +1,19 @@
 using Hispania.Platform.Contracts.Audit;
 using Hispania.Platform.Contracts.Authorization;
 using Hispania.Platform.Contracts.Identity;
+using Hispania.Platform.Contracts.Observability;
 
 namespace Hispania.Server;
 
 public static class AuthorizationEndpointFilters
 {
+    public sealed record PermissionPolicy(string PermissionId, bool AllowLegacyAdminBearer);
+    public static TBuilder RequirePlatformPermission<TBuilder>(this TBuilder builder, string permissionId, bool allowLegacyAdminBearer = true) where TBuilder : IEndpointConventionBuilder
+    {
+        builder.WithMetadata(new PermissionPolicy(permissionId, allowLegacyAdminBearer));
+        builder.AddEndpointFilter(RequirePermission(permissionId, allowLegacyAdminBearer));
+        return builder;
+    }
     private static readonly Action<ILogger, string, PathString, Exception?> LegacyAdminBearerUsed = LoggerMessage.Define<string, PathString>(LogLevel.Warning, new EventId(1302, "LegacyAdminBearerUsed"), "Deprecated admin bearer used for protected endpoint {PermissionId} at {Path}.");
     private static readonly object UserKey = new();
     private static readonly object LegacyKey = new();
@@ -29,6 +37,11 @@ public static class AuthorizationEndpointFilters
             }
 
             var token = authorizationHeader.StartsWith("Session ", StringComparison.OrdinalIgnoreCase) ? authorizationHeader[8..].Trim() : string.Empty;
+            if (token.Length is < 32 or > 256)
+            {
+                await WriteDeniedAuditAsync(http, correlationId, permissionId, null).ConfigureAwait(false);
+                return Results.Unauthorized();
+            }
             var identity = http.RequestServices.GetRequiredService<IIdentityQueryV1>();
             var session = token.Length is >= 32 and <= 256 ? await identity.ValidateSessionAsync(token, http.RequestAborted).ConfigureAwait(false) : null;
             if (session is null)
@@ -67,6 +80,13 @@ public static class AuthorizationEndpointFilters
 
     private static async ValueTask WriteDeniedAuditAsync(HttpContext http, string? correlationId, string permissionId, UserId? userId)
     {
+        var metrics = http.RequestServices.GetService<Hispania.Platform.Contracts.Observability.IPlatformMetricsV1>();
+        metrics.BestEffort(sink => sink.Increment("hispania.security.authorization.denied"));
+        if (http.RequestServices.GetService<SecurityAbuseLimiter>() is { } limiter && !limiter.TryRecordDeniedAudit())
+        {
+            metrics.BestEffort(sink => sink.Increment("hispania.security.audit.denial_suppressed"));
+            return;
+        }
         var audit = http.RequestServices.GetService<IPlatformAuditWriter>();
         if (audit is null) return;
         await audit.WriteAsync(new(DateTimeOffset.UtcNow, userId?.Value.ToString("D"), correlationId, "platform.authorization", "authorization-denied", "permission", permissionId, "failure", new Dictionary<string, string>()), http.RequestAborted).ConfigureAwait(false);

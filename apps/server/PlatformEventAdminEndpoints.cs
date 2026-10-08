@@ -16,24 +16,24 @@ public static class PlatformEventAdminEndpoints
             else if (status is not null) parsed = Enum.Parse<DurableDeliveryStatus>(status, true);
             var items = await bus.ListDeliveriesAsync(parsed, limit ?? 100, ct);
             return Results.Ok(items.Select(x => new { x.DeliveryId, x.EventId, x.EventType, x.SubscriberId, Status = x.Status.ToString(), x.AttemptCount, x.NextAttemptAt, x.LastError, x.DeliveredAt, x.DeadLetteredAt }));
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.EventsRead, allowLegacyAdminBearer: false));
+        }).RequirePlatformPermission(PlatformPermissionIds.EventsRead, allowLegacyAdminBearer: false);
         group.MapGet("/health", async (IDurablePlatformEventBusV1 bus, CancellationToken ct) =>
         {
             var health = await bus.GetHealthAsync(ct);
             return Results.Ok(new { status = health.DeadLettered > 0 ? "Degraded" : "Healthy", health.Pending, health.Processing, health.Delivered, health.DeadLettered, health.StoreAccessible });
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.EventsRead, allowLegacyAdminBearer: false));
+        }).RequirePlatformPermission(PlatformPermissionIds.EventsRead, allowLegacyAdminBearer: false);
         group.MapGet("/{eventId:guid}", async (Guid eventId, IDurablePlatformEventBusV1 bus, CancellationToken ct) =>
         { var result = await bus.GetEventAsync(eventId, ct); return result is null ? Results.NotFound() : Results.Ok(result); })
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.EventsManage, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(PlatformPermissionIds.EventsManage, allowLegacyAdminBearer: false);
         group.MapGet("/deliveries/{deliveryId:guid}/attempts", async (Guid deliveryId, IDurablePlatformEventBusV1 bus, CancellationToken ct) => Results.Ok(await bus.GetDeliveryAttemptsAsync(deliveryId, ct)))
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.EventsManage, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(PlatformPermissionIds.EventsManage, allowLegacyAdminBearer: false);
         group.MapPost("/deliveries/{deliveryId:guid}/replay", async (Guid deliveryId, HttpContext http, IDurablePlatformEventBusV1 bus, IPlatformAuditWriter audit, CancellationToken ct) =>
         {
             if (!await bus.ReplayDeadLetterAsync(deliveryId, ct)) return Results.Conflict();
             await audit.WriteAsync(new(DateTimeOffset.UtcNow, AuthorizationEndpointFilters.AuthenticatedUserId(http)?.Value.ToString("D"), http.Request.Headers["X-Correlation-ID"].FirstOrDefault(), "platform.events", "delivery.replay", "delivery", deliveryId.ToString("D"), "succeeded", new Dictionary<string, string>()), ct);
             return Results.Accepted();
         })
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.EventsManage, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(PlatformPermissionIds.EventsManage, allowLegacyAdminBearer: false);
         return endpoints;
     }
 }

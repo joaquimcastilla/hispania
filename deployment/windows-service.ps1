@@ -7,7 +7,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 if (-not $IsWindows) { throw 'Windows SCM operation requires Windows.' }
-if (-not [IO.Path]::IsPathFullyQualified($InstallationHome) -or $InstallationHome.Contains('"')) { throw 'Provide an absolute installation root without quote characters.' }
+if (-not [IO.Path]::IsPathFullyQualified($InstallationHome) -or $InstallationHome.Contains('"') -or [regex]::IsMatch($InstallationHome, '[\x00-\x1F\x7F]')) { throw 'Provide an absolute installation root without quote or control characters.' }
 $InstallationHome=[IO.Path]::GetFullPath($InstallationHome)
 $name=if ($Role -eq 'server') { 'HispaniaServer' } else { 'HispaniaWorker' }
 $directory=if ($Role -eq 'server') { 'server' } else { 'worker' }

@@ -10,7 +10,7 @@ public static class PackageSetAdminEndpoints
     public static IEndpointRouteBuilder MapPackageSetAdmin(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/platform/admin/modules/packages")
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.Admin, false));
+            .RequirePlatformPermission(PlatformPermissionIds.Admin, false);
         group.MapPost("", async Task<IResult> (HttpRequest request, ModuleExtensionCatalog catalog, CancellationToken ct) =>
         {
             var path = Path.Combine(Path.GetTempPath(), "hispania-upload-" + Guid.NewGuid().ToString("N") + ".hispania");

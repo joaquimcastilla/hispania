@@ -90,9 +90,19 @@ public sealed class SqliteIdentityStore : IIdentityStore
 
     public async ValueTask<bool> SetUserAsync(User user, CancellationToken cancellationToken) => await WithConnection(async connection =>
     {
-        await using var command = connection.CreateCommand(); command.CommandText = "UPDATE identity_users SET display_name=$display,status=$status,updated_utc=$updated WHERE user_id=$id";
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand(); command.Transaction = (SqliteTransaction)transaction; command.CommandText = "UPDATE identity_users SET display_name=$display,status=$status,updated_utc=$updated WHERE user_id=$id";
         command.Parameters.AddWithValue("$display", user.DisplayName); command.Parameters.AddWithValue("$status", (int)user.Status); command.Parameters.AddWithValue("$updated", Fmt(user.UpdatedAt)); command.Parameters.AddWithValue("$id", user.Id.Value.ToString("D"));
-        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1;
+        var changed = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1;
+        if (changed && user.Status == UserStatus.Disabled)
+        {
+            await using var revoke = connection.CreateCommand(); revoke.Transaction = (SqliteTransaction)transaction;
+            revoke.CommandText = "UPDATE identity_sessions SET revoked_utc=$now WHERE user_id=$id AND revoked_utc IS NULL";
+            revoke.Parameters.AddWithValue("$now", Fmt(user.UpdatedAt)); revoke.Parameters.AddWithValue("$id", user.Id.Value.ToString("D"));
+            await revoke.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return changed;
     }, cancellationToken).ConfigureAwait(false);
 
     public async ValueTask<StoredCredential?> GetCredentialAsync(UserId userId, CancellationToken cancellationToken) => await WithConnection(async connection =>
@@ -122,11 +132,11 @@ public sealed class SqliteIdentityStore : IIdentityStore
         return new(session, reader.GetString(5));
     }, cancellationToken).ConfigureAwait(false);
 
-    public async ValueTask CreateSessionAsync(StoredSession session, CancellationToken cancellationToken) => await WithConnection(async connection =>
+    public async ValueTask<bool> CreateSessionAsync(StoredSession session, CancellationToken cancellationToken) => await WithConnection(async connection =>
     {
-        await using var command = connection.CreateCommand(); command.CommandText = "INSERT INTO identity_sessions VALUES($id,$user,$hash,$created,$expires,NULL)";
+        await using var command = connection.CreateCommand(); command.CommandText = "INSERT INTO identity_sessions SELECT $id,$user,$hash,$created,$expires,NULL WHERE EXISTS(SELECT 1 FROM identity_users WHERE user_id=$user AND status=0)";
         command.Parameters.AddWithValue("$id", session.Session.Id.Value.ToString("D")); command.Parameters.AddWithValue("$user", session.Session.UserId.Value.ToString("D")); command.Parameters.AddWithValue("$hash", session.TokenHash); command.Parameters.AddWithValue("$created", Fmt(session.Session.CreatedAt)); command.Parameters.AddWithValue("$expires", Fmt(session.Session.ExpiresAt));
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false); return true;
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1;
     }, cancellationToken).ConfigureAwait(false);
 
     public async ValueTask<bool> RevokeSessionAsync(SessionId sessionId, DateTimeOffset revokedAt, CancellationToken cancellationToken) => await WithConnection(async connection =>

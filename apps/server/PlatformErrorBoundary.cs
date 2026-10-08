@@ -16,7 +16,9 @@ public static class PlatformErrorBoundary
             if (context.Response.HasStarted) { context.Abort(); return; }
             context.Response.Clear();
             var status = exception is BadHttpRequestException bad ? bad.StatusCode : StatusCodes.Status500InternalServerError;
-            await Results.Problem(title: "Request could not be completed.", statusCode: status).ExecuteAsync(context).ConfigureAwait(false);
+            var correlation = context.Request.Headers[Hispania.Platform.Contracts.Observability.PlatformCorrelationV1.HeaderName].FirstOrDefault();
+            if (!Hispania.Platform.Contracts.Observability.PlatformCorrelationV1.IsValidId(correlation)) correlation = Guid.NewGuid().ToString("N");
+            await Results.Problem(title: "Request could not be completed.", statusCode: status, extensions: new Dictionary<string, object?> { ["code"] = "request_failed", ["correlationId"] = correlation }).ExecuteAsync(context).ConfigureAwait(false);
         }
     });
 }

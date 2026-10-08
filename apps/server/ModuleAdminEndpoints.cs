@@ -5,6 +5,7 @@ using Hispania.Runtime;
 using Hispania.ExtensionDemo.Contracts;
 using Hispania.ModuleSystem.Contracts;
 using Hispania.Platform.Contracts.Audit;
+using Hispania.Platform.Contracts.Observability;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,7 +18,7 @@ public static class ModuleAdminEndpoints
         endpoints.MapGet("/internal/modules/health", (IModuleRuntime runtime) => Results.Ok(runtime.ListHealth().Select(health => new
         {
             health.Descriptor, health.State, health.IsHealthy, health.UpdatedAtUtc, health.Revision
-        })));
+        }))).RequirePlatformPermission(Hispania.Platform.Contracts.Authorization.PlatformPermissionIds.ObservabilityRead);
         return endpoints;
     }
 
@@ -28,20 +29,29 @@ public static class ModuleAdminEndpoints
     public static IEndpointRouteBuilder MapModuleAdminEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/internal/admin/modules");
+        group.WithMetadata(new SecurityEndpointInventory.ExplicitPolicy("configured-fixed-time-admin-bearer-handler"));
         group.AddEndpointFilter(async (context, next) =>
         {
             var configuration = context.HttpContext.RequestServices.GetRequiredService<IConfiguration>();
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Hispania.ExtensionAdmin");
+            void RecordRejection()
+            {
+                var metrics = context.HttpContext.RequestServices.GetService<IPlatformMetricsV1>();
+                metrics.BestEffort(sink => sink.Increment("hispania.security.authorization.denied"));
+                if (context.HttpContext.RequestServices.GetService<SecurityAbuseLimiter>() is { } limiter && !limiter.TryRecordDeniedAudit())
+                    metrics.BestEffort(sink => sink.Increment("hispania.security.audit.denial_suppressed"));
+                else AdminAuthorizationRejectedLog(logger, context.HttpContext.Request.Path, null);
+            }
             var configuredToken = configuration["Modules:AdminToken"];
             if (string.IsNullOrWhiteSpace(configuredToken))
             {
-                AdminAuthorizationRejectedLog(logger, context.HttpContext.Request.Path, null);
+                RecordRejection();
                 return Results.Problem("Module administration is not configured.", statusCode: StatusCodes.Status503ServiceUnavailable);
             }
             var authorization = context.HttpContext.Request.Headers.Authorization.ToString();
             if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
             {
-                AdminAuthorizationRejectedLog(logger, context.HttpContext.Request.Path, null);
+                RecordRejection();
                 return Results.Unauthorized();
             }
             var providedToken = authorization[7..].Trim();
@@ -49,7 +59,7 @@ public static class ModuleAdminEndpoints
             var provided = Encoding.UTF8.GetBytes(providedToken);
             if (expected.Length != provided.Length || !CryptographicOperations.FixedTimeEquals(expected, provided))
             {
-                AdminAuthorizationRejectedLog(logger, context.HttpContext.Request.Path, null);
+                RecordRejection();
                 return Results.Unauthorized();
             }
             try

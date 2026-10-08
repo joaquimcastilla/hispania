@@ -21,7 +21,7 @@ public static class PlatformJobEndpoints
             return Results.Ok(rows.Select(job => new { job.JobId, job.JobType, Status = job.Status.ToString(), job.CreatedAt, job.ScheduledAt,
                 job.StartedAt, job.CompletedAt, job.AttemptCount, job.MaxAttempts, job.Executor, job.ErrorSummary,
                 ExecutionPolicy = job.ExecutionPolicy.ToString(), job.WorkerId, job.Capability, job.Generation }));
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.JobsRead, allowLegacyAdminBearer: false));
+        }).RequirePlatformPermission(PlatformPermissionIds.JobsRead, allowLegacyAdminBearer: false);
         group.MapPost("", async (CreateJobRequest request, HttpContext http, IPlatformJobServiceV1 jobs, CancellationToken ct) =>
         {
             try
@@ -37,21 +37,21 @@ public static class PlatformJobEndpoints
             }
             catch (ArgumentException) { return Results.BadRequest(new { error = "invalid_job" }); }
             catch (JsonException) { return Results.BadRequest(new { error = "invalid_payload" }); }
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.JobsManage, allowLegacyAdminBearer: false));
+        }).RequirePlatformPermission(PlatformPermissionIds.JobsManage, allowLegacyAdminBearer: false);
         group.MapGet("/health", async (IPlatformJobServiceV1 jobs, CancellationToken ct) =>
         { try { var health = await jobs.GetHealthAsync(ct); var healthy = health.StoreAccessible && health.DispatcherActive; return Results.Json(new { status = healthy ? "Healthy" : "Degraded", health.StoreAccessible, health.DispatcherActive, health.Pending, health.Running, health.DeadLettered }, statusCode: healthy ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable); } catch (Exception) { return Results.Json(new { status = "Degraded", storeAccessible = false }, statusCode: StatusCodes.Status503ServiceUnavailable); } })
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.JobsRead, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(PlatformPermissionIds.JobsRead, allowLegacyAdminBearer: false);
         group.MapGet("/{jobId:guid}", async (Guid jobId, IPlatformJobServiceV1 jobs, CancellationToken ct) =>
         { var job = await jobs.GetAsync(jobId, ct); return job is null ? Results.NotFound() : Results.Ok(View(job)); })
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.JobsRead, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(PlatformPermissionIds.JobsRead, allowLegacyAdminBearer: false);
         group.MapGet("/{jobId:guid}/attempts", async (Guid jobId, IPlatformJobServiceV1 jobs, CancellationToken ct) => Results.Ok(await jobs.GetAttemptsAsync(jobId, ct)))
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.JobsRead, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(PlatformPermissionIds.JobsRead, allowLegacyAdminBearer: false);
         group.MapPost("/{jobId:guid}/cancel", async (Guid jobId, HttpContext http, IPlatformJobServiceV1 jobs, CancellationToken ct) =>
             await jobs.CancelAsync(jobId, AuthorizationEndpointFilters.AuthenticatedUserId(http)?.Value.ToString("D"), ct) ? Results.Accepted() : Results.Conflict(new { error = "job_not_cancellable" }))
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.JobsManage, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(PlatformPermissionIds.JobsManage, allowLegacyAdminBearer: false);
         group.MapPost("/{jobId:guid}/retry", async (Guid jobId, HttpContext http, IPlatformJobServiceV1 jobs, CancellationToken ct) =>
             await jobs.RetryAsync(jobId, AuthorizationEndpointFilters.AuthenticatedUserId(http)?.Value.ToString("D"), ct) ? Results.Accepted() : Results.Conflict(new { error = "job_not_retryable" }))
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.JobsManage, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(PlatformPermissionIds.JobsManage, allowLegacyAdminBearer: false);
         return endpoints;
     }
 

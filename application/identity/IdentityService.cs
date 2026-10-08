@@ -19,7 +19,7 @@ public interface IIdentityStore
     ValueTask SetCredentialAsync(UserId userId, StoredCredential credential, CancellationToken cancellationToken);
     ValueTask<StoredSession?> GetSessionByTokenHashAsync(string tokenHash, CancellationToken cancellationToken);
     ValueTask<StoredSession?> GetSessionAsync(SessionId sessionId, CancellationToken cancellationToken);
-    ValueTask CreateSessionAsync(StoredSession session, CancellationToken cancellationToken);
+    ValueTask<bool> CreateSessionAsync(StoredSession session, CancellationToken cancellationToken);
     ValueTask<bool> RevokeSessionAsync(SessionId sessionId, DateTimeOffset revokedAt, CancellationToken cancellationToken);
 }
 
@@ -97,6 +97,12 @@ public sealed class IdentityService : IIdentityCommandV1, IIdentityQueryV1
 
     public async ValueTask<AuthenticationResult> LoginAsync(string username, string password, string? correlationId = null, CancellationToken cancellationToken = default)
     {
+        // Reject before UTF-8 conversion and PBKDF2; never silently truncate credentials.
+        if (password is null || password.Length > MaximumPasswordLength)
+        {
+            metrics.BestEffort(sink => sink.Increment("hispania.identity.login.failure"));
+            return AuthenticationResult.Failed();
+        }
         correlationId ??= PlatformCorrelationV1.Current?.CorrelationId;
         var normalized = TryNormalizeUsername(username, out var name) ? name : string.Empty;
         var user = normalized.Length == 0 ? null : await store.GetUserByUsernameAsync(normalized, cancellationToken).ConfigureAwait(false);
@@ -111,7 +117,7 @@ public sealed class IdentityService : IIdentityCommandV1, IIdentityQueryV1
         var rawToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         var now = DateTimeOffset.UtcNow;
         var session = new Session(SessionId.New(), user.Id, now, now + _options.EffectiveSessionLifetime, null);
-        await store.CreateSessionAsync(new(session, TokenHash(rawToken)), cancellationToken).ConfigureAwait(false);
+        if (!await store.CreateSessionAsync(new(session, TokenHash(rawToken)), cancellationToken).ConfigureAwait(false)) return AuthenticationResult.Failed();
         metrics.BestEffort(sink => sink.Increment("hispania.identity.login.success"));
         await WriteAudit(user.Id, "login-success", "success", session.Id.Value.ToString("D"), correlationId, cancellationToken).ConfigureAwait(false);
         return new(true, user, session, rawToken);

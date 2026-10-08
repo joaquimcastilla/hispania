@@ -64,7 +64,7 @@ public static class PlatformObservabilityEndpoints
             return Results.Json(new { status = snapshot.Status.ToString() }, statusCode: snapshot.Status == PlatformHealthStatusV1.Unhealthy ? 503 : 200);
         });
         endpoints.MapGet("/api/health/details", async (IPlatformHealthV1 health, CancellationToken ct) => View(await health.CheckAsync(ct)))
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.ObservabilityRead, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(PlatformPermissionIds.ObservabilityRead, allowLegacyAdminBearer: false);
         endpoints.MapGet("/api/platform/observability", async (IPlatformHealthV1 health, IPlatformMetricsV1 metrics, IPlatformJobServiceV1 jobs,
             IDurablePlatformEventBusV1 events, IDistributedWorkCoordinatorV1 workers, IStorageProviderResolverV1 storage, CancellationToken ct) =>
         {
@@ -80,7 +80,7 @@ public static class PlatformObservabilityEndpoints
                 workers = workers.ListWorkers().Select(worker => new { workerId = worker.NodeId, status = worker.Connected && worker.Enabled && worker.Authorized ? "Connected" : "Unavailable", lastHeartbeat = worker.LastHeartbeatUtc,
                     capabilities = worker.Inventory?.Capabilities ?? [], runningExecutions = executions.Count(job => job.NodeId == worker.NodeId && job.State is DistributedJobStateV1.Assigned or DistributedJobStateV1.Running) })
             });
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.ObservabilityRead, allowLegacyAdminBearer: false));
+        }).RequirePlatformPermission(PlatformPermissionIds.ObservabilityRead, allowLegacyAdminBearer: false);
         return endpoints;
     }
     private static object View(PlatformHealthSnapshotV1 health) => new { status = health.Status.ToString(), health.CheckedAt, checks = health.Checks.Select(check => new { check.Component, status = check.Status.ToString(), check.Code }) };

@@ -10,7 +10,7 @@ public static class PersonMetadataEndpoints
     public static IEndpointRouteBuilder MapPersonMetadataEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/v1/people/{personId:guid}", GetAsync)
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(Hispania.Library.Contracts.MediaPermissionIds.LibraryRead, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(Hispania.Library.Contracts.MediaPermissionIds.LibraryRead, allowLegacyAdminBearer: false);
         return endpoints;
     }
 

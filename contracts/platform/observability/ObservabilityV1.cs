@@ -92,6 +92,7 @@ public static class PlatformMetricNamesV1
     public static IReadOnlySet<string> Counters { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         "hispania.identity.login.success", "hispania.identity.login.failure",
+        "hispania.security.authentication.rate_limited", "hispania.security.authorization.denied", "hispania.security.audit.denial_suppressed",
         "hispania.events.published", "hispania.events.delivered", "hispania.events.retrying", "hispania.events.failed", "hispania.events.dead_lettered",
         "hispania.jobs.created", "hispania.jobs.retried", "hispania.jobs.execution.local", "hispania.jobs.execution.remote", "hispania.jobs.remote.unavailable", "hispania.jobs.remote.retried", "hispania.jobs.remote.fenced_results",
         "hispania.storage.reads", "hispania.storage.writes", "hispania.storage.deletes", "hispania.storage.failures", "hispania.storage.read.failure", "hispania.storage.write.failure",

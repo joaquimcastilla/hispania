@@ -14,6 +14,7 @@ public static class DistributedWorkerEndpoints
     public static IEndpointRouteBuilder MapDistributedWorkerEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/internal/worker/v1");
+        group.WithMetadata(new SecurityEndpointInventory.ExplicitPolicy("mtls-sha256-pin-and-node-handler"));
         group.AddEndpointFilter(async (context, next) =>
         {
             var http = context.HttpContext;
@@ -30,7 +31,8 @@ public static class DistributedWorkerEndpoints
             var coordinator = http.RequestServices.GetRequiredService<IDistributedWorkCoordinatorV1>();
             if (!coordinator.AuthenticateWorker(nodeId, thumbprint)) return Results.Unauthorized();
             http.Items[CertificateThumbprintItem] = thumbprint;
-            return await next(context).ConfigureAwait(false);
+            try { return await next(context).ConfigureAwait(false); }
+            catch (ArgumentException) { return Results.BadRequest(new { error = "invalid_worker_input" }); }
         });
 
         group.MapPost("/{nodeId}/connect", (string nodeId, DistributedWorkerConnectRequestV1 request, HttpContext httpContext, [FromServices] IDistributedWorkCoordinatorV1 coordinator) =>

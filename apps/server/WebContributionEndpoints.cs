@@ -25,7 +25,7 @@ public static class WebContributionEndpoints
         });
         endpoints.MapGet("/api/platform/admin/modules/web", async (ModuleExtensionCatalog catalog, CancellationToken ct) =>
             Results.Ok((await catalog.InspectWebContributionsAsync(ct)).Diagnostics))
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.Admin, false));
+            .RequirePlatformPermission(PlatformPermissionIds.Admin, false);
         endpoints.MapGet("/api/v1/web/assets/{packageId}/{artifactHash}/{name}", async (string packageId, string artifactHash, string name, HttpContext http, ModuleExtensionCatalog catalog, CancellationToken ct) =>
         {
             http.Response.Headers.CacheControl = "no-store";

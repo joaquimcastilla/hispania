@@ -12,15 +12,15 @@ public static class TmdbMovieMetadataEndpoints
     public static IEndpointRouteBuilder MapTmdbMovieMetadataEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/v1/media/{mediaEntityId}/metadata/tmdb/search", SearchAsync)
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(MediaPermissionIds.Admin, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(MediaPermissionIds.Admin, allowLegacyAdminBearer: false);
         endpoints.MapPost("/api/v1/media/{mediaEntityId}/metadata/tmdb/select", SelectAsync)
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(MediaPermissionIds.Admin, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(MediaPermissionIds.Admin, allowLegacyAdminBearer: false);
         endpoints.MapPost("/api/v1/media/{mediaEntityId}/metadata/tmdb/confirm", ConfirmAsync)
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(MediaPermissionIds.Admin, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(MediaPermissionIds.Admin, allowLegacyAdminBearer: false);
         endpoints.MapPost("/api/v1/media/{mediaEntityId}/metadata/tmdb/refresh", RefreshAsync)
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(MediaPermissionIds.Admin, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(MediaPermissionIds.Admin, allowLegacyAdminBearer: false);
         endpoints.MapGet("/api/v1/media/{mediaEntityId}/metadata/tmdb", StateAsync)
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(MediaPermissionIds.LibraryRead, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(MediaPermissionIds.LibraryRead, allowLegacyAdminBearer: false);
         return endpoints;
     }
 

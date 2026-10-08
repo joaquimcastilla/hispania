@@ -28,7 +28,7 @@ public static class PlatformEndpoints
             catch (InvalidDataException) { return Results.Problem("Asset exceeds upload limit.", statusCode: StatusCodes.Status413PayloadTooLarge); }
             await audit.WriteAsync(new(DateTimeOffset.UtcNow, "admin", Correlation(http), "platform.assets", "asset-created", "asset", asset.Id.Value.ToString("D"), "success", new Dictionary<string, string> { ["type"] = type.ToString(), ["scope"] = domain }), ct);
             return Results.Created($"/api/assets/{asset.Id.Value:D}", AssetView(asset));
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.AssetsWrite));
+        }).RequirePlatformPermission(PlatformPermissionIds.AssetsWrite);
         group.MapGet("/{id:guid}", async (Guid id, HttpContext http, IPlatformAssetStore assets, IConfiguration config, CancellationToken ct) =>
         {
             var asset = await assets.GetMetadataAsync(new(id), ct); if (asset is null) return Results.NotFound();
@@ -51,7 +51,7 @@ public static class PlatformEndpoints
                 return deleted ? Results.NoContent() : Results.NotFound();
             }
             catch (StorageProviderNotFoundException) { return Results.Problem("The asset storage provider is unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable); }
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.AssetsWrite));
+        }).RequirePlatformPermission(PlatformPermissionIds.AssetsWrite);
         return endpoints;
     }
 
@@ -60,7 +60,7 @@ public static class PlatformEndpoints
         endpoints.MapGet("/internal/admin/audit", async (IPlatformAuditReader reader, string? domain, string? action, string? resourceType, string? resourceId, string? actorId, string? correlationId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, int? page, int? pageSize, CancellationToken ct) =>
         {
             return Results.Ok(await reader.QueryAsync(new(domain, action, resourceType, resourceId, actorId, correlationId, fromUtc, toUtc, page ?? 1, pageSize ?? 50), ct));
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.AuditRead)).WithTags("Platform Audit");
+        }).RequirePlatformPermission(PlatformPermissionIds.AuditRead).WithTags("Platform Audit");
         return endpoints;
     }
 
@@ -73,14 +73,14 @@ public static class PlatformEndpoints
             var asset = await assets.GetMetadataAsync(new(id), ct);
             if (asset is null || asset.Type != AssetType.Video || !asset.MimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)) return Results.NotFound();
             return Results.Ok(new { available = true, mimeType = asset.MimeType, streamUrl = $"/api/media/assets/{id:D}/stream" });
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(Hispania.Library.Contracts.MediaPermissionIds.PlaybackUse, allowLegacyAdminBearer: false));
+        }).RequirePlatformPermission(Hispania.Library.Contracts.MediaPermissionIds.PlaybackUse, allowLegacyAdminBearer: false);
         group.MapGet("/{id:guid}/stream", async (Guid id, IPlatformAssetStore assets, CancellationToken ct) =>
         {
             var asset = await assets.GetMetadataAsync(new(id), ct);
             if (asset is null || asset.Type != AssetType.Video || !asset.MimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)) return Results.NotFound();
             try { var stream = await assets.OpenReadAsync(new(id), ct); return stream is null ? Results.NotFound() : Results.Stream(stream, asset.MimeType, enableRangeProcessing: true); }
             catch (StorageProviderNotFoundException) { return Results.Problem("The asset storage provider is unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable); }
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(Hispania.Library.Contracts.MediaPermissionIds.PlaybackUse, allowLegacyAdminBearer: false));
+        }).RequirePlatformPermission(Hispania.Library.Contracts.MediaPermissionIds.PlaybackUse, allowLegacyAdminBearer: false);
         return endpoints;
     }
 

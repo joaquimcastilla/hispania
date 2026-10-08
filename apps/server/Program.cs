@@ -82,7 +82,17 @@ using var installationLease = BackupInstallation.Configure(builder.Configuration
 production?.EnforcePublicTrust(builder.Configuration);
 if (production is not null) BackupInstallation.RefreshPortableConfiguration(builder.Configuration);
 builder.Services.AddSingleton<IPlatformMetricsV1, PlatformMetricsV1>();
+builder.Services.AddSingleton<SecurityAbuseLimiter>();
 builder.Services.AddPlatformObservability();
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestHeadersTotalSize = 32 * 1024;
+    options.Limits.MaxRequestHeaderCount = 100;
+    options.Limits.MaxRequestLineSize = 8192;
+    options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(30);
+    options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(120);
+    // Body throughput keeps Kestrel's framework default; authentication overrides body size below.
+});
 builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https =>
 {
     // Workers may present their client certificate; Kestrel still validates its chain using
@@ -343,12 +353,7 @@ if (production?.BootstrapOnly == true)
     return;
 }
 app.UsePlatformErrorBoundary();
-app.Use(async (http, next) =>
-{
-    http.Response.Headers["X-Content-Type-Options"] = "nosniff";
-    http.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://image.tmdb.org blob: data:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
-    await next();
-});
+app.UseMiddleware<SecurityRequestMiddleware>();
 #if !HISPANIA_PRODUCTION_DISTRIBUTION
 if (production is null) await SeedInventoryDemoAsync(app.Services);
 #endif
@@ -367,14 +372,15 @@ app.MapGet("/internal/metadata-enrichment", (IServiceProvider services) =>
 {
     var enrichment = services.GetService<AutomaticMovieMetadataEnrichmentHostedService>();
     return enrichment is null ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable) : Results.Ok(enrichment.LastRun);
-});
+}).RequirePlatformPermission(Hispania.Library.Contracts.MediaPermissionIds.Admin);
 #if !HISPANIA_PRODUCTION_DISTRIBUTION
 if (production is null) app.MapGet("/internal/module-test", (IArchitectureDemonstrationService service) => Results.Ok(service.GetResponse()));
 #endif
 app.MapPublicModuleHealth();
 app.MapModuleAdminEndpoints();
 app.MapDistributedWorkerEndpoints();
-app.MapGet("/internal/capabilities/transcoding/health", (ITranscodingCapabilityHealthV1 health) => Results.Ok(health.GetSnapshot()));
+app.MapGet("/internal/capabilities/transcoding/health", (ITranscodingCapabilityHealthV1 health) => Results.Ok(health.GetSnapshot()))
+    .RequirePlatformPermission(Hispania.Platform.Contracts.Authorization.PlatformPermissionIds.ObservabilityRead);
 app.MapDirectPlayEndpoints();
 app.MapEffectiveMetadataEndpoints();
 app.MapMetadataEditingEndpoints();
@@ -390,7 +396,8 @@ app.MapPlatformJobEndpoints();
 app.MapIdentityEndpoints();
 app.MapAuthorizationEndpoints();
 app.MapInventoryMediaAssetEndpoints();
-var testShutdownToken = builder.Configuration["Testing:ShutdownToken"];
+#if !HISPANIA_PRODUCTION_DISTRIBUTION
+var testShutdownToken = production is null ? builder.Configuration["Testing:ShutdownToken"] : null;
 if (!string.IsNullOrWhiteSpace(testShutdownToken))
 {
     app.MapPost("/_test/shutdown", (HttpContext http, IHostApplicationLifetime lifetime) =>
@@ -400,7 +407,11 @@ if (!string.IsNullOrWhiteSpace(testShutdownToken))
         return Results.Accepted();
     });
 }
+#endif
 app.MapFallbackToFile("index.html");
+app.MapGet("/api/platform/admin/security/endpoints", () => Results.Ok(SecurityEndpointInventory.Snapshot(((IEndpointRouteBuilder)app).DataSources)))
+    .RequirePlatformPermission(Hispania.Platform.Contracts.Authorization.PlatformPermissionIds.Admin, false);
+SecurityEndpointInventory.Validate(((IEndpointRouteBuilder)app).DataSources);
 
 await app.RunAsync();
 

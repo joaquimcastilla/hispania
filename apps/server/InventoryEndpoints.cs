@@ -9,8 +9,8 @@ public static class InventoryEndpoints
     public static IEndpointRouteBuilder MapInventoryEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/inventory").WithTags("Inventory");
-        var readGroup = group.MapGroup("").AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(InventoryPermissionIds.Read, allowLegacyAdminBearer: false));
-        var commandsGroup = group.MapGroup("").AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(InventoryPermissionIds.Write));
+        var readGroup = group.MapGroup("").RequirePlatformPermission(InventoryPermissionIds.Read, allowLegacyAdminBearer: false);
+        var commandsGroup = group.MapGroup("").RequirePlatformPermission(InventoryPermissionIds.Write);
         readGroup.MapGet("/items", async (IInventoryQueryV1 query, CancellationToken token) => Results.Ok(await query.GetItemsAsync(token)));
         readGroup.MapGet("/assets/{assetId:guid}", async (Guid assetId, IPlatformAssetStore assets, CancellationToken token) =>
         {

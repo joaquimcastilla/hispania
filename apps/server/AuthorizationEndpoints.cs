@@ -24,7 +24,7 @@ public static class AuthorizationEndpoints
             var result = new List<UserAdministrationView>(users.Count);
             foreach (var user in users) result.Add(new(user, await admin.GetUserRolesAsync(user.Id, ct)));
             return Results.Ok(result);
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.UsersRead));
+        }).RequirePlatformPermission(PlatformPermissionIds.UsersRead);
 
         group.MapPatch("/users/{userId:guid}/status", async (Guid userId, UserStatusRequest request, HttpContext http, IIdentityCommandV1 identity, IIdentityQueryV1 identityQuery, IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
         {
@@ -35,11 +35,11 @@ public static class AuthorizationEndpoints
             }
             var result = await identity.SetUserStatusAsync(new(userId), request.Enabled ? UserStatus.Enabled : UserStatus.Disabled, Correlation(http), ct);
             return result.Succeeded ? Results.Ok(result.Value) : Results.NotFound();
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.UsersWrite));
+        }).RequirePlatformPermission(PlatformPermissionIds.UsersWrite);
 
         group.MapGet("/users/{userId:guid}/roles", async (Guid userId, IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
             Results.Ok(await admin.GetUserRolesAsync(new(userId), ct)))
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.UsersRead));
+            .RequirePlatformPermission(PlatformPermissionIds.UsersRead);
 
         group.MapPost("/users/{userId:guid}/roles/{roleId:guid}", async (Guid userId, Guid roleId, HttpContext http, IAuthorizationAdministrationV1 admin, IAuthorizationServiceV1 authorization, CancellationToken ct) =>
         {
@@ -53,7 +53,7 @@ public static class AuthorizationEndpoints
                 AuthorizationFailure.Conflict => Results.Conflict(),
                 _ => result.Value == true ? Results.Ok() : Results.Conflict()
             };
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.UsersWrite));
+        }).RequirePlatformPermission(PlatformPermissionIds.UsersWrite);
 
         group.MapDelete("/users/{userId:guid}/roles/{roleId:guid}", async (Guid userId, Guid roleId, HttpContext http, IAuthorizationAdministrationV1 admin, IAuthorizationServiceV1 authorization, CancellationToken ct) =>
         {
@@ -67,7 +67,7 @@ public static class AuthorizationEndpoints
                 AuthorizationFailure.Conflict => Results.Conflict(),
                 _ => result.Value == true ? Results.NoContent() : Results.NotFound()
             };
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.UsersWrite));
+        }).RequirePlatformPermission(PlatformPermissionIds.UsersWrite);
 
         group.MapGet("/roles", async (IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
         {
@@ -75,7 +75,7 @@ public static class AuthorizationEndpoints
             var result = new List<RoleAdministrationView>(roles.Count);
             foreach (var role in roles) result.Add(new(role, await admin.GetRolePermissionsAsync(role.Id, ct)));
             return Results.Ok(result);
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.RolesRead));
+        }).RequirePlatformPermission(PlatformPermissionIds.RolesRead);
 
         group.MapPost("/roles", async (CreateRoleRequest request, HttpContext http, IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
         {
@@ -86,7 +86,7 @@ public static class AuthorizationEndpoints
                 AuthorizationFailure.InvalidInput => Results.BadRequest(new { error = "invalid_role" }),
                 _ => Results.Created($"/api/authorization/roles/{result.Value!.Id.Value:D}", result.Value)
             };
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.RolesWrite));
+        }).RequirePlatformPermission(PlatformPermissionIds.RolesWrite);
 
         group.MapPut("/roles/{roleId:guid}", async (Guid roleId, UpdateRoleRequest request, HttpContext http, IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
         {
@@ -99,19 +99,19 @@ public static class AuthorizationEndpoints
                 AuthorizationFailure.InvalidInput => Results.BadRequest(new { error = "invalid_role" }),
                 _ => Results.Ok(result.Value)
             };
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.RolesWrite));
+        }).RequirePlatformPermission(PlatformPermissionIds.RolesWrite);
 
         group.MapPut("/roles/{roleId:guid}/permissions/{permissionId}", async (Guid roleId, string permissionId, HttpContext http, IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
         {
             var result = await admin.AddPermissionAsync(new(roleId), permissionId, Correlation(http), ct);
             return result.Failure switch { AuthorizationFailure.NotFound => Results.NotFound(), AuthorizationFailure.InvalidInput => Results.BadRequest(new { error = "invalid_permission" }), AuthorizationFailure.Conflict => Results.Conflict(), _ => Results.Ok(new { added = result.Value }) };
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.RolesPermissionsWrite));
+        }).RequirePlatformPermission(PlatformPermissionIds.RolesPermissionsWrite);
 
         group.MapDelete("/roles/{roleId:guid}/permissions/{permissionId}", async (Guid roleId, string permissionId, HttpContext http, IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
         {
             var result = await admin.RemovePermissionAsync(new(roleId), permissionId, Correlation(http), ct);
             return result.Failure switch { AuthorizationFailure.NotFound => Results.NotFound(), AuthorizationFailure.InvalidInput => Results.BadRequest(new { error = "invalid_permission" }), AuthorizationFailure.Conflict => Results.Conflict(), _ => result.Value == true ? Results.NoContent() : Results.NotFound() };
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.RolesPermissionsWrite));
+        }).RequirePlatformPermission(PlatformPermissionIds.RolesPermissionsWrite);
 
         return endpoints;
     }

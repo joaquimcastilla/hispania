@@ -8,7 +8,8 @@ account=${4:-hispania}
 case "$home" in /*) ;; *) echo 'Home must be absolute' >&2; exit 2;; esac
 case "$home" in *'"'*|*'%'*|*'\'*|*'
 '*) echo 'Unsupported service path character' >&2; exit 2;; esac
-case "$account" in *[!a-zA-Z0-9_-]*|'') echo 'Invalid service account' >&2; exit 2;; esac
+if printf '%s' "$home" | LC_ALL=C grep -q '[[:cntrl:]]'; then echo 'Unsupported service path character' >&2; exit 2; fi
+case "$account" in -*|*[!a-zA-Z0-9_-]*|'') echo 'Invalid service account' >&2; exit 2;; esac
 case "$role" in server) directory=server; assembly=Hispania.Server;; worker) directory=worker; assembly=Hispania.WorkerAgent;; *) exit 2;; esac
 name="hispania-$role.service"
 case "$action" in

@@ -34,17 +34,17 @@ public static class PlatformAdminEndpoints
                 activeSessions = metrics.Snapshot().FirstOrDefault(metric => metric.Name == "hispania.identity.sessions.active")?.Value,
                 pendingJobs = pending, deadLetterEvents = deadLetters, connectedWorkers = workers.ListWorkers().Count(worker => worker.Connected && worker.Enabled && worker.Authorized),
                 storageStatus = snapshot.Checks.FirstOrDefault(check => check.Component == "Storage")?.Status.ToString() ?? "Unavailable", modules });
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.ObservabilityRead, false));
+        }).RequirePlatformPermission(PlatformPermissionIds.ObservabilityRead, false);
 
         group.MapGet("/assets/{id:guid}", async (Guid id, IPlatformAssetStore assets, CancellationToken ct) =>
         {
             var asset = await assets.GetMetadataAsync(new(id), ct);
             return asset is null ? Results.NotFound() : Results.Ok(new { id = asset.Id.Value, type = asset.Type.ToString(), asset.MimeType, asset.Size,
                 provider = asset.ProviderId, asset.CreatedAtUtc, asset.UpdatedAtUtc });
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.AssetsWrite, false));
+        }).RequirePlatformPermission(PlatformPermissionIds.AssetsWrite, false);
 
         group.MapGet("/modules/packages/graph", (ModuleExtensionCatalog catalog) => Results.Ok(catalog.InspectPackageGraph()))
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.Admin, false));
+            .RequirePlatformPermission(PlatformPermissionIds.Admin, false);
 
         group.MapGet("/modules", (IModuleRuntime runtime, ModuleExtensionCatalog catalog) =>
         {
@@ -60,7 +60,7 @@ public static class PlatformAdminEndpoints
                 .Select(extension => new AdminModuleView(extension.Manifest.Id, extension.Manifest.Name, extension.Manifest.Version,
                     extension.State?.ToString() ?? "Discovered", null, null, extension.Manifest.Runtime, true, extension.Compatible && extension.Trusted, extension.Loaded, extension.Installed, IsPreferred(extension)));
             return Results.Ok(rows.Concat(inactive));
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.Admin, false));
+        }).RequirePlatformPermission(PlatformPermissionIds.Admin, false);
 
         group.MapPost("/modules/{id}/{operation}", async Task<IResult> (string id, string operation, string? version, HttpContext http, ModuleExtensionCatalog catalog, IPlatformAuditWriter audit, CancellationToken ct) =>
         {
@@ -88,7 +88,7 @@ public static class PlatformAdminEndpoints
                 await audit.WriteAsync(new(DateTimeOffset.UtcNow, AuthorizationEndpointFilters.AuthenticatedUserId(http)?.Value.ToString("D"),
                     PlatformCorrelationV1.Current?.CorrelationId, "platform.modules", operation, "module", id, outcome, new Dictionary<string, string>()), ct);
             }
-        }).AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(PlatformPermissionIds.Admin, false));
+        }).RequirePlatformPermission(PlatformPermissionIds.Admin, false);
         return endpoints;
     }
 

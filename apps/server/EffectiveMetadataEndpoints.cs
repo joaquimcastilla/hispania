@@ -10,7 +10,7 @@ public static class EffectiveMetadataEndpoints
     public static IEndpointRouteBuilder MapEffectiveMetadataEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/v1/media/{mediaEntityId}/metadata", GetAsync)
-            .AddEndpointFilter(AuthorizationEndpointFilters.RequirePermission(MediaPermissionIds.LibraryRead, allowLegacyAdminBearer: false));
+            .RequirePlatformPermission(MediaPermissionIds.LibraryRead, allowLegacyAdminBearer: false);
         return endpoints;
     }
 
