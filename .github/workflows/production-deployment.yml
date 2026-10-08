@@ -15,6 +15,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/feature/phase-21-security-operations-hardening'
     runs-on: [self-hosted, hispania, hispania-linux]
     env:
+      TMPDIR: ${{ runner.temp }}
       HISPANIA_PHASE18_SERVICE_ROOT: /opt/hispania-phase18-ci
       HISPANIA_PHASE21_NATIVE_HELPER: /usr/local/sbin/hispania-phase21-service
     steps:
