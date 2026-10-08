@@ -59,7 +59,9 @@ public sealed class ExtensionPackageInstaller
         ModuleManifest manifest;
         await using (var manifestStream = manifestEntry.Open())
         {
-            manifest = await JsonSerializer.DeserializeAsync<ModuleManifest>(manifestStream, JsonOptions, cancellationToken).ConfigureAwait(false)
+            using var json = JsonDocument.Parse(await PackageArchiveInspector.ReadManifestBytesAsync(manifestStream, cancellationToken).ConfigureAwait(false));
+            PackageArchiveInspector.RejectDuplicates(json.RootElement);
+            manifest = json.RootElement.Deserialize<ModuleManifest>(JsonOptions)
                 ?? throw new InvalidDataException("Package manifest is empty.");
         }
         ValidateManifest(manifest);

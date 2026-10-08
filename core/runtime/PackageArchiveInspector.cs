@@ -35,7 +35,7 @@ public static class PackageArchiveInspector
         ModuleManifest manifest;
         await using (var input = metadata.Open())
         {
-            using var json = await JsonDocument.ParseAsync(input, cancellationToken: cancellationToken).ConfigureAwait(false);
+            using var json = JsonDocument.Parse(await ReadManifestBytesAsync(input, cancellationToken).ConfigureAwait(false));
             RejectDuplicates(json.RootElement);
             manifest = json.RootElement.Deserialize<ModuleManifest>(Options) ?? throw new InvalidDataException("Empty package manifest.");
         }
@@ -102,7 +102,7 @@ public static class PackageArchiveInspector
 
     private static void ValidatePath(string path)
     {
-        if (string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path) || path.Contains('\\') || path.Contains(':') ||
+        if (string.IsNullOrWhiteSpace(path) || path.Length > 1024 || path.Any(char.IsControl) || Path.IsPathRooted(path) || path.Contains('\\') || path.Contains(':') ||
             path.Split('/').Any(segment => segment is "" or "." or ".." || segment.EndsWith('.') || segment.EndsWith(' ')))
             throw new InvalidDataException("Unsafe package-relative path.");
     }
@@ -116,5 +116,18 @@ public static class PackageArchiveInspector
             { if (!names.Add(property.Name)) throw new InvalidDataException("Duplicate manifest property."); RejectDuplicates(property.Value); }
         }
         else if (value.ValueKind == JsonValueKind.Array) foreach (var item in value.EnumerateArray()) RejectDuplicates(item);
+    }
+
+    internal static async Task<byte[]> ReadManifestBytesAsync(Stream input, CancellationToken cancellationToken)
+    {
+        using var content = new MemoryStream();
+        var buffer = new byte[8192];
+        int read;
+        while ((read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            if (content.Length + read > 1024 * 1024) throw new InvalidDataException("Actual package manifest exceeds the size limit.");
+            content.Write(buffer, 0, read);
+        }
+        return content.ToArray();
     }
 }

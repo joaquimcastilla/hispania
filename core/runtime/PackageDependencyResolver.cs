@@ -62,6 +62,12 @@ public static class PackageDependencyResolver
 
     public static void ValidateManifest(ModuleManifest manifest)
     {
+        if (manifest.Implements is null || manifest.Provides is null || manifest.Requires is null || manifest.OptionalDependencies is null || manifest.Dependencies is null ||
+            manifest.Permissions is null || manifest.SharedAssemblies is null || manifest.Files is null || manifest.ContractTypes is null || manifest.DependencyMinimumVersions is null ||
+            new[] { manifest.Implements, manifest.Provides, manifest.Requires, manifest.OptionalDependencies, manifest.Dependencies, manifest.Permissions, manifest.SharedAssemblies }
+                .Any(values => values.Length > 256 || values.Any(value => value is null || value.Length > 1024 || value.Any(char.IsControl))) ||
+            manifest.Files.Count > 512 || manifest.ContractTypes.Count > 256 || manifest.DependencyMinimumVersions.Count > 256)
+            throw new InvalidDataException("Manifest collections are null or exceed security bounds.");
         if (manifest.PackageFormatVersion is not (1 or 2)) throw new InvalidDataException("Unsupported package format generation.");
         if (manifest.PackageFormatVersion == 1)
         {

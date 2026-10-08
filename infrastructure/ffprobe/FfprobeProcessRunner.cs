@@ -33,7 +33,12 @@ internal sealed class FfprobeProcessRunner : IFfprobeProcessRunner
         catch (Exception exception) when (exception is Win32Exception or IOException or UnauthorizedAccessException) { return new(null, string.Empty, string.Empty, false, false, true); }
     }
 
-    private static ProcessStartInfo CreateStartInfo(string executable) { var info = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true }; info.ArgumentList.Add("-v"); info.ArgumentList.Add("error"); info.ArgumentList.Add("-show_format"); info.ArgumentList.Add("-show_streams"); info.ArgumentList.Add("-of"); info.ArgumentList.Add("json"); info.ArgumentList.Add("pipe:0"); return info; }
+    private static ProcessStartInfo CreateStartInfo(string executable)
+    {
+        var info = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+        foreach (var name in info.Environment.Keys.Where(name => name.StartsWith("HISPANIA_SECRET_", StringComparison.OrdinalIgnoreCase)).ToArray()) info.Environment.Remove(name);
+        info.ArgumentList.Add("-v"); info.ArgumentList.Add("error"); info.ArgumentList.Add("-show_format"); info.ArgumentList.Add("-show_streams"); info.ArgumentList.Add("-of"); info.ArgumentList.Add("json"); info.ArgumentList.Add("pipe:0"); return info;
+    }
     private static async Task FeedInputAsync(Stream input, Process process, CancellationToken cancellationToken)
     {
         try

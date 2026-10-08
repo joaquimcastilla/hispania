@@ -32,6 +32,7 @@ public sealed record OutOfProcessResourceLimits
     internal void Configure(ProcessStartInfo start)
     {
         Validate();
+        foreach (var name in start.Environment.Keys.Where(name => name.StartsWith("HISPANIA_SECRET_", StringComparison.OrdinalIgnoreCase)).ToArray()) start.Environment.Remove(name);
         if (OperatingSystem.IsLinux())
         {
             var executable = start.FileName;

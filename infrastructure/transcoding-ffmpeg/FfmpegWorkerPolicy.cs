@@ -31,6 +31,7 @@ public sealed record FfmpegWorkerPolicy
 
     internal void ConfigureStartInfo(ProcessStartInfo start)
     {
+        foreach (var name in start.Environment.Keys.Where(name => name.StartsWith("HISPANIA_SECRET_", StringComparison.OrdinalIgnoreCase)).ToArray()) start.Environment.Remove(name);
         if (OperatingSystem.IsLinux())
         {
             var dotnet = start.FileName;
