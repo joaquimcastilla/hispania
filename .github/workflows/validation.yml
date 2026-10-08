@@ -1,46 +1,39 @@
 name: Validation
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: phase21-self-hosted
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
   validate:
-    runs-on: ubuntu-24.04
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: hispania
-          POSTGRES_DB: hispania_tests
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U hispania -d hispania_tests"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
-    env:
-      HISPANIA_POSTGRES_TEST_CONNECTION: Host=localhost;Port=5432;Database=hispania_tests;Username=hispania;Timeout=5
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/feature/phase-21-security-operations-hardening'
+    runs-on: [self-hosted, hispania, hispania-linux]
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
       - uses: actions/setup-node@v7
         with:
           node-version: 24.x
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - name: Install FFmpeg integration tools
-        run: sudo apt-get update && sudo apt-get install --yes ffmpeg postgresql-client-16
+        shell: pwsh
+        run: ./tools/ci/self-hosted-preflight.ps1
       - run: npm ci
         working-directory: apps/web
       - run: npm run build
@@ -56,7 +49,7 @@ jobs:
         run: ./tools/test-phase19-package-lifecycle.ps1
       - name: Install real Chromium for Phase20
         working-directory: apps/web
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: Require bounded Phase21 security abuse, fuzz, secret scan and dependency audit
         shell: pwsh
         run: ./tools/test-phase21-security-hardening.ps1 -AuditDependencies
@@ -92,13 +85,9 @@ jobs:
         run: ./tools/test-phase16-historical-upgrades.ps1 -ResultsDirectory .artifacts/phase16-ci -RequirePostgreSql
       - name: Require Platform-only dependency boundary
         run: dotnet build Hispania.Platform.slnf
-      - name: Diagnose PostgreSQL server version (dedicated CI trust-auth fixture)
-        env:
-          PGHOST: localhost
-          PGPORT: '5432'
-          PGUSER: hispania
-          PGDATABASE: hispania_tests
-        run: psql --no-psqlrc --tuples-only --no-align --command='SHOW server_version'
+      - name: Diagnose PostgreSQL server version (dedicated SCRAM-auth CI cluster)
+        shell: pwsh
+        run: ./tools/ci/self-hosted-preflight.ps1 -PostgreSqlOnly
       - name: Require Phase 17 backup, process disaster, interruption and mixed-provider restore
         shell: pwsh
         run: ./tools/test-phase17-backup-restore.ps1 -ResultsDirectory .artifacts/phase17-ci -RequirePostgreSql
@@ -199,23 +188,43 @@ jobs:
             .artifacts/phase21-security
             .artifacts/phase20-browser-results.json
             .artifacts/phase20-browser
-      - run: dotnet test Hispania.CrossPlatform.slnf --no-build
+      - run: dotnet test Hispania.CrossPlatform.slnf --no-build -m:1 --results-directory .artifacts/full-suite --logger trx
+      - name: Require value-withheld synthetic leak detection
+        shell: pwsh
+        run: ./tools/ci/test-synthetic-canary.ps1
+      - name: Preserve complete acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase21-validation-${{ runner.os }}
+          path: |
+            .artifacts/phase*-ci/*.trx
+            .artifacts/phase21-security
+            **/TestResults/*.trx
+            .artifacts/full-suite
       - name: Scan captured security outputs for secret canaries
         if: always()
         shell: pwsh
         run: ./tools/test-security-canaries.ps1 -EvidenceDirectory .artifacts
 
   validate-windows-launcher:
-    runs-on: windows-2025
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/feature/phase-21-security-operations-hardening'
+    runs-on: [self-hosted, hispania, hispania-windows]
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
       - name: Install FFmpeg integration tools
-        run: choco install ffmpeg --yes --no-progress
+        shell: pwsh
+        run: ./tools/ci/self-hosted-preflight.ps1
       - uses: actions/setup-node@v7
         with:
           node-version: 24.x
@@ -357,7 +366,20 @@ jobs:
       - name: Run the complete .NET suite on Windows
         # Keep process-heavy integration projects from starving each other on hosted Windows.
         # Preserve every test and its existing cancellation/request deadlines.
-        run: dotnet test Hispania.sln --no-build -m:1
+        run: dotnet test Hispania.sln --no-build -m:1 --results-directory .artifacts/full-suite --logger trx
+      - name: Require value-withheld synthetic leak detection
+        shell: pwsh
+        run: ./tools/ci/test-synthetic-canary.ps1
+      - name: Preserve complete acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase21-validation-${{ runner.os }}
+          path: |
+            .artifacts/phase*-ci/*.trx
+            .artifacts/phase21-security
+            **/TestResults/*.trx
+            .artifacts/full-suite
       - name: Scan captured security outputs for secret canaries
         if: always()
         shell: pwsh

@@ -1,48 +1,42 @@
 name: Production Deployment
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: phase21-self-hosted
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
   linux-production:
-    runs-on: ubuntu-24.04
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: phase18_ci_fixture_only
-          POSTGRES_DB: postgres
-          POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/feature/phase-21-security-operations-hardening'
+    runs-on: [self-hosted, hispania, hispania-linux]
     env:
-      HISPANIA_PHASE18_POSTGRES_CONNECTION: Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=phase18_ci_fixture_only;Timeout=5
       HISPANIA_PHASE18_SERVICE_ROOT: /opt/hispania-phase18-ci
+      HISPANIA_PHASE21_NATIVE_HELPER: /usr/local/sbin/hispania-phase21-service
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
       - uses: actions/setup-node@v7
         with:
           node-version: 24.x
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - name: Install native Media and offline backup prerequisites
-        run: sudo apt-get update && sudo apt-get install --yes ffmpeg postgresql-client-16
+        shell: pwsh
+        run: ./tools/ci/self-hosted-preflight.ps1
       - run: npm ci
         working-directory: apps/web
       - name: Audit current production dependencies
@@ -69,18 +63,11 @@ jobs:
       - name: Require clean-host, real systemd Server and Worker, rotation, upgrade and disaster recovery
         shell: pwsh
         run: |
-          sudo install -d -m 0755 -o (id -un) -g (id -gn) $env:HISPANIA_PHASE18_SERVICE_ROOT
-          if ($LASTEXITCODE -ne 0) { throw 'Native service fixture root provisioning failed.' }
           ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/linux-x64 -PredecessorDirectory .artifacts/phase18/predecessor-linux-x64 -WebPredecessorDirectory .artifacts/phase20/predecessor-linux-x64 -ResultsDirectory .artifacts/phase18/evidence -RequirePostgreSql -RequireNativeService 2>&1 | Tee-Object -FilePath .artifacts/phase18/production-gate.log
       - name: Scan production artifacts and captured local outputs for secret canaries
         if: always()
         shell: pwsh
         run: ./tools/test-security-canaries.ps1 -EvidenceDirectory .artifacts/phase18 -ArtifactDirectory .artifacts/phase18/linux-x64
-      - name: Clean native fixture root and service user
-        if: always()
-        run: |
-          if id hispania >/dev/null 2>&1; then sudo userdel hispania; fi
-          if [ -d "$HISPANIA_PHASE18_SERVICE_ROOT" ]; then sudo rmdir "$HISPANIA_PHASE18_SERVICE_ROOT"; fi
       - name: Preserve production evidence
         if: always()
         uses: actions/upload-artifact@v6
@@ -95,16 +82,23 @@ jobs:
             .artifacts/phase18/linux-x64.tar.gz*
 
   windows-production:
-    runs-on: windows-2025
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/feature/phase-21-security-operations-hardening'
+    runs-on: [self-hosted, hispania, hispania-windows]
     env:
       HISPANIA_PHASE18_SERVICE_ROOT: C:\ProgramData\HispaniaPhase18CI
+      HISPANIA_PHASE21_NATIVE_HELPER: C:\ProgramData\HispaniaPhase21CI\windows-native-service-helper.ps1
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
       - uses: actions/setup-node@v7
         with:
           node-version: 24.x
@@ -113,9 +107,7 @@ jobs:
       - name: Install FFmpeg tools
         shell: pwsh
         run: |
-          choco install ffmpeg --no-progress -y
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          'C:\ProgramData\chocolatey\bin' | Out-File -FilePath $env:GITHUB_PATH -Append
+          ./tools/ci/self-hosted-preflight.ps1
       - run: npm ci
         working-directory: apps/web
       - name: Audit current production dependencies
