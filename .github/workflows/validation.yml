@@ -57,6 +57,9 @@ jobs:
       - name: Install real Chromium for Phase20
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
+      - name: Require bounded Phase21 security abuse, fuzz, secret scan and dependency audit
+        shell: pwsh
+        run: ./tools/test-phase21-security-hardening.ps1 -AuditDependencies
       - name: Require Phase20 signed Web schema, predecessor safety and Modern/Classic browser lifecycle
         shell: pwsh
         run: ./tools/test-phase20-dynamic-web.ps1
@@ -193,9 +196,14 @@ jobs:
           name: phase20-linux-evidence
           path: |
             .artifacts/phase20-gate/*.trx
+            .artifacts/phase21-security
             .artifacts/phase20-browser-results.json
             .artifacts/phase20-browser
       - run: dotnet test Hispania.CrossPlatform.slnf --no-build
+      - name: Scan captured security outputs for secret canaries
+        if: always()
+        shell: pwsh
+        run: ./tools/test-security-canaries.ps1 -EvidenceDirectory .artifacts
 
   validate-windows-launcher:
     runs-on: windows-2025
@@ -229,6 +237,9 @@ jobs:
       - name: Install real Chromium for Phase20
         working-directory: apps/web
         run: npx playwright install chromium
+      - name: Require bounded Phase21 security abuse, fuzz, secret scan and dependency audit
+        shell: pwsh
+        run: ./tools/test-phase21-security-hardening.ps1 -AuditDependencies
       - name: Require Phase20 signed Web schema, predecessor safety and Modern/Classic browser lifecycle
         shell: pwsh
         run: ./tools/test-phase20-dynamic-web.ps1
@@ -340,9 +351,14 @@ jobs:
           name: phase20-windows-evidence
           path: |
             .artifacts/phase20-gate/*.trx
+            .artifacts/phase21-security
             .artifacts/phase20-browser-results.json
             .artifacts/phase20-browser
       - name: Run the complete .NET suite on Windows
         # Keep process-heavy integration projects from starving each other on hosted Windows.
         # Preserve every test and its existing cancellation/request deadlines.
         run: dotnet test Hispania.sln --no-build -m:1
+      - name: Scan captured security outputs for secret canaries
+        if: always()
+        shell: pwsh
+        run: ./tools/test-security-canaries.ps1 -EvidenceDirectory .artifacts

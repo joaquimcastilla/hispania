@@ -43,6 +43,11 @@ test("real signed package lifecycle, Session RBAC, safe rendering and CSP", asyn
     const create = await request.post(base + "/api/identity/users", { headers: { Authorization: `Bearer ${token}` }, data: { username: "webadmin", displayName: "Web admin", password } });
     expect(create.ok()).toBeTruthy();
     const login = await request.post(base + "/api/identity/login", { data: { username: "webadmin", password } });
+    expect(login.headers()["cache-control"]).toBe("no-store");
+    expect(login.headers()["x-content-type-options"]).toBe("nosniff");
+    expect(login.headers()["x-frame-options"]).toBe("DENY");
+    expect(login.headers()["referrer-policy"]).toBe("no-referrer");
+    expect(login.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
     const session = (await login.json()).sessionToken;
     const headers = { Authorization: `Session ${session}` };
     const me = await request.get(base + "/api/identity/me", { headers }); const userId = (await me.json()).user.id.value;

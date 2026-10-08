@@ -21,6 +21,30 @@ namespace Hispania.Playback.Tests;
 
 public sealed class HttpDirectPlayIntegrationTests
 {
+    [Theory]
+    [InlineData(2131)][InlineData(2132)]
+    public async Task Phase21DeterministicRangesAndOpaqueIdsRejectMalformedInputs(int seed)
+    {
+        var bytes = Enumerable.Range(0, 256).Select(i => (byte)i).ToArray();
+        await using var host = await Host.CreateAsync(bytes);
+        var random = new Random(seed);
+        for (var i = 0; i < 64; i++)
+        {
+            var first = random.Next(256); var last = random.Next(first, 256);
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/media/{host.Entry.Id.Value}/stream");
+            request.Headers.TryAddWithoutValidation("Range", $"bytes={first}-{last}");
+            using var response = await host.Client.SendAsync(request);
+            Assert.Equal(HttpStatusCode.PartialContent, response.StatusCode);
+            Assert.Equal(bytes[first..(last + 1)], await response.Content.ReadAsByteArrayAsync());
+            using var malformed = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/media/{host.Entry.Id.Value}/stream");
+            malformed.Headers.TryAddWithoutValidation("Range", "bytes=" + new string('9', random.Next(20, 100)) + "-1");
+            using var rejected = await host.Client.SendAsync(malformed);
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+            using var unknown = await host.Client.GetAsync($"/api/v1/media/not-a-guid-{random.Next()}/stream");
+            Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+        }
+    }
+
     [Fact]
     public async Task CatalogAndFullStreamUseTheRealPlannerExecutorAndLocalAccessor()
     {

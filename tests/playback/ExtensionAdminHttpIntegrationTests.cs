@@ -114,7 +114,8 @@ public sealed class ExtensionAdminHttpIntegrationTests
                 Assert.Equal(System.Net.HttpStatusCode.OK, activated.StatusCode);
             var runtime = app.Services.GetRequiredService<IModuleRuntime>();
             await runtime.MarkDegradedAsync(ModuleId, "password=closure-secret; /internal/root; Authorization: Bearer closure-secret");
-            using (var publicHealth = await client.GetAsync("/internal/modules/health"))
+            using (var anonymousHealth = await client.GetAsync("/internal/modules/health")) Assert.Equal(System.Net.HttpStatusCode.Unauthorized, anonymousHealth.StatusCode);
+            using (var publicHealth = await AdminGetAsync("/internal/modules/health"))
             {
                 Assert.Equal(System.Net.HttpStatusCode.OK, publicHealth.StatusCode);
                 var body = await publicHealth.Content.ReadAsStringAsync();

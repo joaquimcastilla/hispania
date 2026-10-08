@@ -6,7 +6,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="PlatformFoundationTests.cs;PackageLifecycle*.cs" />
+    <Compile Remove="PlatformFoundationTests.cs;PackageLifecycle*.cs;Phase21SecurityHardeningTests.cs" />
     <Compile Remove="VersioningFoundationTests.cs;WebContributionTests.cs" />
     <Compile Remove="ModuleInfrastructureTests.cs;VariantExperimentRouterTests.cs;DistributedWorkCoordinatorTests.cs;bin\**;obj\**" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />

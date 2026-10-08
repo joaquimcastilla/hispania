@@ -99,9 +99,17 @@ public sealed class PackageDistributionUpgradeTests
         var before = File.ReadAllBytes(Path.Combine(root, ".package-state", "catalog.json"));
         var bundle = await InstallationOperations.UpgradeAsync(ArtifactProcessTests.Artifact, fixture.Home);
         Assert.True(File.Exists(Path.Combine(bundle, "extensions", ".package-state", "catalog.json")));
+        var password = "TESTONLY!" + Guid.NewGuid().ToString("N");
+        fixture.WriteConfiguration(new { trustedExtensionIds = new[] { manifest.Id }, trustedPublisherKeys = keys, bootstrapSecret = "env:PACKAGE_BOOTSTRAP", bootstrapPasswordSecret = "env:PACKAGE_PASSWORD", bootstrapUsername = "package-operator" });
+        var bootstrapped = await fixture.CommandAsync(["--home", fixture.Home, "--bootstrap"], new() { ["HISPANIA_SECRET_PACKAGE_BOOTSTRAP"] = Guid.NewGuid().ToString("N"), ["HISPANIA_SECRET_PACKAGE_PASSWORD"] = password });
+        Assert.Equal(0, bootstrapped.Code);
+        fixture.WriteConfiguration(new { trustedExtensionIds = new[] { manifest.Id }, trustedPublisherKeys = keys });
         using (var switched = fixture.Start(environment: environment))
         {
             await fixture.ReadyAsync(switched);
+            using var login = await fixture.Client.PostAsJsonAsync("/api/identity/login", new { username = "package-operator", password });
+            login.EnsureSuccessStatusCode(); var session = await login.Content.ReadFromJsonAsync<JsonElement>();
+            fixture.Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Session", session.GetProperty("sessionToken").GetString());
             if (!incompatible)
             {
                 // Production intentionally disables the legacy bearer mutation/greeting surface.

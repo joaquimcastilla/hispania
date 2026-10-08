@@ -526,6 +526,7 @@ public sealed class PackageLifecycleIntegrationTests
             {
                 Catalog.PackageOperationCheckpoint = null;
                 Catalog.PackageStorageCheckpoint = null;
+                Catalog.StopManagedPackagesAsync().GetAwaiter().GetResult();
                 if (File.Exists(Path.Combine(Installed, ".package-state", "catalog.json")))
                 {
                     var plan = Catalog.PlanPackageSetAsync([], new Dictionary<string, string>()).GetAwaiter().GetResult();

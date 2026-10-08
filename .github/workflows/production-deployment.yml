@@ -51,6 +51,9 @@ jobs:
       - name: Publish actual linux-x64 production artifact
         shell: pwsh
         run: ./tools/publish-production.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase18/linux-x64
+      - name: Provision fake secret classes and verify production logger redaction
+        shell: pwsh
+        run: dotnet test tests/deployment/Hispania.Deployment.Tests.csproj --filter FullyQualifiedName~Phase21SecretCanary --results-directory .artifacts/phase18/evidence --logger "trx;LogFileName=secret-canaries.trx"
       - name: Archive and checksum linux-x64 artifact
         shell: pwsh
         run: |
@@ -68,7 +71,11 @@ jobs:
         run: |
           sudo install -d -m 0755 -o (id -un) -g (id -gn) $env:HISPANIA_PHASE18_SERVICE_ROOT
           if ($LASTEXITCODE -ne 0) { throw 'Native service fixture root provisioning failed.' }
-          ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/linux-x64 -PredecessorDirectory .artifacts/phase18/predecessor-linux-x64 -WebPredecessorDirectory .artifacts/phase20/predecessor-linux-x64 -ResultsDirectory .artifacts/phase18/evidence -RequirePostgreSql -RequireNativeService
+          ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/linux-x64 -PredecessorDirectory .artifacts/phase18/predecessor-linux-x64 -WebPredecessorDirectory .artifacts/phase20/predecessor-linux-x64 -ResultsDirectory .artifacts/phase18/evidence -RequirePostgreSql -RequireNativeService 2>&1 | Tee-Object -FilePath .artifacts/phase18/production-gate.log
+      - name: Scan production artifacts and captured local outputs for secret canaries
+        if: always()
+        shell: pwsh
+        run: ./tools/test-security-canaries.ps1 -EvidenceDirectory .artifacts/phase18 -ArtifactDirectory .artifacts/phase18/linux-x64
       - name: Clean native fixture root and service user
         if: always()
         run: |
@@ -117,6 +124,9 @@ jobs:
       - name: Publish actual win-x64 production artifact
         shell: pwsh
         run: ./tools/publish-production.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase18/win-x64
+      - name: Provision fake secret classes and verify production logger redaction
+        shell: pwsh
+        run: dotnet test tests/deployment/Hispania.Deployment.Tests.csproj --filter FullyQualifiedName~Phase21SecretCanary --results-directory .artifacts/phase18/evidence --logger "trx;LogFileName=secret-canaries.trx"
       - name: Archive and checksum win-x64 artifact
         shell: pwsh
         run: |
@@ -132,7 +142,11 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path $env:HISPANIA_PHASE18_SERVICE_ROOT -Force | Out-Null
-          ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/win-x64 -PredecessorDirectory .artifacts/phase18/predecessor-win-x64 -WebPredecessorDirectory .artifacts/phase20/predecessor-win-x64 -ResultsDirectory .artifacts/phase18/evidence -RequireNativeService
+          ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/win-x64 -PredecessorDirectory .artifacts/phase18/predecessor-win-x64 -WebPredecessorDirectory .artifacts/phase20/predecessor-win-x64 -ResultsDirectory .artifacts/phase18/evidence -RequireNativeService 2>&1 | Tee-Object -FilePath .artifacts/phase18/production-gate.log
+      - name: Scan production artifacts and captured local outputs for secret canaries
+        if: always()
+        shell: pwsh
+        run: ./tools/test-security-canaries.ps1 -EvidenceDirectory .artifacts/phase18 -ArtifactDirectory .artifacts/phase18/win-x64
       - name: Preserve production evidence
         if: always()
         uses: actions/upload-artifact@v6

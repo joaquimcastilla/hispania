@@ -54,10 +54,11 @@ public sealed class WebContributionDistributionTests
         host.WriteConfiguration(new { trustedExtensionIds = new[] { WebPackageFixture.Id }, trustedPublisherKeys = package.Keys });
         using (var current = host.Start())
         {
-            await host.ReadyAsync(current); await AssertHealthyAsync();
+            await host.ReadyAsync(current);
             using var login = await host.Client.PostAsJsonAsync("/api/identity/login", new { username = "web-operator", password });
             login.EnsureSuccessStatusCode(); var session = await login.Content.ReadFromJsonAsync<JsonElement>();
             host.Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Session", session.GetProperty("sessionToken").GetString());
+            await AssertHealthyAsync();
             var projection = await host.Client.GetFromJsonAsync<JsonElement>("/api/v1/web/contributions");
             Assert.Equal(future ? 0 : 1, projection.GetProperty("contributions").GetArrayLength());
             if (!future) Assert.Equal("Version One", projection.GetProperty("contributions")[0].GetProperty("page").GetProperty("title").GetString());
