@@ -23,6 +23,8 @@ public sealed class ProductionConfiguration
     public PostgreSqlConfiguration PostgreSql { get; set; } = new();
     public TlsConfiguration Tls { get; set; } = new();
     public WorkerConfiguration Worker { get; set; } = new();
+    public CapacityConfiguration Capacity { get; set; } = new();
+    public MaintenanceConfiguration Maintenance { get; set; } = new();
     public string[] LibraryRoots { get; set; } = [];
     public string[] TrustedExtensionIds { get; set; } = [];
     public Dictionary<string, string> TrustedPublisherKeys { get; set; } = new(StringComparer.Ordinal);
@@ -37,7 +39,14 @@ public sealed class ProductionConfiguration
 
     public void Validate(string expectedRole)
     {
-        Require(PostgreSql is not null && Tls is not null && Worker is not null && LibraryRoots is not null && TrustedExtensionIds is not null && TrustedPublisherKeys is not null && RevokedPublisherIds is not null, "objects", "configuration objects and arrays cannot be null");
+        Require(PostgreSql is not null && Tls is not null && Worker is not null && Capacity is not null && Maintenance is not null && LibraryRoots is not null && TrustedExtensionIds is not null && TrustedPublisherKeys is not null && RevokedPublisherIds is not null, "objects", "configuration objects and arrays cannot be null");
+        Require(Capacity.ReserveBytes >= 0 && double.IsFinite(Capacity.WarningFreeFraction) && double.IsFinite(Capacity.CriticalFreeFraction) &&
+            Capacity.CriticalFreeFraction > 0 && Capacity.CriticalFreeFraction < Capacity.WarningFreeFraction && Capacity.WarningFreeFraction < 1,
+            "capacity", "reserve and warning/critical fractions must be coherent");
+        Require(Maintenance.JobIdempotencyHorizonDays is >= 1 and <= 3650 && Maintenance.OrphanGraceHours is >= 1 and <= 720,
+            "maintenance", "idempotency horizon and orphan grace are outside supported bounds");
+        if (Maintenance.BackupArchiveRoot is not null)
+            Require(Path.IsPathFullyQualified(Maintenance.BackupArchiveRoot), "maintenance.backupArchiveRoot", "use an absolute archive path outside the installation state root");
         Require(Worker.CoordinatorCertificateSha256Pins is not null && Worker.ContractAssemblies is not null && Worker.CapabilityProviderAssemblies is not null, "worker arrays", "arrays cannot be null");
         Require(Generation == SchemaGeneration, "generation", "unsupported schema; expected 1");
         Require(Role == expectedRole, "role", "must match the host executable");
@@ -156,6 +165,20 @@ public sealed class WorkerConfiguration
     public int LeaseSeconds { get; set; } = 30;
     public int PollMilliseconds { get; set; } = 500;
     public int HeartbeatSeconds { get; set; } = 5;
+}
+
+public sealed class CapacityConfiguration
+{
+    public long ReserveBytes { get; set; } = 1024L * 1024 * 1024;
+    public double WarningFreeFraction { get; set; } = 0.15;
+    public double CriticalFreeFraction { get; set; } = 0.05;
+}
+
+public sealed class MaintenanceConfiguration
+{
+    public int JobIdempotencyHorizonDays { get; set; } = 365;
+    public int OrphanGraceHours { get; set; } = 24;
+    public string? BackupArchiveRoot { get; set; }
 }
 
 public sealed class DeploymentException(int exitCode, string message) : Exception(message)

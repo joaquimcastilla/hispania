@@ -25,6 +25,8 @@ using Hispania.Platform.Storage.Filesystem;
 using Hispania.Platform.Contracts.Audit;
 using Hispania.Platform.Contracts.Events;
 using Hispania.Platform.Contracts.Jobs;
+using Hispania.Platform.Contracts.Maintenance;
+using Hispania.Platform.Maintenance.Application;
 using Hispania.Platform.Jobs.Application;
 using Hispania.Platform.WorkerAgentJobs;
 using Hispania.Platform.Persistence.Sqlite;
@@ -108,14 +110,16 @@ if (production is null) builder.Services.AddArchitectureTestModules();
 builder.Services.AddModuleRuntime();
 builder.Services.AddSingleton<LocalPlatformEventBus>();
 var platformDataPath = builder.Configuration["Platform:DataPath"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "platform");
+var eventStorePath = builder.Configuration["Platform:Events:Path"] ?? Path.Combine(platformDataPath, "events.sqlite");
 var durableEventBus = new SqliteDurablePlatformEventBus(
-    builder.Configuration["Platform:Events:Path"] ?? Path.Combine(platformDataPath, "events.sqlite"),
+    eventStorePath,
     new Hispania.Platform.Contracts.Events.DurableEventOptionsV1(
         builder.Configuration.GetValue("Platform:Events:MaximumPayloadBytes", 262144),
         builder.Configuration.GetValue("Platform:Events:MaximumAttempts", 5),
         TimeSpan.FromSeconds(builder.Configuration.GetValue("Platform:Events:RetryDelaySeconds", 2))));
 builder.Services.AddSingleton(sp => { durableEventBus.Metrics = sp.GetRequiredService<IPlatformMetricsV1>(); return durableEventBus; });
 builder.Services.AddSingleton<Hispania.Platform.Contracts.Events.IDurablePlatformEventBusV1>(sp => sp.GetRequiredService<SqliteDurablePlatformEventBus>());
+builder.Services.AddSingleton<IRetentionOwnerV1>(_ => new SqliteEventRetentionOwnerV1(eventStorePath));
 builder.Services.AddSingleton(sp => new Hispania.Platform.Contracts.Events.DurableEventHandlerRegistryV1()
     .Register<StockChangedV1>("inventory.stock-changed", 1, "platform.inventory.stock-observer", sp.GetRequiredService<InventoryStockEventObserver>()));
 builder.Services.AddSingleton<InventoryStockEventObserver>();
@@ -123,7 +127,30 @@ builder.Services.AddSingleton<IPlatformEventPublisher, DurablePlatformEventPubli
 builder.Services.AddHostedService<DurablePlatformEventDispatcher>();
 var storageRoot = builder.Configuration["Storage:Providers:Filesystem:Root"] ?? builder.Configuration["Platform:Assets:ContentPath"] ?? Path.Combine(platformDataPath, "assets");
 var storageDefaultProvider = builder.Configuration["Storage:DefaultProvider"] ?? "filesystem";
-builder.Services.AddSingleton<IStorageProviderV1>(_ => new ObservedStorageProviderV1(new FilesystemStorageProviderV1(storageRoot), _.GetRequiredService<IPlatformMetricsV1>()));
+var capacityThresholds = new CapacityThresholdsV1(
+    builder.Configuration.GetValue("Platform:Capacity:ReserveBytes", 1024L * 1024 * 1024),
+    builder.Configuration.GetValue("Platform:Capacity:WarningFreeFraction", 0.15),
+    builder.Configuration.GetValue("Platform:Capacity:CriticalFreeFraction", 0.05));
+capacityThresholds.Validate();
+builder.Services.AddSingleton(capacityThresholds);
+builder.Services.AddSingleton<FilesystemCapacitySourceV1>(_ => new FilesystemCapacitySourceV1(storageRoot, "platform.storage", capacityThresholds));
+builder.Services.AddSingleton<ICapacitySourceV1>(sp => sp.GetRequiredService<FilesystemCapacitySourceV1>());
+builder.Services.AddSingleton<ICapacitySourceV1>(_ => new FilesystemCapacitySourceV1(platformDataPath, "platform.databases", capacityThresholds));
+var archiveCapacityRoot = builder.Configuration["Backup:ArchiveRoot"];
+if (!string.IsNullOrWhiteSpace(archiveCapacityRoot))
+{
+    if (!string.IsNullOrWhiteSpace(builder.Configuration["Backup:ManagedRoot"]))
+        BackupInstallation.RejectOverlap(Path.GetFullPath(archiveCapacityRoot), Path.GetFullPath(builder.Configuration["Backup:ManagedRoot"]!));
+    builder.Services.AddSingleton<ICapacitySourceV1>(_ => new FilesystemCapacitySourceV1(archiveCapacityRoot, "platform.backup-archive", capacityThresholds));
+}
+var packageCapacityRoot = builder.Configuration["Modules:ExtensionsPath"] ?? Path.Combine(AppContext.BaseDirectory, "extensions");
+builder.Services.AddSingleton<ICapacitySourceV1>(_ => new FilesystemCapacitySourceV1(packageCapacityRoot, "platform.packages", capacityThresholds));
+builder.Services.AddSingleton<FilesystemStorageProviderV1>(sp => new FilesystemStorageProviderV1(
+    storageRoot, sp.GetRequiredService<FilesystemCapacitySourceV1>(), capacityThresholds));
+builder.Services.AddSingleton<IStorageInventoryV1>(sp => sp.GetRequiredService<FilesystemStorageProviderV1>());
+builder.Services.AddSingleton<IStorageProviderV1>(sp => new ObservedStorageProviderV1(
+    sp.GetRequiredService<FilesystemStorageProviderV1>(),
+    sp.GetRequiredService<IPlatformMetricsV1>()));
 builder.Services.AddSingleton<IStorageProviderResolverV1>(sp => new StorageProviderRegistryV1(storageDefaultProvider, sp.GetServices<IStorageProviderV1>()));
 var jobOptions = new PlatformJobOptionsV1(
     builder.Configuration.GetValue("Platform:Jobs:MaximumPayloadBytes", 262144),
@@ -141,22 +168,38 @@ builder.Services.AddSingleton<IPlatformJobHandlerRegistryV1>(_ => new PlatformJo
 builder.Services.AddSingleton<IPlatformJobHandlerRegistryV1>(_ => production is null ? new PlatformJobHandlerRegistryV1().Register(new PlatformTestHashHandlerV1()) : new PlatformJobHandlerRegistryV1());
 #endif
 builder.Services.AddSingleton<IPlatformRemoteJobExecutorV1>(services => new DistributedPlatformJobExecutor(services.GetRequiredService<IDistributedWorkCoordinatorV1>(), metrics: services.GetRequiredService<IPlatformMetricsV1>()));
-builder.Services.AddPlatformJobsSqlite(builder.Configuration["Platform:Jobs:Path"] ?? Path.Combine(platformDataPath, "jobs.sqlite"));
+var idempotencyHorizonDays = builder.Configuration.GetValue("Platform:Maintenance:JobIdempotencyHorizonDays", 365);
+if (idempotencyHorizonDays is < 1 or > 3650) throw new InvalidDataException("Job idempotency horizon is outside supported bounds.");
+builder.Services.AddPlatformJobsSqlite(builder.Configuration["Platform:Jobs:Path"] ?? Path.Combine(platformDataPath, "jobs.sqlite"),
+    TimeSpan.FromDays(idempotencyHorizonDays));
+var maintenanceStorePath = builder.Configuration["Platform:Maintenance:Path"] ?? Path.Combine(platformDataPath, "maintenance.sqlite");
+builder.Services.AddPlatformMaintenanceSqlite(maintenanceStorePath);
+builder.Services.AddSingleton<IRetentionOwnerV1>(_ => new SqliteMaintenanceHistoryRetentionOwnerV1(maintenanceStorePath));
+builder.Services.AddSingleton<IRetentionOwnerV1>(_ => new BackupArchiveRetentionOwnerV1(builder.Configuration["Backup:ArchiveRoot"]));
+builder.Services.AddSingleton<IRetentionOwnerV1>(_ => new BackupStagingRetentionOwnerV1(builder.Configuration["Backup:ArchiveRoot"]));
 builder.Services.AddSingleton<LocalPlatformJobDispatcher>();
 builder.Services.AddSingleton<IPlatformJobExecutionControlV1>(sp => sp.GetRequiredService<LocalPlatformJobDispatcher>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<LocalPlatformJobDispatcher>());
 builder.Services.AddSingleton<IPlatformJobServiceV1, PlatformJobService>();
+var assetMetadataPath = builder.Configuration["Platform:Assets:MetadataPath"] ?? Path.Combine(platformDataPath, "assets.sqlite");
+var orphanGraceHours = builder.Configuration.GetValue("Platform:Maintenance:OrphanGraceHours", 24);
+if (orphanGraceHours is < 1 or > 720) throw new InvalidDataException("Orphan grace period is outside supported bounds.");
 builder.Services.AddPlatformSqlitePersistence(
-    builder.Configuration["Platform:Assets:MetadataPath"] ?? Path.Combine(platformDataPath, "assets.sqlite"),
+    assetMetadataPath,
     storageRoot,
     builder.Configuration["Platform:Audit:Path"] ?? Path.Combine(platformDataPath, "audit.sqlite"),
     builder.Configuration.GetValue("Platform:Assets:MaximumBytes", 100L * 1024 * 1024));
+builder.Services.AddSingleton<IReconciliationOwnerV1>(sp => new SqliteAssetReconciliationOwnerV1(assetMetadataPath,
+    sp.GetRequiredService<IStorageProviderResolverV1>(), sp.GetRequiredService<IStorageInventoryV1>(),
+    TimeSpan.FromHours(orphanGraceHours)));
 var identityLifetime = TimeSpan.FromMinutes(builder.Configuration.GetValue("Identity:SessionLifetimeMinutes", 720));
+var identityStorePath = builder.Configuration["Identity:Sqlite:Path"] ?? Path.Combine(platformDataPath, "identity.sqlite");
 builder.Services.AddPlatformIdentitySqlite(
-    builder.Configuration["Identity:Sqlite:Path"] ?? Path.Combine(platformDataPath, "identity.sqlite"),
+    identityStorePath,
     options: new Hispania.Platform.Contracts.Identity.IdentityOptions(identityLifetime));
+builder.Services.AddSingleton<IRetentionOwnerV1>(_ => new SqliteSessionRetentionOwnerV1(identityStorePath));
 builder.Services.AddPlatformAuthorizationSqlite(
-    builder.Configuration["Identity:Sqlite:Path"] ?? Path.Combine(platformDataPath, "identity.sqlite"),
+    identityStorePath,
     builder.Configuration["Identity:Bootstrap:Token"]);
 var inventoryDatabasePath = builder.Configuration["Inventory:Sqlite:Path"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "inventory.sqlite");
 builder.Services.AddInventorySqlite(inventoryDatabasePath);
@@ -194,6 +237,7 @@ builder.Services.AddSingleton<ModuleExtensionCatalog>(services => new ModuleExte
     builder.Configuration.GetSection("Modules:OutOfProcessRestarts").Get<OutOfProcessRestartPolicy>(),
     services.GetRequiredService<Hispania.Platform.Contracts.Audit.IPlatformAuditWriter>()));
 builder.Services.AddHostedService<PackageLifecycleHostedService>();
+builder.Services.AddSingleton<IRetentionOwnerV1>(services => services.GetRequiredService<ModuleExtensionCatalog>());
 var libraryOptions = builder.Configuration.GetSection("Library").Get<LibraryOptions>() ?? new LibraryOptions();
 if (libraryOptions.Roots.Count == 0)
 {
@@ -393,6 +437,7 @@ app.MapPlatformAssetEndpoints();
 app.MapPlatformAuditEndpoints();
 app.MapPlatformEventAdminEndpoints();
 app.MapPlatformJobEndpoints();
+app.MapPlatformMaintenanceEndpoints();
 app.MapIdentityEndpoints();
 app.MapAuthorizationEndpoints();
 app.MapInventoryMediaAssetEndpoints();

@@ -123,3 +123,35 @@ it("targets an installed module version and permits reactivation of a stopped ex
   expect(await screen.findByRole("alert")).toHaveTextContent("conflicto"); expect(fetch.mock.calls.some(call => String(call[0]) === "/api/platform/admin/modules/extension/update?version=2.0.0")).toBe(true);
   expect(screen.queryByText("private package path")).not.toBeInTheDocument();
 });
+it.each(["modern", "classic"] as const)("shows a retention plan without execute controls in %s", async variant => {
+  const fetch = setup("/admin/maintenance", ["platform.maintenance.read"], (path, init) => {
+    if (path.endsWith("/owners")) return response([{ owner: { value: "platform.jobs" }, capabilities: { maximumBatchSize: 500, supportsExecution: true } }]);
+    if (path.endsWith("/runs")) return response([]);
+    if (init?.method === "POST") return response({ planId: "plan1", owner: { value: "platform.jobs" }, candidateCount: 2,
+      protectedCount: 3, evaluatedAtUtc: "2026-10-09T12:00:00Z", expiresAtUtc: "2026-10-09T12:10:00Z", reason: "Old jobs", warnings: [] });
+    return response([]);
+  });
+  render(<App variant={variant} />);
+  await screen.findByRole("heading", { name: "Retención" });
+  await userEvent.setup().click(screen.getByRole("button", { name: "Crear plan" }));
+  expect(await screen.findByText("Candidatos: 2. Protegidos: 3.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Ejecutar un lote" })).not.toBeInTheDocument();
+  expect(fetch.mock.calls.some(call => String(call[0]).endsWith("/execute"))).toBe(false);
+});
+it("requires explicit confirmation before executing a retention plan", async () => {
+  const fetch = setup("/admin/maintenance", ["platform.maintenance.read", "platform.maintenance.execute"], (path, init) => {
+    if (path.endsWith("/owners")) return response([{ owner: { value: "platform.jobs" }, capabilities: { maximumBatchSize: 500, supportsExecution: true } }]);
+    if (path.endsWith("/runs")) return response([]);
+    if (path.endsWith("/execute")) return response({ state: 2 });
+    if (init?.method === "POST") return response({ planId: "plan1", owner: { value: "platform.jobs" }, candidateCount: 1,
+      protectedCount: 0, evaluatedAtUtc: "2026-10-09T12:00:00Z", expiresAtUtc: "2026-10-09T12:10:00Z", reason: "Old jobs", warnings: [] });
+    return response([]);
+  });
+  render(<App />); const actor = userEvent.setup();
+  await actor.click(await screen.findByRole("button", { name: "Crear plan" }));
+  const execute = await screen.findByRole("button", { name: "Ejecutar un lote" });
+  expect(execute).toBeDisabled();
+  await actor.click(screen.getByRole("checkbox", { name: /Confirmo ejecutar/ }));
+  await actor.click(execute);
+  await waitFor(() => expect(fetch.mock.calls.some(call => String(call[0]).endsWith("/execute") && (call[1] as RequestInit).method === "POST")).toBe(true));
+});

@@ -22,7 +22,10 @@ public static class PlatformPermissionIds
     public const string ObservabilityRead = "platform.observability.read";
     public const string JobsRead = "platform.jobs.read";
     public const string JobsManage = "platform.jobs.manage";
-    public static IReadOnlyList<string> BuiltIn { get; } = [Admin, UsersRead, UsersWrite, RolesRead, RolesWrite, RolesPermissionsWrite, AuditRead, AssetsWrite, EventsRead, EventsManage, JobsRead, JobsManage, ObservabilityRead];
+    public const string MaintenanceRead = "platform.maintenance.read";
+    public const string MaintenanceExecute = "platform.maintenance.execute";
+    public const string CapacityRead = "platform.capacity.read";
+    public static IReadOnlyList<string> BuiltIn { get; } = [Admin, UsersRead, UsersWrite, RolesRead, RolesWrite, RolesPermissionsWrite, AuditRead, AssetsWrite, EventsRead, EventsManage, JobsRead, JobsManage, ObservabilityRead, MaintenanceRead, MaintenanceExecute, CapacityRead];
 }
 
 public enum AuthorizationFailure { None, InvalidInput, DuplicateRoleName, NotFound, Conflict }

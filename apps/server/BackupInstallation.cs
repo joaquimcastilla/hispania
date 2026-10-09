@@ -25,6 +25,7 @@ internal static class BackupInstallation
     {
         ["Platform:DataPath"] = "platform", ["Platform:Events:Path"] = "platform/events.sqlite",
         ["Platform:Jobs:Path"] = "platform/jobs.sqlite", ["Platform:Assets:MetadataPath"] = "platform/assets.sqlite",
+        ["Platform:Maintenance:Path"] = "platform/maintenance.sqlite",
         ["Platform:Audit:Path"] = "platform/audit.sqlite", ["Identity:Sqlite:Path"] = "platform/identity.sqlite",
         ["Inventory:Sqlite:Path"] = "inventory.sqlite", ["DistributedWorkers:StatePath"] = "coordinator.sqlite",
         ["DistributedWorkers:TransferPath"] = "transfers", ["Modules:ExtensionsPath"] = "extensions",
@@ -36,6 +37,7 @@ internal static class BackupInstallation
     {
         ["platform/identity.sqlite"] = "Identity.Authorization", ["platform/events.sqlite"] = "Events",
         ["platform/jobs.sqlite"] = "Jobs", ["platform/assets.sqlite"] = "Assets",
+        ["platform/maintenance.sqlite"] = "Maintenance",
         ["platform/audit.sqlite"] = "Audit", ["inventory.sqlite"] = "Inventory",
         ["coordinator.sqlite"] = "Coordinator", ["media.sqlite"] = "Media.SQLite"
     };
@@ -51,7 +53,9 @@ internal static class BackupInstallation
      "Platform:Events:MaximumPayloadBytes", "Platform:Events:MaximumAttempts", "Platform:Events:RetryDelaySeconds",
      "Platform:Jobs:MaximumPayloadBytes", "Platform:Jobs:MaximumResultMetadataBytes", "Platform:Jobs:MaximumAttempts",
      "Platform:Jobs:RetryDelaySeconds", "Platform:Jobs:ExecutionLeaseSeconds", "Platform:Jobs:PollIntervalMilliseconds",
-     "Platform:Assets:MaximumBytes", "Persistence:Provider"];
+     "Platform:Assets:MaximumBytes", "Platform:Capacity:ReserveBytes", "Platform:Capacity:WarningFreeFraction",
+     "Platform:Capacity:CriticalFreeFraction", "Platform:Maintenance:JobIdempotencyHorizonDays",
+     "Platform:Maintenance:OrphanGraceHours", "Persistence:Provider"];
 
     internal sealed record Payload(string Path, string Component, long Size, string Sha256, string? Schema);
     internal sealed record Manifest(int BackupFormatGeneration, string DistributionVersion, Guid BackupId,
@@ -170,6 +174,7 @@ internal static class BackupInstallation
         RejectLinks(source); RejectLinks(destination); RejectOverlap(source, destination);
         if (!Directory.Exists(source) || Directory.Exists(destination) || File.Exists(destination)) throw new InvalidDataException("Source or destination is invalid.");
         using var lease = Lock(source);
+        using var archiveLease = LockArchive(Path.GetDirectoryName(destination)!);
         if (File.Exists(source + ".restore-in-progress")) throw new InvalidDataException("Incomplete restore.");
         var portable = ReadPortable(source);
         var layout = ReadLayout(source);
@@ -182,18 +187,23 @@ internal static class BackupInstallation
         var coordinatorPath = SourcePath(source, "coordinator.sqlite", layout);
         using var coordinatorLease = new FileStream(coordinatorPath + ".coordinator.lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         var provider = portable.GetValueOrDefault("Persistence:Provider") ?? "sqlite";
-        var required = Databases.Values.Where(v => provider == "sqlite" || v != "Media.SQLite").Concat(["Storage", "Configuration", "Extensions"]).ToList();
+        PreflightBackupCapacity(destination, portable, layout, source, provider);
+        var required = Databases.Where(pair => (provider == "sqlite" || pair.Value != "Media.SQLite") &&
+            (pair.Value != "Maintenance" || File.Exists(SourcePath(source, pair.Key, layout))))
+            .Select(pair => pair.Value).Concat(["Storage", "Configuration", "Extensions"]).ToList();
         if (provider == "postgresql") required.Add("Media.PostgreSQL");
         var staging = destination + ".tmp-" + Guid.NewGuid().ToString("N");
         Directory.CreateDirectory(staging);
-        RestrictDirectory(staging);
         try
         {
+            File.WriteAllText(staging + ".owned", "HISPANIA_BACKUP_STAGING_V1");
+            RestrictDirectory(staging);
             foreach (var (path, component) in Databases)
             {
                 if (component == "Media.SQLite" && provider == "postgresql") continue;
                 token.ThrowIfCancellationRequested();
                 var input = SourcePath(source, path, layout); var output = SafePath(staging, path);
+                if (component == "Maintenance" && !File.Exists(input)) continue; // Phase 21 source or an unused new subsystem.
                 if (!File.Exists(input)) throw new InvalidDataException("Required store is missing.");
                 Directory.CreateDirectory(Path.GetDirectoryName(output)!);
                 using var original = OpenDatabase(input);
@@ -247,7 +257,11 @@ internal static class BackupInstallation
             Checkpoint("backup-published");
             Bytes.Record(files.Sum(f => f.Size), new KeyValuePair<string, object?>("operation", "create")); Components.Record(required.Count, new KeyValuePair<string, object?>("operation", "create"));
         }
-        finally { if (Directory.Exists(staging)) Directory.Delete(staging, true); }
+        finally
+        {
+            if (Directory.Exists(staging)) Directory.Delete(staging, true);
+            if (File.Exists(staging + ".owned")) File.Delete(staging + ".owned");
+        }
     }
 
     internal static async Task<Manifest> VerifyAsync(string bundle, CancellationToken token)
@@ -264,7 +278,9 @@ internal static class BackupInstallation
             throw new InvalidDataException("Unsupported backup metadata.");
         if (manifest.Files.Length > 65536 || manifest.Files.Any(file => file is null || file.Size < 0) || manifest.Files.Sum(file => (decimal)file.Size) > 1024m * 1024 * 1024 * 1024)
             throw new InvalidDataException("Backup exceeds the 65536-file or 1 TiB resource policy.");
-        var expected = Databases.Values.Where(v => manifest.Provider == "sqlite" || v != "Media.SQLite").Concat(["Storage", "Configuration", "Extensions"])
+        var expected = Databases.Values.Where(v => (manifest.Provider == "sqlite" || v != "Media.SQLite") &&
+                (v != "Maintenance" || manifest.RequiredComponents.Contains("Maintenance", StringComparer.Ordinal)))
+            .Concat(["Storage", "Configuration", "Extensions"])
             .Concat(manifest.Provider == "postgresql" ? ["Media.PostgreSQL"] : Array.Empty<string>()).Order(StringComparer.Ordinal).ToArray();
         var required = manifest.RequiredComponents.Where(c => c != "Playback").Order(StringComparer.Ordinal).ToArray();
         if (!expected.SequenceEqual(required) || manifest.RequiredComponents.Distinct(StringComparer.Ordinal).Count() != manifest.RequiredComponents.Length)
@@ -284,8 +300,12 @@ internal static class BackupInstallation
         }
         var actual = EnumerateSafe(bundle).Select(path => Path.GetRelativePath(bundle, path).Replace('\\', '/')).Where(path => path != "manifest.json").ToHashSet(PathComparer);
         if (!seen.SetEquals(actual)) throw new InvalidDataException("Unlisted or missing payload.");
+        if (seen.Contains("platform/maintenance.sqlite") != manifest.RequiredComponents.Contains("Maintenance", StringComparer.Ordinal))
+            throw new InvalidDataException("Maintenance store inventory is inconsistent.");
         foreach (var (path, component) in Databases)
-            if ((manifest.Provider == "sqlite" || component != "Media.SQLite") && !seen.Contains(path)) throw new InvalidDataException("Required store missing.");
+            if ((manifest.Provider == "sqlite" || component != "Media.SQLite") &&
+                (component != "Maintenance" || manifest.RequiredComponents.Contains("Maintenance", StringComparer.Ordinal)) &&
+                !seen.Contains(path)) throw new InvalidDataException("Required store missing.");
         if (!seen.Contains("portable.json") || (manifest.Provider == "postgresql" && !seen.Contains("media.dump")) ||
             (manifest.RequiredComponents.Contains("Playback") != seen.Contains("playback.json"))) throw new InvalidDataException("Required payload missing.");
         var portable = ReadPortable(bundle);
@@ -301,6 +321,7 @@ internal static class BackupInstallation
     {
         bundle = NormalizeRoot(bundle); target = NormalizeRoot(target);
         RejectLinks(target); RejectOverlap(bundle, target);
+        using var bundleLease = Lock(bundle);
         var manifest = await VerifyAsync(bundle, token); // No target modification before full verification.
         if (Directory.Exists(target) || File.Exists(target)) throw new InvalidDataException("Restore requires an absent clean target root.");
         var size = manifest.Files.Sum(f => checked(f.Size));
@@ -371,7 +392,11 @@ internal static class BackupInstallation
         if (new FileInfo(path).Length > MaximumManifestBytes) throw new InvalidDataException("Oversized source layout.");
         var text = File.ReadAllText(path); using (var document = JsonDocument.Parse(text)) RejectDuplicateProperties(document.RootElement);
         var layout = JsonSerializer.Deserialize<Dictionary<string, string>>(text) ?? throw new InvalidDataException("Invalid source layout.");
-        if (layout.Count != Paths.Count || !layout.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(Paths.Values) || layout.Values.Any(value => !Path.IsPathFullyQualified(value)))
+        var expectedPaths = Paths.Values.ToHashSet(StringComparer.Ordinal);
+        var legacyPaths = expectedPaths.Where(value => value != "platform/maintenance.sqlite").ToHashSet(StringComparer.Ordinal);
+        var actualPaths = layout.Keys.ToHashSet(StringComparer.Ordinal);
+        if (!(actualPaths.SetEquals(expectedPaths) || actualPaths.SetEquals(legacyPaths)) ||
+            layout.Values.Any(value => !Path.IsPathFullyQualified(value)))
             throw new InvalidDataException("Incomplete source layout.");
         return layout;
     }
@@ -396,7 +421,7 @@ internal static class BackupInstallation
         }
         else if (element.ValueKind == JsonValueKind.Array) foreach (var item in element.EnumerateArray()) RejectDuplicateProperties(item);
     }
-    private static string DistributionVersion()
+    internal static string DistributionVersion()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
         {
@@ -414,13 +439,64 @@ internal static class BackupInstallation
         return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
     }
 
+    internal static FileStream LockArchive(string root)
+    {
+        root = NormalizeRoot(root); RejectLinks(root);
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, ".hispania-archive.lock"); RejectLinks(path);
+        return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+    }
+
     private static SqliteConnection OpenDatabase(string path)
     {
         var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
         db.Open(); return db;
     }
-    private static string CheckDatabase(string path) => Hispania.Platform.Persistence.Sqlite.SqliteBackupInspection.Inspect(path,
-        Path.GetFileName(path) == "media.sqlite" ? Hispania.Library.Persistence.Sqlite.SqliteMigrationRunner.InspectBackupHistory : null);
+    private static string CheckDatabase(string path)
+    {
+        var name = Path.GetFileName(path);
+        IReadOnlyDictionary<string, string>? migrations = name switch
+        {
+            "jobs.sqlite" => new Dictionary<string, string> { ["Platform.Jobs"] = "0002_retention_tombstones" },
+            "assets.sqlite" => new Dictionary<string, string> { ["Platform.Assets"] = "0002_reconciliation_quarantine" },
+            _ => null
+        };
+        return Hispania.Platform.Persistence.Sqlite.SqliteBackupInspection.Inspect(path,
+            name == "media.sqlite" ? Hispania.Library.Persistence.Sqlite.SqliteMigrationRunner.InspectBackupHistory : null,
+            migrations);
+    }
+
+    private static void PreflightBackupCapacity(string destination, Dictionary<string, string?> portable,
+        Dictionary<string, string> layout, string source, string provider)
+    {
+        var reserve = 1024L * 1024 * 1024;
+        if (portable.TryGetValue("Platform:Capacity:ReserveBytes", out var configured) &&
+            (!long.TryParse(configured, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out reserve) || reserve < 0))
+            throw new InvalidDataException("Invalid backup capacity reserve.");
+        long estimated = 0;
+        foreach (var (relative, component) in Databases)
+        {
+            if (component == "Media.SQLite" && provider == "postgresql") continue;
+            var path = SourcePath(source, relative, layout);
+            if (File.Exists(path)) estimated = checked(estimated + new FileInfo(path).Length);
+        }
+        foreach (var folder in new[] { "storage", "extensions" })
+        {
+            var path = SourcePath(source, folder, layout);
+            if (!Directory.Exists(path)) continue;
+            var count = 0;
+            foreach (var file in EnumerateSafe(path))
+            {
+                if (++count > 65536) throw new InvalidDataException("Backup preflight exceeds the file inventory bound.");
+                estimated = checked(estimated + new FileInfo(file).Length);
+            }
+        }
+        var drive = new DriveInfo(Path.GetPathRoot(destination)!);
+        if (!drive.IsReady || estimated > long.MaxValue - reserve ||
+            drive.AvailableFreeSpace < estimated + reserve)
+            throw new InvalidDataException("Insufficient backup destination capacity.");
+    }
     private static string ComponentFor(string path)
     {
         if (Databases.TryGetValue(path, out var component)) return component;
@@ -462,7 +538,7 @@ internal static class BackupInstallation
             Hispania.Runtime.ModuleExtensionCatalog.ValidateBackupPackage(manifest, Path.GetDirectoryName(path)!);
         }
     }
-    private static IEnumerable<string> EnumerateSafe(string root, int depth = 0)
+    internal static IEnumerable<string> EnumerateSafe(string root, int depth = 0)
     {
         if (depth > 64) throw new InvalidDataException("Backup directory depth exceeds the security limit.");
         RejectLinks(root);
@@ -512,7 +588,7 @@ internal static class BackupInstallation
             relative.Split('/').Any(p => p is "" or "." or ".." || p.EndsWith('.') || p.EndsWith(' '))) throw new InvalidDataException("Unsafe bundle path.");
         var path = Path.GetFullPath(Path.Combine(root, relative)); RejectLinks(path); return path;
     }
-    private static void RejectOverlap(string first, string second)
+    internal static void RejectOverlap(string first, string second)
     {
         var firstPrefix = Path.EndsInDirectorySeparator(first) ? first : first + Path.DirectorySeparatorChar;
         var secondPrefix = Path.EndsInDirectorySeparator(second) ? second : second + Path.DirectorySeparatorChar;
