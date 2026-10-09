@@ -66,6 +66,10 @@ public sealed class Phase22BackupRetentionTests
         var plan = await owner.PlanAsync(policy, now, now.AddMinutes(10));
         Assert.Equal(1, plan.CandidateCount);
         Assert.Equal(2, plan.ProtectedCount);
+        Assert.Contains(plan.Warnings, detail => detail.StartsWith("backup:backup-1:", StringComparison.Ordinal)
+            && detail.Contains(":verified:candidate:eligible-by-age", StringComparison.Ordinal));
+        Assert.Contains(plan.Warnings, detail => detail.StartsWith("backup:backup-3:", StringComparison.Ordinal)
+            && detail.Contains(":verified:protected:", StringComparison.Ordinal));
         File.WriteAllText(Path.Combine(archive, "backup-1.pin"), "operator-selected");
         var pinned = await owner.PlanAsync(policy, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10));
         Assert.Equal(0, pinned.CandidateCount);

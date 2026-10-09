@@ -27,7 +27,11 @@ internal sealed class BackupArchiveRetentionOwnerV1 : IRetentionOwnerV1, IDispos
             using var archiveLease = BackupInstallation.LockArchive(root);
             var survey = await SurveyAsync(policy, evaluatedAtUtc, cancellationToken);
             var warnings = survey.Warnings.Concat(survey.Candidates.Take(policy.BatchSize)
-                .Select(candidate => "candidate:" + candidate.Name + ":" + candidate.Manifest.BackupId.ToString("D"))).ToArray();
+                .SelectMany(candidate => new[] {
+                    "candidate:" + candidate.Name + ":" + candidate.Manifest.BackupId.ToString("D"),
+                    "backup:" + candidate.Name + ":" + candidate.Manifest.CreatedUtc.ToUniversalTime().ToString("O")
+                        + ":" + candidate.Size + ":verified:candidate:eligible-by-age"
+                })).ToArray();
             return new(Guid.NewGuid(), OwnerId, policy, evaluatedAtUtc, expiresAtUtc,
                 survey.Candidates.Count, survey.Protected, survey.Candidates.Sum(candidate => candidate.Size),
                 survey.Candidates.Count == 0 ? null : survey.Candidates.Min(candidate => candidate.Manifest.CreatedUtc),
@@ -106,7 +110,7 @@ internal sealed class BackupArchiveRetentionOwnerV1 : IRetentionOwnerV1, IDispos
             catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
             {
                 protectedCount++;
-                if (warnings.Count < 20) warnings.Add("protected:" + name + ":verification-failed");
+                if (warnings.Count < 20) warnings.Add("backup:" + name + ":unknown:unknown:verification-failed:protected:invalid-bundle");
             }
         }
         var ordered = verified.OrderByDescending(item => item.Manifest.CreatedUtc)
@@ -125,7 +129,14 @@ internal sealed class BackupArchiveRetentionOwnerV1 : IRetentionOwnerV1, IDispos
                 now < item.Manifest.CreatedUtc || now - item.Manifest.CreatedUtc < age)
             {
                 protectedCount++;
-                if (warnings.Count < 20) warnings.Add("protected:" + item.Name + ":verified-or-pinned");
+                if (warnings.Count < 20)
+                {
+                    var reason = File.Exists(item.Path + ".pin") ? "pinned"
+                        : protectedIds.Contains(item.Manifest.BackupId) ? "newest-or-pre-upgrade"
+                        : "too-recent-or-future";
+                    warnings.Add("backup:" + item.Name + ":" + item.Manifest.CreatedUtc.ToUniversalTime().ToString("O")
+                        + ":" + item.Size + ":verified:protected:" + reason);
+                }
                 continue;
             }
             candidates.Add(item);
