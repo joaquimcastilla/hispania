@@ -1,0 +1,23 @@
+# Phase 22 — Retention, reconciliation and capacity management
+
+## Scope and architecture
+
+This change adds versioned Platform contracts for owner-controlled retention, reconciliation scans and capacity observations. The maintenance application coordinates explicit plans and bounded runs, while each owner decides eligibility and performs its own mutation. The coordinator stores plan expiry, run state, lease and checkpoints in `maintenance.sqlite`. It does not query or delete other owners' records. Maintenance remains disabled until an administrator requests and confirms execution. Distribution stays at 0.7.0; V1 denotes a technical contract generation, not Public Stable.
+
+The owner implementations cover Events, Jobs, Identity sessions, package artifacts, verified backup archives, backup staging and maintenance history. Audit records and coordinator high-water state have no destructive owner. See [retention operations](operations/RETENTION.md) for each candidate rule, protected state and default. SQLite migration 2 adds job idempotency tombstones and Asset reconciliation quarantine; the new maintenance store begins at schema generation 1. The backup inspector accepts the explicit owned migration allowlist and preserves Phase 17 bundle compatibility.
+
+## Invariants and security
+
+Plans expire after ten minutes. Execution revalidates owner predicates under its write lock, uses bounded batches, records durable progress and can be retried after interruption. Active Jobs, pending Event deliveries, active sessions, current and previous KnownGood packages, pinned or last verified backups, active staging and unknown paths are protected. Job tombstones preserve the configured idempotency horizon after full history pruning. Destructive operations require `platform.maintenance.execute` and explicit confirmation; read, reconciliation and capacity routes use granular permissions with legacy bearer disabled. Request size, list size, cursor and batch bounds apply. Retention execution writes aggregate audit records and low-cardinality metrics.
+
+Asset reconciliation compares Asset metadata with owned Storage content. It reports missing content, size mismatch and orphans. Orphans receive a grace period, then logical quarantine that preserves bytes and records reason and first observation. The scan and quarantine inspection API are read-only. A referenced object resolves its quarantine on a later scan. An operator must repair or delete ambiguous content explicitly after checking concurrent publication. Inventory's opaque Asset references remain Inventory-owned and are not modified. External Library media are outside the Storage inventory root.
+
+Capacity sources observe the configured Storage, Platform data, package and optional backup archive volumes. Each snapshot reports free, total, computed used, pressure and completeness. Known-size Storage writes and backup creation perform best-effort reserve checks. Warning and critical pressure never authorize deletion. See [capacity management](operations/CAPACITY-MANAGEMENT.md) for thresholds and preflight limits.
+
+## Compatibility and local evidence
+
+The branch starts from Phase 21 SHA `c0f931b9ac57624173c3a96aa94843c753a0f461`. Historical schema, package and backup readers retain their version axes. Phase 22 tests exercise crash/retry, stale plans, idempotency tombstones, event replay protection, KnownGood protection, verified backup pins, orphan grace, external media boundaries, capacity threshold fuzzing and long-lived bounded batches. The dedicated Phase 22 gate, full .NET solution, Web tests and Modern/Classic builds passed locally on Windows. Phase 15, Phase 16 and Phase 17 gates passed; the remaining gates are recorded in the final local validation report after execution. Two full-suite PostgreSQL tests skip when the optional live PostgreSQL fixture is absent on this Windows host. Linux and native/live PostgreSQL validation remain pending CI.
+
+## Residual limits
+
+Filesystem accounting and capacity preflight race with external processes. A delete does not guarantee immediate physical disk reclamation. There is no global filesystem and database transaction, nor HA or multi-coordinator fencing for maintenance. Quarantine consumes storage. Audit has no purge owner; if one is added later, purging would reduce historical visibility. Package staging, transcode temporary files and database growth do not share the new capacity preflight. Inventory references to missing Assets are not yet emitted as findings. User-owned media remain external and are never cleanup candidates. The system does not promise automatic recovery from hostile filesystem mutation.

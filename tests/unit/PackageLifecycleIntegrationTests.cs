@@ -375,6 +375,28 @@ public sealed class PackageLifecycleIntegrationTests
     }
 
     [Fact]
+    public async Task RetentionPlanPrunesV1ButPreservesV2KnownGoodForRollback()
+    {
+        using var fixture = new Fixture();
+        await fixture.Catalog.ApplyPackageSetAsync(await fixture.Plan());
+        foreach (var version in new[] { "1.1.0", "1.2.0" })
+        {
+            var archive = fixture.Archive(BaseId, version, typeof(PackageBaseModule));
+            await fixture.Catalog.ApplyPackageSetAsync(await fixture.Catalog.PlanPackageSetAsync(
+                [archive], new Dictionary<string, string> { [BaseId] = "[" + version + "]" }));
+        }
+        var now = DateTimeOffset.UtcNow;
+        var plan = await fixture.Catalog.PlanAsync(new(true, TimeSpan.Zero, BatchSize: 1), now, now.AddMinutes(10));
+        Assert.True(plan.CandidateCount >= 1);
+        while ((await fixture.Catalog.ExecuteBatchAsync(plan)).HasMore) { }
+        Assert.False(Directory.Exists(Path.Combine(fixture.Installed, BaseId, "1.0.0")));
+        Assert.True(Directory.Exists(Path.Combine(fixture.Installed, BaseId, "1.1.0")));
+        Assert.True(Directory.Exists(Path.Combine(fixture.Installed, BaseId, "1.2.0")));
+        await fixture.Catalog.RollbackPackageSetAsync();
+        Assert.Equal("1.1.0", fixture.Catalog.InspectPackageGraph().Single(row => row.PackageId == BaseId).Version);
+    }
+
+    [Fact]
     public async Task UnknownPublisherCanBeStoredInertUnderPermissivePolicyButNeverActivated()
     {
         using var fixture = new Fixture(requireSignature: false);

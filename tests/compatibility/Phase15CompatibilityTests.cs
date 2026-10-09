@@ -164,7 +164,9 @@ public sealed class Phase15CompatibilityTests(Xunit.Abstractions.ITestOutputHelp
             using var old = JsonDocument.Parse(File.ReadAllText(BaselineCorpus.PathFor("serialization/0.7/" + path + ".json")));
             Assert.True(JsonElement.DeepEquals(old.RootElement, JsonSerializer.SerializeToElement(value, value.GetType())));
         }
-        Assert.Equal(BaselineCorpus.Read<string[]>("serialization/0.7/permission-identifiers.json"), PlatformPermissionIds.BuiltIn.Order(StringComparer.Ordinal));
+        Assert.True(BaselineCorpus.Read<string[]>("serialization/0.7/permission-identifiers.json")
+            .ToHashSet(StringComparer.Ordinal).IsSubsetOf(PlatformPermissionIds.BuiltIn),
+            "Historical permission identifiers must remain available when new permissions are added.");
         var text = File.ReadAllText(BaselineCorpus.PathFor("serialization/0.7/identity-user.json"));
         Assert.Equal((UserStatus)999, JsonSerializer.Deserialize<User>(text.Replace("\"Status\": 0", "\"Status\": 999", StringComparison.Ordinal))!.Status);
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<User>(text.Replace("\"Status\": 0", "\"Status\": \"Future\"", StringComparison.Ordinal)));

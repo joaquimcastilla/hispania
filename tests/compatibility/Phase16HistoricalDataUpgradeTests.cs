@@ -8,6 +8,7 @@ using Hispania.Platform.Contracts.Assets;
 using Hispania.Platform.Contracts.Audit;
 using Hispania.Platform.Contracts.Storage;
 using Hispania.Platform.Contracts.Jobs;
+using Hispania.Platform.Contracts.Maintenance;
 using Hispania.Platform.Contracts.Events;
 using Hispania.Platform.Persistence.Sqlite;
 using Hispania.Platform.Storage.Filesystem;
@@ -178,5 +179,32 @@ public sealed partial class Phase16HistoricalDataUpgradeTests
         Assert.Equal(8,lease.Generation);Assert.False(coordinator.Complete(node,request.JobId,7,JsonSerializer.SerializeToElement("stale")));
         Assert.True(coordinator.Start(node,request.JobId,lease.Generation));Assert.True(coordinator.Complete(node,request.JobId,lease.Generation,JsonSerializer.SerializeToElement("current")));
         Assert.False(coordinator.Fail(node,request.JobId,7,"TEST_STALE"));Assert.Equal(9,coordinator.ListJobs().Single(j=>j.Request.JobId=="test-historical-completed").Generation);
+    }
+
+    [Fact]
+    public async Task Phase22MaintenanceNeverReducesCoordinatorGenerationTenHighWater()
+    {
+        using var copy = new HistoricalDataCopy("coordinator.sqlite");
+        var path = copy.PathFor("coordinator.sqlite");
+        using (var store = new SqliteDistributedWorkStateStore(path))
+        {
+            var state = store.Load()!;
+            var jobs = state.Jobs.Select(job => job.Request.JobId == "test-historical-work"
+                ? job with { Generation = 10, State = DistributedJobStateV1.Completed,
+                    LeaseExpiresAtUtc = null, Result = JsonSerializer.SerializeToElement("generation-ten") }
+                : job).ToArray();
+            store.Save(state with { Jobs = jobs });
+        }
+        var journal = new SqliteMaintenanceRunStoreV1(copy.PathFor("maintenance.sqlite"));
+        var now = DateTimeOffset.UtcNow;
+        var plan = new RetentionPlanV1(Guid.NewGuid(), new("platform.jobs"), new(false), now,
+            now.AddMinutes(10), 0, 1, null, null, null, "No deletion", []);
+        await journal.SavePlanAsync(plan, default);
+        using var restarted = new SqliteDistributedWorkStateStore(path);
+        Assert.Equal(10, restarted.Load()!.Jobs.Single(job => job.Request.JobId == "test-historical-work").Generation);
+        var coordinator = new DistributedWorkCoordinator(restarted);
+        Assert.False(coordinator.Complete("test-new-worker", "test-historical-work", 9,
+            JsonSerializer.SerializeToElement("stale")));
+        Assert.Equal(10, restarted.Load()!.Jobs.Single(job => job.Request.JobId == "test-historical-work").Generation);
     }
 }

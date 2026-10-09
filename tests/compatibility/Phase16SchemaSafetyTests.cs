@@ -14,7 +14,13 @@ public sealed partial class Phase16HistoricalDataUpgradeTests
     {
         using var copy=new HistoricalDataCopy(file);var path=copy.PathFor(file);await OpenOwnerAsync(file,path);
         if(file.StartsWith("media-",StringComparison.Ordinal))HistoricalDataCorpus.Execute(path,"INSERT INTO __EFMigrationsHistory VALUES('20990101000100_future','10.0.12')");
-        else HistoricalDataCorpus.Execute(path,"UPDATE hispania_schema_history SET version=2,migration_id='0002_future'"+(file=="identity-authorization.sqlite"?" WHERE owner='Platform.Authorization'":""));
+        else
+        {
+            var futureVersion = file is "jobs.sqlite" or "assets.sqlite" ? 3 : 2;
+            var scope = file is "jobs.sqlite" or "assets.sqlite" ? " WHERE version=2"
+                : file == "identity-authorization.sqlite" ? " WHERE owner='Platform.Authorization'" : "";
+            HistoricalDataCorpus.Execute(path,$"UPDATE hispania_schema_history SET version={futureVersion},migration_id='000{futureVersion}_future'"+scope);
+        }
         SqliteConnection.ClearAllPools();var hash=BaselineCorpus.Hash(File.ReadAllBytes(path));
         await Assert.ThrowsAsync<InvalidOperationException>(()=>OpenOwnerAsync(file,path));SqliteConnection.ClearAllPools();
         Assert.Equal(hash,BaselineCorpus.Hash(File.ReadAllBytes(path)));

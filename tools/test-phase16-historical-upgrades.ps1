@@ -16,7 +16,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Historical data upgrade suite failed.' }
     $trx = [xml](Get-Content -LiteralPath (Join-Path $results 'historical-data.trx') -Raw)
     $tests = @($trx.TestRun.Results.UnitTestResult)
-    if ($tests.Count -ne 36 -or @($tests | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'All 36 portable Phase 16 cases must be discovered and pass without skips.' }
+    if ($tests.Count -ne 37 -or @($tests | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'All 37 portable Phase 16 cases must be discovered and pass without skips.' }
     if ($RequirePostgreSql) {
         if ([string]::IsNullOrWhiteSpace($env:HISPANIA_POSTGRES_TEST_CONNECTION)) { throw 'Historical PostgreSQL-live configuration is mandatory on Linux.' }
         dotnet test tests/library-persistence/Hispania.Library.Persistence.Sqlite.Tests.csproj --filter 'Category=Phase16PostgreSqlHistoricalUpgrade' --results-directory $results --logger 'trx;LogFileName=historical-postgresql.trx'
@@ -25,5 +25,5 @@ try {
         $pgTests = @($pg.TestRun.Results.UnitTestResult)
         if ($pgTests.Count -ne 1 -or $pgTests[0].outcome -ne 'Passed') { throw 'Historical PostgreSQL-live must execute and pass; a skip is forbidden.' }
     }
-    Write-Output 'Phase16HistoricalDataUpgrade: 36/36 portable cases; 15 immutable data artifacts, real owner upgrades, data invariants and schema safety.'
+    Write-Output 'Phase16HistoricalDataUpgrade: 37/37 portable cases; 15 immutable data artifacts, real owner upgrades, data invariants and schema safety.'
 } finally { Pop-Location }

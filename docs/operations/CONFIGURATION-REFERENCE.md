@@ -40,6 +40,11 @@ maps use whole JSON values. The independent secret environment namespace is
 | worker.leaseSeconds | 30; 5..300 |
 | worker.pollMilliseconds | 500; 50..60000 |
 | worker.heartbeatSeconds | 5; 1..300 and below lease duration |
+| capacity.reserveBytes | 1073741824; nonnegative volume safety reserve |
+| capacity.warningFreeFraction / criticalFreeFraction | 0.15 / 0.05; free-space fractions with 0 < critical < warning < 1 |
+| maintenance.jobIdempotencyHorizonDays | 365; 1..3650 days for pruned Job key tombstones |
+| maintenance.orphanGraceHours | 24; 1..720 hours before owned content enters logical quarantine |
+| maintenance.backupArchiveRoot | null; optional absolute managed bundle archive outside the installation root; required for backup retention |
 
 Mutable roots are fixed relative to HOME for Phase 17 managed recovery. Media
 SQLite uses state/media.sqlite; PostgreSQL remains a separately provisioned owner

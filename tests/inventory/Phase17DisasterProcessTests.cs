@@ -37,7 +37,7 @@ public sealed partial class ServerProcessRestartTests
             await AssertAdminWritesAndAssociationAsync(client, admin, original.ItemId, output);
             original = await AssertPersistentStateAsync(client, session, admin, 12, 8);
             var job = await CreateClosureScheduledJobAsync(client, session);
-            Assert.Equal(1, await BackupCommandAsync(dll, "--backup-create", source, bundle)); // Running host exclusion.
+            Assert.Equal(1, await BackupCommandAsync(dll, true, "--backup-create", source, bundle)); // Running host exclusion.
             await StopServerGracefullyAsync(server, client, shutdown); server.Dispose(); server = null;
             var semantic = Phase17BackupRestoreTests.Snapshot(source);
             var timer = Stopwatch.StartNew();
@@ -87,11 +87,17 @@ public sealed partial class ServerProcessRestartTests
         start.Environment["Identity__Bootstrap__Token"] = bootstrap;
         var process = Process.Start(start)!; _ = process.StandardOutput.ReadToEndAsync(); _ = process.StandardError.ReadToEndAsync(); return process;
     }
-    private static async Task<int> BackupCommandAsync(string dll, params string[] arguments)
+    private static Task<int> BackupCommandAsync(string dll, params string[] arguments)
+        => BackupCommandAsync(dll, false, arguments);
+    private static async Task<int> BackupCommandAsync(string dll, bool expectedFailure, params string[] arguments)
     {
         var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
         start.ArgumentList.Add(dll); foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start)!; var output = process.StandardOutput.ReadToEndAsync(); var error = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(45)); await output; await error; return process.ExitCode;
+        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(45));
+        var standardOutput = await output; var standardError = await error;
+        if (process.ExitCode != 0 && !expectedFailure)
+            throw new InvalidOperationException($"Backup {arguments[0]} failed: {standardOutput} {standardError}");
+        return process.ExitCode;
     }
 }

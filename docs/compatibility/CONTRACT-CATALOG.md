@@ -435,3 +435,39 @@ Inventory: 423 entries; 110 version-named CLR declarations; 38 candidate entries
 | web.contribution.schema | Platform Dynamic Web | WebContributionSchema.Generation = 1 | Public / Public Experimental | Trusted package authors, Server, Modern and Classic | Signed UTF-8 JSON payload web/contributions.json; fixed host operations | Required UI negotiates existing capability; future schema rejected; optional invalid UI isolated; New generation and separate corpus for incompatible evolution; no Stable commitment | B: independent Web schema axis 25; unrelated to Package Format 2 and npm 0.1.0 |
 | web.dto | Web/HTTP owners | private artifact 0.1.0; unversioned HTTP DTOs | Public / Public Experimental | Modern/Classic clients and server projections | Wire + behavioral | Coordinated distribution today; no published npm SDK; Owner review + explicit notes/migration; stable publication requires missing gates | A/B/C/D/E per named axis; no implied stable SemVer |
 | worker.fencing | Platform distributed runtime | lease generation, not product version | Public / Stable Candidate | Coordinator, WorkerAgent and remote Jobs bridge | Behavioral + wire + persisted data | Expired/cancelled/previous-generation results cannot commit; no exactly-once claim; Owner review + explicit notes/migration; stable publication requires missing gates | A/B/C/D/E per named axis; no implied stable SemVer |
+
+## Phase 22 declarations
+
+- `application/platform/maintenance/MaintenanceCoordinatorV1.cs#IMaintenanceRunStoreV1` — Internal; Technical suffix V1.
+- `application/platform/maintenance/MaintenanceCoordinatorV1.cs#MaintenanceCoordinatorV1` — Internal; Technical suffix V1.
+- `application/platform/storage/CapacityPolicyV1.cs#CapacityPolicyV1` — Internal; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#CapacityPressureLevelV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#CapacitySnapshotV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#CapacityThresholdsV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#ICapacitySourceV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#IReconciliationOwnerV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#IRetentionOwnerV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#MaintenanceOperationTypeV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#MaintenanceOwnerIdV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#MaintenanceRunStateV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#MaintenanceRunV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#ReconciliationFindingKindV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#ReconciliationFindingV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#ReconciliationScanV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#ReconciliationSeverityV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#RetentionBatchResultV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#RetentionCapabilitiesV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#RetentionPlanV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#RetentionPolicyV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/storage/StorageContractsV1.cs#IStorageInventoryV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/storage/StorageContractsV1.cs#StorageInventoryObjectV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/storage/StorageContractsV1.cs#StorageInventoryPageV1` — Public Experimental; Technical suffix V1.
+- `infrastructure/platform/persistence-sqlite/SqliteAssetReconciliationOwnerV1.cs#SqliteAssetReconciliationOwnerV1` — Internal; Technical suffix V1.
+- `infrastructure/platform/persistence-sqlite/SqliteEventRetentionOwnerV1.cs#SqliteEventRetentionOwnerV1` — Internal; Technical suffix V1.
+- `infrastructure/platform/persistence-sqlite/SqliteMaintenanceRunStoreV1.cs#SqliteMaintenanceRunStoreV1` — Internal; Technical suffix V1.
+- `infrastructure/platform/persistence-sqlite/SqliteSessionRetentionOwnerV1.cs#SqliteSessionRetentionOwnerV1` — Internal; Technical suffix V1.
+- `infrastructure/platform/storage-filesystem/FilesystemCapacitySourceV1.cs#FilesystemCapacitySourceV1` — Internal; Technical suffix V1.
+
+- `infrastructure/platform/persistence-sqlite/SqliteMaintenanceHistoryRetentionOwnerV1.cs#SqliteMaintenanceHistoryRetentionOwnerV1` — Internal; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#ReconciliationAutoFixV1` — Public Experimental; Technical suffix V1.
+- `contracts/platform/maintenance/MaintenanceV1.cs#ReconciliationQuarantineEntryV1` — Public Experimental; Technical suffix V1.
