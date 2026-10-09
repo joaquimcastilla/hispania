@@ -374,10 +374,11 @@ public sealed partial class ServerProcessRestartTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    private static Task<HttpResponseMessage> SendWithSessionAsync(HttpClient client, HttpMethod method, string path, string sessionToken)
+    private static Task<HttpResponseMessage> SendWithSessionAsync(HttpClient client, HttpMethod method, string path, string sessionToken, object? body = null)
     {
         var request = new HttpRequestMessage(method, path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+        if (body is not null) request.Content = JsonContent.Create(body);
         return client.SendAsync(request);
     }
 

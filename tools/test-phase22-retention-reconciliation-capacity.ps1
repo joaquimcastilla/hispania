@@ -17,7 +17,8 @@ try {
     $additional = @(
         @{ Project='tests/unit/Hispania.Runtime.Tests.csproj'; Filter='FullyQualifiedName~RetentionPlanPrunesV1ButPreservesV2KnownGoodForRollback'; Name='package-known-good' },
         @{ Project='tests/compatibility/Hispania.Compatibility.Tests.csproj'; Filter='FullyQualifiedName~Phase22MaintenanceNeverReducesCoordinatorGenerationTenHighWater'; Name='coordinator-high-water' },
-        @{ Project='tests/inventory/Hispania.Inventory.Tests.csproj'; Filter='FullyQualifiedName~Phase17RealHostDestroyRestoreRetainsLoginBootstrapAssetsInventoryAndScheduledJob'; Name='backup-restore-regression' }
+        @{ Project='tests/inventory/Hispania.Inventory.Tests.csproj'; Filter='FullyQualifiedName~Phase17RealHostDestroyRestoreRetainsLoginBootstrapAssetsInventoryAndScheduledJob'; Name='backup-restore-regression' },
+        @{ Project='tests/inventory/Hispania.Inventory.Tests.csproj'; Filter='FullyQualifiedName~Phase22MaintenanceHttpRoutesEnforceGranularRbacAuditAndSafeExecution'; Name='maintenance-http-rbac' }
     )
     foreach ($suite in $additional) {
         dotnet test $suite.Project --filter $suite.Filter --results-directory $results --logger "trx;LogFileName=$($suite.Name).trx" --verbosity quiet 2>&1 | Tee-Object -FilePath (Join-Path $results "$($suite.Name).log")
