@@ -9,6 +9,8 @@ using Hispania.Identity.Application;
 using Hispania.Authorization.Application;
 using Hispania.Platform.Contracts.Authorization;
 using Hispania.Platform.Contracts.Storage;
+using Hispania.Platform.Contracts.Maintenance;
+using Hispania.Platform.Maintenance.Application;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -45,9 +47,20 @@ public static class PlatformPersistenceRegistration
         return services;
     }
 
-    public static IServiceCollection AddPlatformJobsSqlite(this IServiceCollection services, string path)
+    public static IServiceCollection AddPlatformJobsSqlite(this IServiceCollection services, string path,
+        TimeSpan? idempotencyHorizon = null)
     {
-        services.AddSingleton<IPlatformJobStoreV1>(_ => new SqlitePlatformJobStore(path));
+        services.AddSingleton<SqlitePlatformJobStore>(_ => new SqlitePlatformJobStore(path,
+            idempotencyHorizon: idempotencyHorizon));
+        services.AddSingleton<IPlatformJobStoreV1>(sp => sp.GetRequiredService<SqlitePlatformJobStore>());
+        services.AddSingleton<IRetentionOwnerV1>(sp => sp.GetRequiredService<SqlitePlatformJobStore>());
+        return services;
+    }
+
+    public static IServiceCollection AddPlatformMaintenanceSqlite(this IServiceCollection services, string path)
+    {
+        services.AddSingleton<IMaintenanceRunStoreV1>(_ => new SqliteMaintenanceRunStoreV1(path));
+        services.AddSingleton<MaintenanceCoordinatorV1>();
         return services;
     }
 }
@@ -126,7 +139,10 @@ public sealed class SqliteAssetMetadataRepository(string path) : IPlatformAssetM
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var cs = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate }.ToString();
         using var c = new SqliteConnection(cs); Hispania.Persistence.Schema.SqliteSchemaUpgrade.Open(c, "Platform.Assets");
-        Hispania.Persistence.Schema.SqliteSchemaUpgrade.Initialize(c, "Platform.Assets", "CREATE TABLE IF NOT EXISTS platform_assets(id TEXT PRIMARY KEY,type INTEGER NOT NULL,mime TEXT NOT NULL,size INTEGER NOT NULL,metadata TEXT NOT NULL,scope_domain TEXT NOT NULL,owner_id TEXT NOT NULL,policy_id TEXT NOT NULL,public_read INTEGER NOT NULL,content_handle TEXT NOT NULL,status INTEGER NOT NULL,created_utc TEXT NOT NULL,updated_utc TEXT NOT NULL,provider_id TEXT NOT NULL DEFAULT 'filesystem');", ("platform_assets", "provider_id", "TEXT NOT NULL DEFAULT 'filesystem'"));
+        Hispania.Persistence.Schema.SqliteSchemaUpgrade.Initialize(c, "Platform.Assets", "CREATE TABLE IF NOT EXISTS platform_assets(id TEXT PRIMARY KEY,type INTEGER NOT NULL,mime TEXT NOT NULL,size INTEGER NOT NULL,metadata TEXT NOT NULL,scope_domain TEXT NOT NULL,owner_id TEXT NOT NULL,policy_id TEXT NOT NULL,public_read INTEGER NOT NULL,content_handle TEXT NOT NULL,status INTEGER NOT NULL,created_utc TEXT NOT NULL,updated_utc TEXT NOT NULL,provider_id TEXT NOT NULL DEFAULT 'filesystem');",
+            [("platform_assets", "provider_id", "TEXT NOT NULL DEFAULT 'filesystem'")],
+            [new Hispania.Persistence.Schema.SqliteSchemaMigration(2, "0002_reconciliation_quarantine", (db, tx) => Hispania.Persistence.Schema.SqliteSchemaUpgrade.Execute(db, tx,
+                "CREATE INDEX IF NOT EXISTS ix_platform_assets_handle ON platform_assets(content_handle COLLATE NOCASE); CREATE TABLE IF NOT EXISTS asset_reconciliation_quarantine(finding_id TEXT PRIMARY KEY,content_handle TEXT NOT NULL,reason TEXT NOT NULL,observed_utc TEXT NOT NULL,resolved_utc TEXT);"))]);
         return cs;
     }
 

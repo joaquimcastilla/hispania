@@ -6,7 +6,8 @@ namespace Hispania.Platform.Persistence.Sqlite;
 // Domain EF histories are supplied by their owner, never by Platform.
 public static class SqliteBackupInspection
 {
-    public static string Inspect(string path, Func<SqliteConnection, string>? inspectEfHistory = null)
+    public static string Inspect(string path, Func<SqliteConnection, string>? inspectEfHistory = null,
+        IReadOnlyDictionary<string, string>? secondMigrations = null)
     {
         using var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
         db.Open(); using var command = db.CreateCommand();
@@ -26,9 +27,18 @@ public static class SqliteBackupInspection
             }
             command.CommandText = "SELECT owner,version,migration_id FROM hispania_schema_history ORDER BY owner,version";
             using var reader = command.ExecuteReader();
+            var baselineOwners = new HashSet<string>(StringComparer.Ordinal);
             while (reader.Read())
             {
-                if (table == "hispania_schema_history" && (reader.GetInt32(1) != 1 || reader.GetString(2) != "0001_baseline07_adoption")) throw new InvalidDataException("Unsupported SQLite schema.");
+                var owner = reader.GetString(0);
+                var version = reader.GetInt32(1);
+                if (version == 1) baselineOwners.Add(owner);
+                if (table == "hispania_schema_history" &&
+                    !((version == 1 && reader.GetString(2) == "0001_baseline07_adoption") ||
+                      (version == 2 && baselineOwners.Contains(owner) && secondMigrations is not null &&
+                       secondMigrations.TryGetValue(owner, out var expected) &&
+                       reader.GetString(2) == expected)))
+                    throw new InvalidDataException("Unsupported SQLite schema.");
                 records.Add(string.Join(':', Enumerable.Range(0, reader.FieldCount).Select(i => reader.GetValue(i).ToString())));
             }
         }

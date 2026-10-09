@@ -139,6 +139,8 @@ public sealed partial class ModuleExtensionCatalog
             journal = new(1, operationId, PackageOperationStage.Planned, previous, next);
             WriteJournal(journal);
             var stageRoot = Path.Combine(PackageStateRoot, "staging", operationId);
+            Directory.CreateDirectory(stageRoot);
+            File.WriteAllText(Path.Combine(stageRoot, "ownership.marker"), operationId);
             foreach (var candidate in plan.Selected)
             {
                 if (previous.Packages.Any(entry => entry.ArtifactHash == candidate.ArtifactHash && entry.Manifest.Id == candidate.Id)) continue;
@@ -521,7 +523,7 @@ public sealed partial class ModuleExtensionCatalog
             {
                 if ((File.GetAttributes(staging) & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException("Staging root cannot be a link.");
                 foreach (var path in Directory.EnumerateDirectories(staging))
-                    if (Guid.TryParseExact(Path.GetFileName(path), "N", out _) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0)
+                    if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0 && OwnedPackageStaging(path))
                         Directory.Delete(path, recursive: true);
             }
         }

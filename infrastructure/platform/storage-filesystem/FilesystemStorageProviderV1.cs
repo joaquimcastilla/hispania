@@ -1,27 +1,88 @@
 using System.Text.RegularExpressions;
 using Hispania.Platform.Contracts.Storage;
+using Hispania.Platform.Contracts.Maintenance;
+using Hispania.Platform.Storage.Application;
 
 namespace Hispania.Platform.Storage.Filesystem;
 
-public sealed class FilesystemStorageProviderV1 : IStorageProviderV1
+public sealed class FilesystemStorageProviderV1 : IStorageProviderV1, IStorageInventoryV1
 {
     private const int BufferSize = 81920;
     private static readonly Regex IdPattern = new("^[a-f0-9]{32}$", RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private readonly string _root;
+    private readonly ICapacitySourceV1? _capacity;
+    private readonly CapacityThresholdsV1? _thresholds;
 
-    public FilesystemStorageProviderV1(string root)
+    public FilesystemStorageProviderV1(string root, ICapacitySourceV1? capacity = null,
+        CapacityThresholdsV1? thresholds = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
         _root = Path.GetFullPath(root);
+        if ((capacity is null) != (thresholds is null))
+            throw new ArgumentException("Capacity source and thresholds must be configured together.");
+        thresholds?.Validate();
+        _capacity = capacity;
+        _thresholds = thresholds;
         Directory.CreateDirectory(_root);
+        if ((File.GetAttributes(_root) & FileAttributes.ReparsePoint) != 0)
+            throw new IOException("Filesystem storage root cannot be a symbolic link or reparse point.");
     }
 
     public string ProviderId => "filesystem";
+
+    public ValueTask<StorageInventoryPageV1> ScanAsync(int maximumItems, string? continuationToken,
+        CancellationToken cancellationToken = default)
+    {
+        if (maximumItems is < 1 or > 500) throw new ArgumentOutOfRangeException(nameof(maximumItems));
+        if (continuationToken is not null && !IsBlobName(continuationToken))
+            throw new ArgumentException("Storage inventory cursor is malformed.", nameof(continuationToken));
+        if ((File.GetAttributes(_root) & FileAttributes.ReparsePoint) != 0)
+            throw new IOException("Filesystem storage root cannot be a symbolic link or reparse point.");
+        var selected = new SortedDictionary<string, FileInfo>(StringComparer.Ordinal);
+        foreach (var path in Directory.EnumerateFiles(_root, "*.blob", SearchOption.TopDirectoryOnly))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var name = Path.GetFileName(path);
+            if (!IsBlobName(name) || continuationToken is not null &&
+                string.Compare(name, continuationToken, StringComparison.Ordinal) <= 0) continue;
+            var info = new FileInfo(path);
+            if ((info.Attributes & FileAttributes.ReparsePoint) != 0 || info.LinkTarget is not null)
+                throw new IOException("Storage inventory encountered a linked object.");
+            selected.Add(name, info);
+            if (selected.Count > maximumItems + 1) selected.Remove(selected.Keys.Last());
+        }
+        var complete = selected.Count <= maximumItems;
+        var page = new List<StorageInventoryObjectV1>(Math.Min(selected.Count, maximumItems));
+        foreach (var (name, info) in selected.Take(maximumItems))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var id = name[..32];
+                var handle = id.All(c => !char.IsAsciiLetterUpper(c)) ? $"storage://filesystem/{id}" : id.ToUpperInvariant();
+                page.Add(new(new StorageObjectHandle(handle),
+                    info.Length, info.LastWriteTimeUtc));
+            }
+            catch (FileNotFoundException) { }
+        }
+        var next = complete || page.Count == 0 ? null : selected.Keys.ElementAt(maximumItems - 1);
+        return ValueTask.FromResult(new StorageInventoryPageV1(page, next, complete));
+    }
+
+    private static bool IsBlobName(string? name) => name is { Length: 37 } &&
+        name.EndsWith(".blob", StringComparison.Ordinal) && name[..32].All(Uri.IsHexDigit);
 
     public async ValueTask<(StorageObjectHandle Handle, StorageObjectMetadata Metadata)> WriteAsync(Stream content, long maximumBytes, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(content);
         ArgumentOutOfRangeException.ThrowIfNegative(maximumBytes);
+        if (_capacity is not null && _thresholds is not null)
+        {
+            var requested = content.CanSeek ? Math.Min(maximumBytes, Math.Max(0, content.Length - content.Position)) : maximumBytes;
+            var snapshot = await _capacity.ObserveAsync(cancellationToken).ConfigureAwait(false);
+            if (!CapacityPolicyV1.CanReserve(snapshot, requested, _thresholds))
+                throw new IOException("Storage capacity preflight refused this write.");
+        }
         var id = Guid.NewGuid().ToString("N");
         var target = Path.Combine(_root, id + ".blob");
         var temporary = Path.Combine(_root, "." + id + "." + Guid.NewGuid().ToString("N") + ".partial");

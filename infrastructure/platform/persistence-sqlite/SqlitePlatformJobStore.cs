@@ -1,21 +1,30 @@
 using System.Globalization;
 using Hispania.Platform.Contracts.Jobs;
+using Hispania.Platform.Contracts.Maintenance;
 using Hispania.Platform.Jobs.Application;
 using Microsoft.Data.Sqlite;
 
 namespace Hispania.Platform.Persistence.Sqlite;
 
 /// <summary>Independent SQLite file/schema for durable Platform Jobs.</summary>
-public sealed class SqlitePlatformJobStore : IPlatformJobStoreV1
+public sealed class SqlitePlatformJobStore : IPlatformJobStoreV1, IRetentionOwnerV1
 {
     private readonly string connectionString;
-    public SqlitePlatformJobStore(string path)
+    private readonly TimeProvider clock;
+    private readonly TimeSpan idempotencyHorizon;
+    public SqlitePlatformJobStore(string path, TimeProvider? clock = null, TimeSpan? idempotencyHorizon = null)
     {
+        this.clock = clock ?? TimeProvider.System;
+        this.idempotencyHorizon = idempotencyHorizon ?? TimeSpan.FromDays(365);
+        if (this.idempotencyHorizon < TimeSpan.Zero || this.idempotencyHorizon > TimeSpan.FromDays(3650))
+            throw new ArgumentOutOfRangeException(nameof(idempotencyHorizon));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         connectionString = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate, Pooling = false }.ToString();
         using var connection = new SqliteConnection(connectionString); Hispania.Persistence.Schema.SqliteSchemaUpgrade.Open(connection, "Platform.Jobs");
         using var command = connection.CreateCommand();
-        Hispania.Persistence.Schema.SqliteSchemaUpgrade.Initialize(connection, "Platform.Jobs", "PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS platform_jobs(job_id TEXT PRIMARY KEY,job_type TEXT NOT NULL,status INTEGER NOT NULL,created_at TEXT NOT NULL,scheduled_at TEXT NOT NULL,started_at TEXT,completed_at TEXT,attempt_count INTEGER NOT NULL,max_attempts INTEGER NOT NULL,timeout_seconds INTEGER,correlation_id TEXT,causation_id TEXT,idempotency_key TEXT,payload_json TEXT NOT NULL,result_json TEXT,error_summary TEXT,executor TEXT NOT NULL,lease_expires_at TEXT,cancel_requested INTEGER NOT NULL DEFAULT 0,terminal_audit_recorded INTEGER NOT NULL DEFAULT 0,execution_policy INTEGER NOT NULL DEFAULT 0,worker_id TEXT,capability TEXT,generation INTEGER,lease_id TEXT); CREATE UNIQUE INDEX IF NOT EXISTS ux_platform_jobs_idempotency ON platform_jobs(job_type,idempotency_key) WHERE idempotency_key IS NOT NULL; CREATE INDEX IF NOT EXISTS ix_platform_jobs_due ON platform_jobs(status,scheduled_at,lease_expires_at); CREATE TABLE IF NOT EXISTS platform_job_attempts(attempt_id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES platform_jobs(job_id),attempt_number INTEGER NOT NULL,started_at TEXT NOT NULL,completed_at TEXT,outcome INTEGER,error_summary TEXT,executor TEXT NOT NULL,executor_kind TEXT NOT NULL DEFAULT 'local',worker_id TEXT,capability TEXT,generation INTEGER,lease_id TEXT,UNIQUE(job_id,attempt_number));", ("platform_jobs", "execution_policy", "INTEGER NOT NULL DEFAULT 0"), ("platform_jobs", "worker_id", "TEXT"), ("platform_jobs", "capability", "TEXT"), ("platform_jobs", "generation", "INTEGER"), ("platform_jobs", "lease_id", "TEXT"), ("platform_jobs", "trace_parent", "TEXT"), ("platform_jobs", "trace_state", "TEXT"), ("platform_job_attempts", "executor_kind", "TEXT NOT NULL DEFAULT 'local'"), ("platform_job_attempts", "worker_id", "TEXT"), ("platform_job_attempts", "capability", "TEXT"), ("platform_job_attempts", "generation", "INTEGER"), ("platform_job_attempts", "lease_id", "TEXT"));
+        Hispania.Persistence.Schema.SqliteSchemaUpgrade.Initialize(connection, "Platform.Jobs", "PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS platform_jobs(job_id TEXT PRIMARY KEY,job_type TEXT NOT NULL,status INTEGER NOT NULL,created_at TEXT NOT NULL,scheduled_at TEXT NOT NULL,started_at TEXT,completed_at TEXT,attempt_count INTEGER NOT NULL,max_attempts INTEGER NOT NULL,timeout_seconds INTEGER,correlation_id TEXT,causation_id TEXT,idempotency_key TEXT,payload_json TEXT NOT NULL,result_json TEXT,error_summary TEXT,executor TEXT NOT NULL,lease_expires_at TEXT,cancel_requested INTEGER NOT NULL DEFAULT 0,terminal_audit_recorded INTEGER NOT NULL DEFAULT 0,execution_policy INTEGER NOT NULL DEFAULT 0,worker_id TEXT,capability TEXT,generation INTEGER,lease_id TEXT); CREATE UNIQUE INDEX IF NOT EXISTS ux_platform_jobs_idempotency ON platform_jobs(job_type,idempotency_key) WHERE idempotency_key IS NOT NULL; CREATE INDEX IF NOT EXISTS ix_platform_jobs_due ON platform_jobs(status,scheduled_at,lease_expires_at); CREATE TABLE IF NOT EXISTS platform_job_attempts(attempt_id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES platform_jobs(job_id),attempt_number INTEGER NOT NULL,started_at TEXT NOT NULL,completed_at TEXT,outcome INTEGER,error_summary TEXT,executor TEXT NOT NULL,executor_kind TEXT NOT NULL DEFAULT 'local',worker_id TEXT,capability TEXT,generation INTEGER,lease_id TEXT,UNIQUE(job_id,attempt_number));", [("platform_jobs", "execution_policy", "INTEGER NOT NULL DEFAULT 0"), ("platform_jobs", "worker_id", "TEXT"), ("platform_jobs", "capability", "TEXT"), ("platform_jobs", "generation", "INTEGER"), ("platform_jobs", "lease_id", "TEXT"), ("platform_jobs", "trace_parent", "TEXT"), ("platform_jobs", "trace_state", "TEXT"), ("platform_job_attempts", "executor_kind", "TEXT NOT NULL DEFAULT 'local'"), ("platform_job_attempts", "worker_id", "TEXT"), ("platform_job_attempts", "capability", "TEXT"), ("platform_job_attempts", "generation", "INTEGER"), ("platform_job_attempts", "lease_id", "TEXT")],
+            [new Hispania.Persistence.Schema.SqliteSchemaMigration(2, "0002_retention_tombstones", (db, tx) => Hispania.Persistence.Schema.SqliteSchemaUpgrade.Execute(db, tx,
+                "CREATE TABLE IF NOT EXISTS platform_job_idempotency_tombstones(job_type TEXT NOT NULL,idempotency_key TEXT NOT NULL,job_id TEXT NOT NULL,status INTEGER NOT NULL,completed_at TEXT NOT NULL,expires_at TEXT NOT NULL,PRIMARY KEY(job_type,idempotency_key)); CREATE INDEX IF NOT EXISTS ix_platform_job_tombstone_expiry ON platform_job_idempotency_tombstones(expires_at); CREATE INDEX IF NOT EXISTS ix_platform_jobs_retention ON platform_jobs(status,completed_at);"))]);
     }
 
     public async ValueTask<PlatformJobCreateResultV1> CreateAsync(PlatformJobV1 job, CancellationToken cancellationToken)
@@ -28,6 +37,31 @@ public sealed class SqlitePlatformJobStore : IPlatformJobStoreV1
             if (found is string id)
             {
                 await using var read = connection.CreateCommand(); read.Transaction = (SqliteTransaction)tx; read.CommandText = "SELECT * FROM platform_jobs WHERE job_id=$id"; read.Parameters.AddWithValue("$id", id); await using var reader = await read.ExecuteReaderAsync(cancellationToken); var existing = await reader.ReadAsync(cancellationToken) ? ReadJob(reader) : throw new InvalidOperationException("Idempotency row disappeared inside its transaction."); await reader.DisposeAsync(); await tx.CommitAsync(cancellationToken); return new(existing, true);
+            }
+            await using var tombstone = connection.CreateCommand(); tombstone.Transaction = (SqliteTransaction)tx;
+            tombstone.CommandText = "SELECT job_id,status,completed_at,expires_at FROM platform_job_idempotency_tombstones WHERE job_type=$type AND idempotency_key=$key";
+            tombstone.Parameters.AddWithValue("$type", job.JobType); tombstone.Parameters.AddWithValue("$key", job.IdempotencyKey);
+            await using var tombstoneReader = await tombstone.ExecuteReaderAsync(cancellationToken);
+            if (await tombstoneReader.ReadAsync(cancellationToken))
+            {
+                var priorId = Guid.Parse(tombstoneReader.GetString(0));
+                var priorStatus = (PlatformJobStatusV1)tombstoneReader.GetInt32(1);
+                var completed = Parse(tombstoneReader.GetString(2));
+                var expires = Parse(tombstoneReader.GetString(3));
+                await tombstoneReader.DisposeAsync();
+                if (expires > clock.GetUtcNow())
+                {
+                    var previous = job with { JobId = priorId, Status = priorStatus,
+                        CreatedAt = completed, ScheduledAt = completed, CompletedAt = completed,
+                        PayloadJson = "{}", ResultMetadataJson = null, IdempotencyKey = job.IdempotencyKey };
+                    await tx.CommitAsync(cancellationToken);
+                    return new(previous, true, true);
+                }
+                await using var expired = connection.CreateCommand(); expired.Transaction = (SqliteTransaction)tx;
+                expired.CommandText = "DELETE FROM platform_job_idempotency_tombstones WHERE job_type=$type AND idempotency_key=$key AND expires_at<=$now";
+                expired.Parameters.AddWithValue("$type", job.JobType); expired.Parameters.AddWithValue("$key", job.IdempotencyKey);
+                expired.Parameters.AddWithValue("$now", Dt(clock.GetUtcNow()));
+                await expired.ExecuteNonQueryAsync(cancellationToken);
             }
         }
         await using (var insert = connection.CreateCommand())
@@ -123,6 +157,134 @@ public sealed class SqlitePlatformJobStore : IPlatformJobStoreV1
     { await using var c = await OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "UPDATE platform_jobs SET terminal_audit_recorded=1 WHERE job_id=$id AND status IN ($failed,$dead)"; q.Parameters.AddWithValue("$id", Id(jobId)); q.Parameters.AddWithValue("$failed", (int)PlatformJobStatusV1.Failed); q.Parameters.AddWithValue("$dead", (int)PlatformJobStatusV1.DeadLettered); await q.ExecuteNonQueryAsync(cancellationToken); }
     public async ValueTask<PlatformJobHealthV1> GetHealthAsync(bool dispatcherActive, CancellationToken cancellationToken)
     { await using var c = await OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "SELECT SUM(status=$pending),SUM(status=$running),SUM(status=$succeeded),SUM(status=$failed),SUM(status=$cancelled),SUM(status=$dead),MIN(CASE WHEN status=$pending AND execution_policy=2 THEN scheduled_at END) FROM platform_jobs"; q.Parameters.AddWithValue("$pending", (int)PlatformJobStatusV1.Pending); q.Parameters.AddWithValue("$running", (int)PlatformJobStatusV1.Running); q.Parameters.AddWithValue("$succeeded", (int)PlatformJobStatusV1.Succeeded); q.Parameters.AddWithValue("$failed", (int)PlatformJobStatusV1.Failed); q.Parameters.AddWithValue("$cancelled", (int)PlatformJobStatusV1.Cancelled); q.Parameters.AddWithValue("$dead", (int)PlatformJobStatusV1.DeadLettered); await using var r = await q.ExecuteReaderAsync(cancellationToken); await r.ReadAsync(cancellationToken); static long Count(SqliteDataReader row, int index) => row.IsDBNull(index) ? 0 : row.GetInt64(index); return new(true, dispatcherActive, Count(r,0), Count(r,1), Count(r,2), Count(r,3), Count(r,4), Count(r,5), r.IsDBNull(6) ? null : Parse(r.GetString(6))); }
+
+    public MaintenanceOwnerIdV1 OwnerId => new("platform.jobs");
+    public RetentionCapabilitiesV1 Capabilities => new(true, false, false, 500, true);
+
+    public async ValueTask<RetentionPlanV1> PlanAsync(RetentionPolicyV1 policy, DateTimeOffset evaluatedAtUtc,
+        DateTimeOffset expiresAtUtc, CancellationToken cancellationToken = default)
+    {
+        ValidatePlanRequest(policy, evaluatedAtUtc, expiresAtUtc);
+        if (evaluatedAtUtc > clock.GetUtcNow())
+            throw new InvalidOperationException("Retention evaluation cannot use a future clock.");
+        if (!policy.Enabled)
+            return new(Guid.NewGuid(), OwnerId, policy, evaluatedAtUtc, expiresAtUtc, 0, 0, null,
+                null, null, "Job retention is disabled.", []);
+        await using var c = await OpenAsync(cancellationToken);
+        await using var q = c.CreateCommand();
+        q.CommandText = $"SELECT COUNT(*),MIN(completed_at),MAX(completed_at) FROM platform_jobs WHERE {EligibleSql}";
+        BindEligibility(q, policy, evaluatedAtUtc);
+        await using var r = await q.ExecuteReaderAsync(cancellationToken);
+        await r.ReadAsync(cancellationToken);
+        var candidates = r.GetInt64(0);
+        DateTimeOffset? oldest = r.IsDBNull(1) ? null : Parse(r.GetString(1));
+        DateTimeOffset? newest = r.IsDBNull(2) ? null : Parse(r.GetString(2));
+        await r.DisposeAsync();
+        await using var count = c.CreateCommand(); count.CommandText = "SELECT COUNT(*) FROM platform_jobs";
+        var total = Convert.ToInt64(await count.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
+        await using var tombstones = c.CreateCommand();
+        tombstones.CommandText = "SELECT COUNT(*),SUM(CASE WHEN expires_at<=$now THEN 1 ELSE 0 END) FROM platform_job_idempotency_tombstones";
+        tombstones.Parameters.AddWithValue("$now", Dt(evaluatedAtUtc));
+        await using var tombstoneRows = await tombstones.ExecuteReaderAsync(cancellationToken);
+        await tombstoneRows.ReadAsync(cancellationToken);
+        var allTombstones = tombstoneRows.GetInt64(0);
+        var expiredTombstones = tombstoneRows.IsDBNull(1) ? 0 : tombstoneRows.GetInt64(1);
+        return new(Guid.NewGuid(), OwnerId, policy, evaluatedAtUtc, expiresAtUtc, candidates + expiredTombstones,
+            total - candidates + allTombstones - expiredTombstones, null, oldest, newest, "Terminal Job history older than the configured age and expired idempotency tombstones; failed Jobs require recorded audit.",
+            ["Idempotency keys remain reserved until completion plus the configured horizon; history removal cannot undo handler side effects."]);
+    }
+
+    public async ValueTask<RetentionBatchResultV1> ExecuteBatchAsync(RetentionPlanV1 plan,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (plan.Owner != OwnerId || !plan.Policy.Enabled) throw new InvalidOperationException("Job retention plan is not executable.");
+        ValidatePlanRequest(plan.Policy, plan.EvaluatedAtUtc, plan.ExpiresAtUtc);
+        var now = clock.GetUtcNow();
+        if (now < plan.EvaluatedAtUtc || now > plan.ExpiresAtUtc)
+            throw new InvalidOperationException("Job retention plan is stale or the clock moved backwards.");
+        await using var c = await OpenAsync(cancellationToken);
+        await using var tx = c.BeginTransaction(deferred: false);
+        var rows = new List<(string Id, string Type, string? Key, int Status, DateTimeOffset Completed)>();
+        await using (var q = c.CreateCommand())
+        {
+            q.Transaction = tx;
+            q.CommandText = $"SELECT job_id,job_type,idempotency_key,status,completed_at FROM platform_jobs WHERE {EligibleSql} ORDER BY completed_at,job_id LIMIT $limit";
+            BindEligibility(q, plan.Policy, plan.EvaluatedAtUtc);
+            q.Parameters.AddWithValue("$limit", plan.Policy.BatchSize);
+            await using var reader = await q.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                rows.Add((reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.GetInt32(3), Parse(reader.GetString(4))));
+        }
+        var affected = 0;
+        foreach (var row in rows)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            // Every row is revalidated in the write transaction, including audit and terminal state.
+            await using var removeAttempts = c.CreateCommand(); removeAttempts.Transaction = tx;
+            removeAttempts.CommandText = $"DELETE FROM platform_job_attempts WHERE job_id IN (SELECT job_id FROM platform_jobs WHERE job_id=$id AND {EligibleSql})";
+            removeAttempts.Parameters.AddWithValue("$id", row.Id);
+            BindEligibility(removeAttempts, plan.Policy, plan.EvaluatedAtUtc);
+            await removeAttempts.ExecuteNonQueryAsync(cancellationToken);
+            await using var removeJob = c.CreateCommand(); removeJob.Transaction = tx;
+            removeJob.CommandText = $"DELETE FROM platform_jobs WHERE job_id=$id AND {EligibleSql}";
+            removeJob.Parameters.AddWithValue("$id", row.Id);
+            BindEligibility(removeJob, plan.Policy, plan.EvaluatedAtUtc);
+            if (await removeJob.ExecuteNonQueryAsync(cancellationToken) != 1) continue;
+            affected++;
+            if (row.Key is null) continue;
+            DateTimeOffset expires;
+            try { expires = row.Completed + idempotencyHorizon; }
+            catch (ArgumentOutOfRangeException) { expires = DateTimeOffset.MaxValue; }
+            if (expires <= now) continue;
+            await using var tombstone = c.CreateCommand(); tombstone.Transaction = tx;
+            tombstone.CommandText = "INSERT INTO platform_job_idempotency_tombstones(job_type,idempotency_key,job_id,status,completed_at,expires_at) VALUES($type,$key,$id,$status,$completed,$expires)";
+            tombstone.Parameters.AddWithValue("$type", row.Type); tombstone.Parameters.AddWithValue("$key", row.Key);
+            tombstone.Parameters.AddWithValue("$id", row.Id); tombstone.Parameters.AddWithValue("$status", row.Status);
+            tombstone.Parameters.AddWithValue("$completed", Dt(row.Completed)); tombstone.Parameters.AddWithValue("$expires", Dt(expires));
+            await tombstone.ExecuteNonQueryAsync(cancellationToken);
+        }
+        var selectedTombstones = 0;
+        if (rows.Count < plan.Policy.BatchSize)
+        {
+            var remaining = plan.Policy.BatchSize - rows.Count;
+            await using var expired = c.CreateCommand(); expired.Transaction = tx;
+            expired.CommandText = "SELECT job_type,idempotency_key FROM platform_job_idempotency_tombstones WHERE expires_at<=$now ORDER BY expires_at,job_type,idempotency_key LIMIT $limit";
+            expired.Parameters.AddWithValue("$now", Dt(plan.EvaluatedAtUtc));
+            expired.Parameters.AddWithValue("$limit", remaining);
+            var keys = new List<(string Type, string Key)>();
+            await using (var reader = await expired.ExecuteReaderAsync(cancellationToken))
+                while (await reader.ReadAsync(cancellationToken)) keys.Add((reader.GetString(0), reader.GetString(1)));
+            selectedTombstones = keys.Count;
+            foreach (var (type, key) in keys)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await using var remove = c.CreateCommand(); remove.Transaction = tx;
+                remove.CommandText = "DELETE FROM platform_job_idempotency_tombstones WHERE job_type=$type AND idempotency_key=$key AND expires_at<=$now";
+                remove.Parameters.AddWithValue("$type", type); remove.Parameters.AddWithValue("$key", key);
+                remove.Parameters.AddWithValue("$now", Dt(plan.EvaluatedAtUtc));
+                affected += await remove.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+        await tx.CommitAsync(cancellationToken);
+        var selected = rows.Count + selectedTombstones;
+        return new(selected, affected, null, selected == plan.Policy.BatchSize, selected - affected);
+    }
+
+    private const string EligibleSql = "completed_at IS NOT NULL AND completed_at<=$cutoff AND status IN (2,3,4,5) AND (status NOT IN (3,5) OR terminal_audit_recorded=1) AND lease_expires_at IS NULL";
+    private static void BindEligibility(SqliteCommand command, RetentionPolicyV1 policy, DateTimeOffset evaluatedAtUtc)
+        => command.Parameters.AddWithValue("$cutoff", Dt(evaluatedAtUtc - policy.MinimumAge!.Value));
+    private void ValidatePlanRequest(RetentionPolicyV1 policy, DateTimeOffset evaluatedAtUtc, DateTimeOffset expiresAtUtc)
+    {
+        policy.Validate(Capabilities);
+        if (policy.Enabled && policy.MinimumAge is null) throw new ArgumentException("Job retention requires an explicit minimum age.", nameof(policy));
+        if (policy.MinimumAge is { } age && evaluatedAtUtc < DateTimeOffset.MinValue.Add(age))
+            throw new ArgumentException("Job retention age underflows the UTC clock.", nameof(policy));
+        if (evaluatedAtUtc.Offset != TimeSpan.Zero || expiresAtUtc.Offset != TimeSpan.Zero ||
+            expiresAtUtc <= evaluatedAtUtc || expiresAtUtc - evaluatedAtUtc > TimeSpan.FromMinutes(10))
+            throw new ArgumentException("Job retention plan requires a UTC evaluation and expiry within ten minutes.");
+    }
 
     private async ValueTask<SqliteConnection> OpenAsync(CancellationToken ct) { var c = new SqliteConnection(connectionString); await c.OpenAsync(ct); return c; }
     private static PlatformJobV1 ReadJob(SqliteDataReader r) => new(Guid.Parse(r.GetString(0)),r.GetString(1),(PlatformJobStatusV1)r.GetInt32(2),Parse(r.GetString(3)),Parse(r.GetString(4)),NullableDate(r,5),NullableDate(r,6),r.GetInt32(7),r.GetInt32(8),r.IsDBNull(9)?null:r.GetInt32(9),r.IsDBNull(10)?null:r.GetString(10),r.IsDBNull(11)?null:r.GetString(11),r.IsDBNull(12)?null:r.GetString(12),r.GetString(13),r.IsDBNull(14)?null:r.GetString(14),r.IsDBNull(15)?null:r.GetString(15),r.GetString(16),NullableDate(r,17),(PlatformJobExecutionPolicyV1)r.GetInt32(20),r.IsDBNull(21)?null:r.GetString(21),r.IsDBNull(22)?null:r.GetString(22),r.IsDBNull(23)?null:r.GetInt64(23),r.IsDBNull(24)?null:r.GetString(24), r.IsDBNull(r.GetOrdinal("trace_parent"))?null:r.GetString(r.GetOrdinal("trace_parent")), r.IsDBNull(r.GetOrdinal("trace_state"))?null:r.GetString(r.GetOrdinal("trace_state")));

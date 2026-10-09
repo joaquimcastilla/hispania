@@ -19,8 +19,13 @@ internal static class SqliteSchemaUpgrade
         catch (SqliteException ex) { throw new InvalidOperationException($"Store {owner}: database could not be opened; preserve it for explicit recovery. No reset was performed.", ex); }
     }
     internal static void Initialize(SqliteConnection connection, string owner, string sql, params (string Table, string Column, string Declaration)[] additions)
+        => Initialize(connection, owner, sql, additions, []);
+
+    internal static void Initialize(SqliteConnection connection, string owner, string sql,
+        (string Table, string Column, string Declaration)[] additions,
+        IReadOnlyList<SqliteSchemaMigration> additionalMigrations)
     {
-        Apply(connection, owner, [new(1, "0001_baseline07_adoption", (db, tx) =>
+        var baseline = new SqliteSchemaMigration(1, "0001_baseline07_adoption", (db, tx) =>
         {
             Execute(db, tx, sql.Replace("PRAGMA journal_mode=WAL;", "", StringComparison.Ordinal));
             foreach (var (table, column, declaration) in additions)
@@ -32,7 +37,8 @@ internal static class SqliteSchemaUpgrade
                 if (!found) Execute(db, tx, $"ALTER TABLE {table} ADD COLUMN {column} {declaration}");
             }
             ValidateShape(db, tx, owner, sql, additions);
-        })]);
+        });
+        Apply(connection, owner, [baseline, .. additionalMigrations]);
         ValidateShape(connection, null, owner, sql, additions);
         if (sql.Contains("PRAGMA journal_mode=WAL;", StringComparison.Ordinal))
         { using var q = connection.CreateCommand(); q.CommandText = "PRAGMA journal_mode=WAL"; q.ExecuteNonQuery(); }

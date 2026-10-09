@@ -6,6 +6,7 @@
       "application/identity/Hispania.Identity.Application.csproj",
       "application/authorization/Hispania.Authorization.Application.csproj",
       "application/platform/jobs/Hispania.Platform.Jobs.Application.csproj",
+      "application/platform/maintenance/Hispania.Platform.Maintenance.Application.csproj",
       "application/platform/storage/Hispania.Platform.Storage.Application.csproj",
       "infrastructure/platform/storage-filesystem/Hispania.Platform.Storage.Filesystem.csproj",
       "infrastructure/platform/worker-agent-jobs/Hispania.Platform.WorkerAgentJobs.csproj",

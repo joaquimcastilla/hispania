@@ -24,6 +24,17 @@ public interface IStorageProviderResolverV1
     IStorageProviderV1 Resolve(StorageObjectHandle handle);
 }
 
+/// <summary>Optional owner-local inventory for reconciliation; handles remain opaque to consumers.</summary>
+public sealed record StorageInventoryObjectV1(StorageObjectHandle Handle, long Size, DateTimeOffset CreatedAtUtc);
+public sealed record StorageInventoryPageV1(IReadOnlyList<StorageInventoryObjectV1> Objects,
+    string? ContinuationToken, bool Complete);
+public interface IStorageInventoryV1
+{
+    string ProviderId { get; }
+    ValueTask<StorageInventoryPageV1> ScanAsync(int maximumItems, string? continuationToken,
+        CancellationToken cancellationToken = default);
+}
+
 public sealed class StorageProviderNotFoundException(string providerId)
     : InvalidOperationException($"Storage provider '{providerId}' is not registered.")
 {

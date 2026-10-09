@@ -44,7 +44,8 @@ public sealed record CreatePlatformJobV1(string JobType, string PayloadJson, Dat
     string? IdempotencyKey = null, string? RequestedBy = null, PlatformJobExecutionPolicyV1 ExecutionPolicy = PlatformJobExecutionPolicyV1.LocalOnly);
 public sealed record PlatformRemoteJobExecutionV1(PlatformJobResultMetadataV1? Result, string WorkerId,
     string Capability, long Generation, string LeaseId);
-public sealed record PlatformJobCreateResultV1(PlatformJobV1 Job, bool Duplicate);
+/// <summary>When HistoryPruned is true, Job is a minimal tombstone view; Get/attempt history is unavailable.</summary>
+public sealed record PlatformJobCreateResultV1(PlatformJobV1 Job, bool Duplicate, bool HistoryPruned = false);
 public sealed record PlatformJobHealthV1(bool StoreAccessible, bool DispatcherActive, long Pending, long Running,
     long Succeeded, long Failed, long Cancelled, long DeadLettered, DateTimeOffset? OldestRemoteOnlyPendingAt = null);
 
