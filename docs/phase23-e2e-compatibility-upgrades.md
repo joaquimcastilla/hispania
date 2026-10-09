@@ -18,6 +18,8 @@ pwsh -NoProfile -File tools/test-phase23-e2e-compatibility-upgrades.ps1
 
 Results include the fixture inventory, gate logs/TRX files, per-gate evidence, `phase23-summary.json`, and the exact `phase23-target-sha.txt` under `.artifacts/phase23/`.
 
+Operational and acceptance references are split into the [compatibility matrix](compatibility/PHASE-23-COMPATIBILITY-MATRIX.md), [upgrade runbook](operations/UPGRADE.md), [rollback runbook](operations/ROLLBACK.md), [harness guide](testing/E2E-UPGRADE-HARNESS.md), and [ADR-0048](adr/ADR-0048-end-to-end-compatibility-upgrade-validation.md). The more detailed existing deployment commands remain in [UPGRADE-ROLLBACK.md](operations/UPGRADE-ROLLBACK.md).
+
 ## Compatibility matrix
 
 | Historical identity | Evidence | Status |
