@@ -41,10 +41,7 @@ try {
         $auditExit = $LASTEXITCODE
         $audit = Get-Content -LiteralPath (Join-Path $results 'npm-all-audit.json') -Raw | ConvertFrom-Json
         if ($auditExit -notin 0,1) { throw 'npm audit failed to produce evidence.' }
-        foreach ($finding in $audit.vulnerabilities.PSObject.Properties) {
-            if ($finding.Name -ne 'source-map-js' -or $finding.Value.nodes.Count -ne 1 -or $finding.Value.via.Count -ne 1 -or $finding.Value.severity -ne 'high' -or $finding.Value.via[0].url -ne 'https://github.com/advisories/GHSA-68fv-2mgg-jv7q') { throw 'New build advisory requires an explicit scope review.' }
-        }
-        # Exact build-only advisory assessed in docs/security/SUPPLY-CHAIN.md; never waive runtime findings.
+        if (@($audit.vulnerabilities.PSObject.Properties).Count -ne 0) { throw 'npm audit found a dependency advisory; no findings are currently waived.' }
     }
     git rev-parse HEAD > (Join-Path $results 'git-sha.txt')
     Write-Output 'Phase21 bounded security gate passed; complete phase acceptance also requires existing regression and production gates.'

@@ -1,6 +1,6 @@
 param([switch]$PostgreSqlOnly)
 $ErrorActionPreference='Stop'
-if ($env:GITHUB_ACTIONS -ne 'true' -or $env:GITHUB_REPOSITORY -ne 'joaquimcastilla/hispania' -or $env:GITHUB_REF -notin @('refs/heads/feature/phase-21-security-operations-hardening','refs/heads/feature/phase-22-retention-reconciliation-capacity')) { throw 'Only explicitly dispatched trusted Phase21/Phase22 CI is supported.' }
+if ($env:GITHUB_ACTIONS -ne 'true' -or $env:GITHUB_REPOSITORY -ne 'joaquimcastilla/hispania' -or $env:GITHUB_REF -notin @('refs/heads/feature/phase-21-security-operations-hardening','refs/heads/feature/phase-22-retention-reconciliation-capacity','refs/heads/feature/phase-23-e2e-compatibility-upgrades')) { throw 'Only explicitly dispatched trusted Phase21/Phase22/Phase23 CI is supported.' }
 if ($IsLinux) {
     # Existing shared /tmp fixture parents can belong to other operators. Do not
     # change their permissions; use the job's own runner-managed temporary root.
