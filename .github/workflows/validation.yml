@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   validate:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/feature/phase-21-security-operations-hardening'
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && (github.ref == 'refs/heads/feature/phase-21-security-operations-hardening' || github.ref == 'refs/heads/feature/phase-22-retention-reconciliation-capacity')
     runs-on: [self-hosted, hispania, hispania-linux]
     steps:
       - uses: actions/checkout@v7
@@ -80,6 +80,9 @@ jobs:
       - name: Require Phase 16 historical populated data upgrades and live PostgreSQL
         shell: pwsh
         run: ./tools/test-phase16-historical-upgrades.ps1 -ResultsDirectory .artifacts/phase16-ci -RequirePostgreSql
+      - name: Require Phase 22 retention, reconciliation, capacity and recovery
+        shell: pwsh
+        run: ./tools/test-phase22-retention-reconciliation-capacity.ps1 -ResultsDirectory .artifacts/phase22-ci
       - name: Require Platform-only dependency boundary
         run: dotnet build Hispania.Platform.slnf
       - name: Diagnose PostgreSQL server version (dedicated SCRAM-auth CI cluster)
@@ -211,7 +214,7 @@ jobs:
         run: ./tools/test-security-canaries.ps1 -EvidenceDirectory .artifacts
 
   validate-windows-launcher:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/feature/phase-21-security-operations-hardening'
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && (github.ref == 'refs/heads/feature/phase-21-security-operations-hardening' || github.ref == 'refs/heads/feature/phase-22-retention-reconciliation-capacity')
     runs-on: [self-hosted, hispania, hispania-windows]
     steps:
       - uses: actions/checkout@v7
@@ -282,6 +285,9 @@ jobs:
       - name: Require Phase 16 historical populated data upgrades
         shell: pwsh
         run: ./tools/test-phase16-historical-upgrades.ps1 -ResultsDirectory .artifacts/phase16-ci
+      - name: Require Phase 22 retention, reconciliation, capacity and recovery
+        shell: pwsh
+        run: ./tools/test-phase22-retention-reconciliation-capacity.ps1 -ResultsDirectory .artifacts/phase22-ci
       - name: Require Platform-only dependency boundary
         run: dotnet build Hispania.Platform.slnf
       - name: Require Inventory, persistence, API restart, and architecture coverage
