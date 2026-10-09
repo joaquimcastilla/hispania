@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "target": {
+    "distributionVersion": "0.7.0",
+    "sourceSha": "WORKTREE_HEAD"
+  },
+  "historicalReleases": [
+    {
+      "id": "hispania-0.7-baseline",
+      "version": "0.7",
+      "sourceSha": "78f291fdacf9442c6e2d8e23094dc0e309828693",
+      "schemaVersion": "unversioned-0.7",
+      "logicalDate": "2025-02-01",
+      "corpusManifest": "compatibility/data-baseline-0.7.json",
+      "expectedMigrationPath": ["unversioned-0.7", "1:0001_baseline07_adoption"],
+      "support": "data-and-selected-compatibility-evidence",
+      "limitations": ["Not a complete runnable server release; only captured owner stores and selected contract/package/protocol artifacts are authoritative."]
+    },
+    {
+      "id": "phase-14-baseline-capture",
+      "version": "phase14",
+      "sourceSha": "78f291fdacf9442c6e2d8e23094dc0e309828693",
+      "schemaVersion": "per-owner-unversioned-legacy",
+      "logicalDate": "2025-02-01",
+      "corpusManifest": "compatibility/baseline-0.7.json",
+      "expectedMigrationPath": ["owner-specific-historical-shape", "current-owner-schema"],
+      "support": "selected-source-binary-wire-package-data-evidence",
+      "limitations": ["The historical SHA is a technical baseline, not a published distribution release."]
+    },
+    {
+      "id": "phase-13-through-22-intermediate-releases",
+      "version": "phases13-22",
+      "sourceSha": null,
+      "schemaVersion": null,
+      "logicalDate": null,
+      "corpusManifest": null,
+      "expectedMigrationPath": [],
+      "support": "untested-as-complete-releases",
+      "limitations": ["No authenticated complete historical release snapshots are present in the accepted Phase 22 tree. Owner-specific compatibility tests in current source are not complete historical installations."]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "baseline-07-owner-store-upgrade",
+      "sourceVersion": "0.7",
+      "targetVersion": "current",
+      "sourceSha": "78f291fdacf9442c6e2d8e23094dc0e309828693",
+      "targetSha": "WORKTREE_HEAD",
+      "storageEngines": ["SQLite"],
+      "enabledModules": ["Identity", "Authorization", "Events", "Jobs", "Assets", "Audit", "Coordinator", "Inventory", "Media", "Playback"],
+      "packageSet": ["immutable Phase 15 0.7 signed greeting package"],
+      "expectedSchemaTransitions": ["owner-specific unversioned 0.7 shapes -> current owner schema; Media SQLite migrations retain the five-step EF lineage"],
+      "preservedData": ["Identity and RBAC", "events and delivery state", "jobs and idempotency", "asset metadata and bytes", "audit", "coordinator generations and leases", "inventory and opaque Asset IDs", "media catalog and paths", "playback configuration"],
+      "warnings": ["Historical installation is represented by immutable store/package/API/protocol fixtures, not a complete historical server executable."],
+      "unsupportedConditions": ["Unknown, malformed, gapped, duplicate or future schema histories fail closed before mutation."],
+      "execution": "Phase16 historical owner tests and Phase15 compatibility corpus gate"
+    },
+    {
+      "id": "phase-18-package-reader-to-current",
+      "sourceVersion": "Phase18 package reader",
+      "targetVersion": "current",
+      "sourceSha": "86b43bc414edd53d8f7312a0d4045dc2818a39f6",
+      "targetSha": "WORKTREE_HEAD",
+      "storageEngines": ["isolated package filesystem"],
+      "enabledModules": ["package lifecycle"],
+      "packageSet": ["deterministic local package fixtures"],
+      "expectedSchemaTransitions": [],
+      "preservedData": ["installed package state", "current/known-good retention semantics"],
+      "warnings": [],
+      "unsupportedConditions": ["Host or package format outside explicit reader compatibility bounds is rejected."],
+      "execution": "Phase19 real historical reader build and lifecycle process tests"
+    },
+    {
+      "id": "phase-19-web-reader-to-current",
+      "sourceVersion": "Phase19 Web package reader",
+      "targetVersion": "current",
+      "sourceSha": "da57b39149b5d297f3970c17899a4da9eb366eb7",
+      "targetSha": "WORKTREE_HEAD",
+      "storageEngines": ["isolated package filesystem"],
+      "enabledModules": ["Web Shell", "declarative web contributions"],
+      "packageSet": ["deterministic local web contribution packages"],
+      "expectedSchemaTransitions": ["Web contribution generation 1"],
+      "preservedData": ["installed package and contribution state through backup/restore"],
+      "warnings": [],
+      "unsupportedConditions": ["Unsupported contribution generations are rejected as a whole."],
+      "execution": "Phase20 historical web reader and local modern/classic browser gate"
+    }
+  ],
+  "compatibilityAxes": [
+    {"axis":"public contracts and APIs","historicalEvidence":"compatibility/baseline-0.7.json; Phase15 source/binary tests","coverage":"selected Platform/API signatures, not a blanket stability promise"},
+    {"axis":"persistent schemas and data","historicalEvidence":"compatibility/data-baseline-0.7.json (15 immutable artifacts)","coverage":"owner SQLite upgrades; Media SQLite historical EF lineage; PostgreSQL live case conditional"},
+    {"axis":"configuration and secrets","historicalEvidence":"Phase18 production configuration tests and isolated process tests","coverage":"current configuration schema and deployment behavior; no complete old-release configuration installation"},
+    {"axis":"packages and web contributions","historicalEvidence":"compatibility/packages/0.7 plus Phase19/20 historical readers","coverage":"real reader/build/process cases for specific fixture generations"},
+    {"axis":"worker wire and clients","historicalEvidence":"compatibility/protocols/0.7 and clients/0.7","coverage":"frozen selected consumers and generation-1 protocol semantics; no complete historical WorkerAgent binary matrix"},
+    {"axis":"events, jobs, identity, RBAC, coordinator, inventory and media","historicalEvidence":"populated owner data/0.7 fixtures","coverage":"owner-specific migration invariants, not one atomic global transaction"},
+    {"axis":"backup formats and rollback","historicalEvidence":"Phase17/19/20/22 real installation and package backup tests","coverage":"restore/retention behaviors in those gates; no universal old-binary rollback guarantee"}
+  ]
+}
