@@ -557,7 +557,18 @@ public sealed class PackageLifecycleIntegrationTests
             }
             catch { }
             Catalog.Dispose(); rsa.Dispose();
-            try { Directory.Delete(root, true); } catch (IOException) { }
+            for (var attempt = 0; Directory.Exists(root); attempt++)
+            {
+                try
+                {
+                    Directory.Delete(root, true);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    if (attempt >= 4) throw;
+                    Thread.Sleep(50 * (attempt + 1));
+                }
+            }
         }
     }
 }
