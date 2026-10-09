@@ -35,6 +35,15 @@ if ($IsLinux) {
     if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-20') { throw 'Windows runner must retain NetworkService identity.' }
 }
 if ($env:HISPANIA_PHASE21_NATIVE_HELPER) {
+    if ($IsWindows) {
+        # Protected broker snapshots must implement this exact checkout, irrespective of CRLF.
+        foreach ($pair in @(@{source='./tools/ci/windows-native-service-helper.ps1';installed=$env:HISPANIA_PHASE21_NATIVE_HELPER},@{source='./deployment/windows-service.ps1';installed=(Join-Path (Split-Path $env:HISPANIA_PHASE21_NATIVE_HELPER) 'windows-service.ps1')})) {
+            $expected=(Get-Content -LiteralPath $pair.source -Raw).Replace("`r`n","`n")
+            $actual=(Get-Content -LiteralPath $pair.installed -Raw).Replace("`r`n","`n")
+            if ($actual -cne $expected) { throw 'Protected Windows helper does not match the exact source checkout.' }
+        }
+        Write-Output 'Protected Windows broker and SCM helper match the exact source checkout.'
+    }
     $probe=[Diagnostics.ProcessStartInfo]::new()
     $probe.UseShellExecute=$false; $probe.RedirectStandardOutput=$true; $probe.RedirectStandardError=$true
     $probe.FileName=if ($IsWindows) { 'pwsh' } else { 'sudo' }

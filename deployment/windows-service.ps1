@@ -31,6 +31,10 @@ switch ($Action) {
         }
         $secrets=Join-Path $InstallationHome 'secrets'
         foreach ($privateItem in @(Get-Item -LiteralPath $secrets)+@(Get-ChildItem -LiteralPath $secrets -Recurse)) {
+            # Runner-created secrets have a protected owner-only ACL. Transfer ownership
+            # before reading/changing that ACL; no secret contents need to be opened.
+            & takeown.exe /F $privateItem.FullName /A | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Private secret ownership could not be transferred to Administrators.' }
             $acl=Get-Acl -LiteralPath $privateItem.FullName
             $acl.SetAccessRuleProtection($true,$false)
             foreach ($rule in @($acl.Access)) { $acl.RemoveAccessRuleSpecific($rule) }
@@ -48,7 +52,10 @@ switch ($Action) {
         if ($LASTEXITCODE -ne 0) { throw 'Maintenance lock permissions could not be applied.' }
         Invoke-Sc @('create',$name,'binPath=',('"'+$executable+'" --home "'+$InstallationHome+'"'),'start=','auto','obj=',$Account)
         $runtimeRoot=Split-Path (Get-Command dotnet -ErrorAction Stop).Source -Parent
-        New-ItemProperty -Path ("HKLM:\SYSTEM\CurrentControlSet\Services\"+$name) -Name Environment -PropertyType MultiString -Value @("DOTNET_ROOT_X64=$runtimeRoot","DOTNET_ENVIRONMENT=Production") -Force | Out-Null
+        # SCM may retain the PATH from boot, before native prerequisites were installed.
+        # Use only the current machine PATH, never the administrative user's PATH.
+        $machinePath=[Environment]::GetEnvironmentVariable('Path','Machine')
+        New-ItemProperty -Path ("HKLM:\SYSTEM\CurrentControlSet\Services\"+$name) -Name Environment -PropertyType MultiString -Value @("DOTNET_ROOT_X64=$runtimeRoot","DOTNET_ENVIRONMENT=Production","PATH=$machinePath") -Force | Out-Null
         Invoke-Sc @('failure',$name,'reset=','86400','actions=','restart/10000/restart/30000/none/0')
     }
     start { Start-Service -Name $name }

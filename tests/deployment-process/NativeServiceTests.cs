@@ -88,7 +88,8 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
             await ServiceAsync("uninstall", fixture.Home, role); installed = false;
             Assert.True(File.Exists(Path.Combine(fixture.Home, "config", "production.json")));
             Assert.Equal("retained backup evidence", File.ReadAllText(retainedBackup));
-            if (OperatingSystem.IsLinux()) await NativeOperationAsync("retained-secret", fixture.Home, role, () => RunAsync("sudo", ["test", "-f", canaryPath]));
+            if (OperatingSystem.IsLinux() || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("HISPANIA_PHASE21_NATIVE_HELPER")))
+                await NativeOperationAsync("retained-secret", fixture.Home, role, () => RunAsync("sudo", ["test", "-f", canaryPath]));
             else Assert.True(File.Exists(canaryPath));
             if (role == "server") Assert.True(File.Exists(Path.Combine(fixture.Home, "state", "platform", "identity.sqlite")));
         }
