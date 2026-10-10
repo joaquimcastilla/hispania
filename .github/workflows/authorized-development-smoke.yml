@@ -1,0 +1,132 @@
+name: Authorized Development Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Allowlisted development branch to test
+        required: true
+        type: choice
+        options:
+          - feature/phase-24-operational-resilience
+      sha:
+        description: Full commit SHA to test; it must be reachable from the selected branch
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: authorized-dev-smoke-${{ inputs.branch }}
+  cancel-in-progress: false
+
+jobs:
+  validate-target:
+    if: github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.validate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Validate allowlist and branch membership
+        id: validate
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ inputs.branch }}
+          TARGET_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == "joaquimcastilla/hispania" ]]
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]
+          case "$TARGET_BRANCH" in
+            feature/phase-24-operational-resilience) ;;
+            *) echo "Branch is not allowlisted" >&2; exit 1 ;;
+          esac
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "SHA must be a full 40-character commit SHA" >&2; exit 1; }
+          git fetch --no-tags origin "refs/heads/${TARGET_BRANCH}:refs/remotes/origin/phase24-authorized"
+          git cat-file -e "${TARGET_SHA}^{commit}"
+          git merge-base --is-ancestor "$TARGET_SHA" refs/remotes/origin/phase24-authorized || {
+            echo "Selected SHA is not reachable from the selected branch" >&2
+            exit 1
+          }
+          echo "sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
+  linux-smoke:
+    needs: validate-target
+    if: needs.validate-target.result == 'success'
+    runs-on: [self-hosted, hispania-linux-ci]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate-target.outputs.sha }}
+          path: .phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Run Phase 24 Smoke campaign
+        shell: pwsh
+        working-directory: ${{ github.workspace }}/.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}
+        run: ./tools/test-phase24-operational-resilience.ps1 -Profile Smoke -Seed 24001 -OutputDirectory .artifacts/phase24-ci
+      - name: Preserve campaign evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase24-smoke-linux-${{ github.run_id }}
+          path: ${{ github.workspace }}/.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}/.artifacts/phase24-ci
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Remove isolated checkout and local evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $workspace = [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
+          $target = [IO.Path]::GetFullPath((Join-Path $workspace '.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}'))
+          $prefix = [IO.Path]::GetFullPath((Join-Path $workspace '.phase24-runner')) + [IO.Path]::DirectorySeparatorChar
+          if (-not $target.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing cleanup outside the isolated checkout directory.' }
+          if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+
+  windows-smoke:
+    needs: validate-target
+    if: needs.validate-target.result == 'success'
+    runs-on: [self-hosted, hispania-win-ci]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate-target.outputs.sha }}
+          path: .phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Run Phase 24 Smoke campaign
+        shell: pwsh
+        working-directory: ${{ github.workspace }}/.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}
+        run: ./tools/test-phase24-operational-resilience.ps1 -Profile Smoke -Seed 24001 -OutputDirectory .artifacts/phase24-ci
+      - name: Preserve campaign evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase24-smoke-windows-${{ github.run_id }}
+          path: ${{ github.workspace }}/.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}/.artifacts/phase24-ci
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Remove isolated checkout and local evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $workspace = [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
+          $target = [IO.Path]::GetFullPath((Join-Path $workspace '.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}'))
+          $prefix = [IO.Path]::GetFullPath((Join-Path $workspace '.phase24-runner')) + [IO.Path]::DirectorySeparatorChar
+          if (-not $target.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing cleanup outside the isolated checkout directory.' }
+          if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
