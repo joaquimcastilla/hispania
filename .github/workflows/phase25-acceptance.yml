@@ -106,19 +106,19 @@ jobs:
         shell: pwsh
         run: |
           $root = Join-Path $env:RUNNER_TEMP ('hispania-phase25-' + [guid]::NewGuid().ToString('N'))
-          $home = Join-Path $root 'home'
+          $installHome = Join-Path $root 'home'
           try {
-            dotnet .artifacts/phase25/linux-x64/deployment/Hispania.Deployment.dll install (Join-Path $PWD '.artifacts/phase25/linux-x64') $home server
+            dotnet .artifacts/phase25/linux-x64/deployment/Hispania.Deployment.dll install (Join-Path $PWD '.artifacts/phase25/linux-x64') $installHome server
             if ($LASTEXITCODE -ne 0) { throw 'Native package install failed.' }
-            dotnet (Join-Path $home 'app/server/Hispania.Server.dll') --home $home --check
+            dotnet (Join-Path $installHome 'app/server/Hispania.Server.dll') --home $installHome --check
             if ($LASTEXITCODE -ne 0) { throw 'Installed Linux Server --check failed.' }
-            $config = Join-Path $home 'config/production.json'
+            $config = Join-Path $installHome 'config/production.json'
             $settings = Get-Content -Raw $config | ConvertFrom-Json -AsHashtable
             $settings['endpoint'] = 'http://127.0.0.1:28765'
             $settings['webBuild'] = 'modern'
             $settings['logLevel'] = 'Warning'
             $settings | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $config -Encoding utf8NoBOM
-            $proc = Start-Process -FilePath 'dotnet' -ArgumentList @((Join-Path $home 'app/server/Hispania.Server.dll'), '--home', $home) -WorkingDirectory $env:RUNNER_TEMP -PassThru
+            $proc = Start-Process -FilePath 'dotnet' -ArgumentList @((Join-Path $installHome 'app/server/Hispania.Server.dll'), '--home', $installHome) -WorkingDirectory $env:RUNNER_TEMP -PassThru
             try {
               $ready = $false
               for ($i=0; $i -lt 60; $i++) {
@@ -127,7 +127,7 @@ jobs:
                 Start-Sleep -Seconds 1
               }
               if (-not $ready) { throw 'Installed Server did not become HTTP ready within 60 seconds.' }
-              if (-not (Test-Path (Join-Path $home 'state/platform/identity.sqlite'))) { throw 'Installed Server did not create durable identity state.' }
+              if (-not (Test-Path (Join-Path $installHome 'state/platform/identity.sqlite'))) { throw 'Installed Server did not create durable identity state.' }
               Stop-Process -Id $proc.Id
               $proc.WaitForExit()
             } finally { if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force } }
