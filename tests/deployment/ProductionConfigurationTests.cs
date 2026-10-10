@@ -190,6 +190,11 @@ public sealed class ProductionConfigurationTests
         var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
         File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, options));
         _ = ArtifactManifest.Verify(artifact);
+        manifest.DistributionVersion = "0.7.0-rc.1"; File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, options));
+        Assert.Equal("0.7.0-rc.1", ArtifactManifest.Verify(artifact).DistributionVersion);
+        manifest.DistributionVersion = "0.7.0-rc.01"; File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, options));
+        Assert.Equal(5, Assert.Throws<DeploymentException>(() => ArtifactManifest.Verify(artifact)).ExitCode);
+        manifest.DistributionVersion = "0.7.0"; File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, options));
         var server = Path.Combine(artifact, "server", "Hispania.Server.dll"); File.AppendAllText(server, "corrupt");
         Assert.Equal(5, Assert.Throws<DeploymentException>(() => ArtifactManifest.Verify(artifact)).ExitCode);
         File.WriteAllText(server, "metadata-validation-fixture");
