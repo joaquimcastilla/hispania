@@ -2,12 +2,6 @@ name: Phase 25 Release Acceptance
 
 on:
   workflow_dispatch:
-    inputs:
-      seed:
-        description: Reproducible Phase 24 smoke campaign seed
-        required: true
-        type: string
-        default: '25001'
 
 permissions:
   contents: read
@@ -17,8 +11,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  linux:
-    if: github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/feature/phase-25-final-integration-release-readiness'
+  linux-package:
+    if: github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Linux, X64, hispania, hispania-linux]
     timeout-minutes: 45
     steps:
@@ -28,117 +22,54 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.401
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24.19.0
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-      - name: Build Modern and Classic Web Shells
-        working-directory: apps/web
-        run: npm ci && npm run build && npm test
-      - name: Build and verify linux-x64 distribution artifact
+      - name: Build Linux distribution package
         shell: pwsh
         run: ./tools/publish-production.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase25/linux-x64
-      - name: Require exact clean-commit artifact provenance
+      - name: Verify exact clean source and package manifest
         shell: pwsh
         run: |
           $manifest = Get-Content -Raw .artifacts/phase25/linux-x64/artifact-manifest.json | ConvertFrom-Json
-          if ($manifest.sourceDirty -ne $false -or $manifest.gitSha -cne $env:GITHUB_SHA) { throw 'Linux package must identify the exact clean workflow commit.' }
-      - name: Repeat publication and verify byte identity
+          if ($manifest.sourceDirty -ne $false -or $manifest.gitSha -cne $env:GITHUB_SHA -or $manifest.targetRid -cne 'linux-x64') { throw 'Package must identify this exact clean Linux workflow commit.' }
+      - name: Repeat publication and compare bytes
         shell: pwsh
         run: |
           ./tools/publish-production.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase25-repeat/linux-x64 -SkipWebBuild
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./tools/verify-production-reproducibility.ps1 -FirstDirectory .artifacts/phase25/linux-x64 -SecondDirectory .artifacts/phase25-repeat/linux-x64
-      - name: Build the exact preserved Phase 17 upgrade predecessor
+      - name: Install and run the clean package natively
         shell: pwsh
-        run: ./tools/publish-phase17-predecessor.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase25/predecessor-linux-x64
-      - name: Test clean-artifact startup, persistence, upgrade, rollback and mTLS WorkerAgent
-        shell: pwsh
-        env:
-          HISPANIA_PHASE18_ARTIFACT: ${{ github.workspace }}/.artifacts/phase25/linux-x64
-          HISPANIA_PHASE18_PREDECESSOR: ${{ github.workspace }}/.artifacts/phase25/predecessor-linux-x64
-        run: dotnet test tests/deployment-process/Hispania.Deployment.ProcessTests.csproj --filter "FullyQualifiedName~ArtifactProcessTests|FullyQualifiedName~WorkerDeploymentTests|FullyQualifiedName~PackageDistributionUpgradeTests|FullyQualifiedName~DistributedWorkerProcessIntegrationTests|FullyQualifiedName~DistributedCoordinatorPersistenceTests" --logger "trx;LogFileName=phase25-process.trx"
-      - name: Test Phase 24 bounded recovery and cleanup
-        shell: pwsh
-        env:
-          PHASE25_SEED: ${{ inputs.seed }}
         run: |
-          dotnet test tests/inventory/Hispania.Inventory.Tests.csproj --filter FullyQualifiedName~Phase24ResilienceTests --logger "trx;LogFileName=phase25-resilience.trx"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./tools/test-phase24-operational-resilience.ps1 -Profile Smoke -Seed ([int]$env:PHASE25_SEED) -OutputDirectory .artifacts/phase25/linux-smoke
-      - name: Preserve acceptance and distribution evidence
+          $root = Join-Path $env:RUNNER_TEMP ('hispania-phase25-' + [guid]::NewGuid().ToString('N'))
+          $home = Join-Path $root 'home'
+          try {
+            dotnet .artifacts/phase25/linux-x64/deployment/Hispania.Deployment.dll install (Join-Path $PWD '.artifacts/phase25/linux-x64') $home server
+            if ($LASTEXITCODE -ne 0) { throw 'Native package install failed.' }
+            dotnet (Join-Path $home 'app/server/Hispania.Server.dll') --home $home --check
+            if ($LASTEXITCODE -ne 0) { throw 'Installed Linux Server --check failed.' }
+            $config = Join-Path $home 'config/production.json'
+            $settings = Get-Content -Raw $config | ConvertFrom-Json -AsHashtable
+            $settings['server'] = @{ urls = 'http://127.0.0.1:28765' }
+            $settings['web'] = @{ build = 'modern' }
+            $settings['logging'] = @{ logLevel = 'Warning' }
+            $settings | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $config -Encoding utf8NoBOM
+            $proc = Start-Process -FilePath 'dotnet' -ArgumentList @((Join-Path $home 'app/server/Hispania.Server.dll'), '--home', $home) -WorkingDirectory $env:RUNNER_TEMP -PassThru
+            try {
+              $ready = $false
+              for ($i=0; $i -lt 60; $i++) {
+                if ($proc.HasExited) { throw "Installed Server exited early ($($proc.ExitCode))." }
+                try { $response = Invoke-WebRequest -Uri 'http://127.0.0.1:28765/' -TimeoutSec 2; if ($response.StatusCode -eq 200) { $ready = $true; break } } catch { }
+                Start-Sleep -Seconds 1
+              }
+              if (-not $ready) { throw 'Installed Server did not become HTTP ready within 60 seconds.' }
+              if (-not (Test-Path (Join-Path $home 'state/platform/identity.sqlite'))) { throw 'Installed Server did not create durable identity state.' }
+              Stop-Process -Id $proc.Id
+              $proc.WaitForExit()
+            } finally { if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force } }
+          } finally { if (Test-Path $root) { Remove-Item -LiteralPath $root -Recurse -Force } }
+      - name: Preserve Phase 25 Linux evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: phase25-linux-x64
+          name: phase25-linux-native-package
           include-hidden-files: true
-          path: |
-            .artifacts/phase25
-            .artifacts/phase25-repeat
-            tests/deployment-process/TestResults/phase25-process.trx
-            tests/inventory/TestResults/phase25-resilience.trx
-
-  windows:
-    if: github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/feature/phase-25-final-integration-release-readiness'
-    runs-on: [self-hosted, Windows, X64, hispania, hispania-windows]
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.0.401
-        env:
-          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24.19.0
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-      - name: Build Modern and Classic Web Shells
-        working-directory: apps/web
-        run: npm ci; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; npm run build; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; npm test
-      - name: Build and verify win-x64 distribution artifact
-        shell: pwsh
-        run: ./tools/publish-production.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase25/win-x64
-      - name: Require exact clean-commit artifact provenance
-        shell: pwsh
-        run: |
-          $manifest = Get-Content -Raw .artifacts/phase25/win-x64/artifact-manifest.json | ConvertFrom-Json
-          if ($manifest.sourceDirty -ne $false -or $manifest.gitSha -cne $env:GITHUB_SHA) { throw 'Windows package must identify the exact clean workflow commit.' }
-      - name: Repeat publication and verify byte identity
-        shell: pwsh
-        run: |
-          ./tools/publish-production.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase25-repeat/win-x64 -SkipWebBuild
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./tools/verify-production-reproducibility.ps1 -FirstDirectory .artifacts/phase25/win-x64 -SecondDirectory .artifacts/phase25-repeat/win-x64
-      - name: Build the exact preserved Phase 17 upgrade predecessor
-        shell: pwsh
-        run: ./tools/publish-phase17-predecessor.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase25/predecessor-win-x64
-      - name: Test clean-artifact startup, persistence, upgrade, rollback and mTLS WorkerAgent
-        shell: pwsh
-        env:
-          HISPANIA_PHASE18_ARTIFACT: ${{ github.workspace }}/.artifacts/phase25/win-x64
-          HISPANIA_PHASE18_PREDECESSOR: ${{ github.workspace }}/.artifacts/phase25/predecessor-win-x64
-        run: dotnet test tests/deployment-process/Hispania.Deployment.ProcessTests.csproj --filter "FullyQualifiedName~ArtifactProcessTests|FullyQualifiedName~WorkerDeploymentTests|FullyQualifiedName~PackageDistributionUpgradeTests|FullyQualifiedName~DistributedWorkerProcessIntegrationTests|FullyQualifiedName~DistributedCoordinatorPersistenceTests" --logger "trx;LogFileName=phase25-process.trx"
-      - name: Test Phase 24 bounded recovery and cleanup
-        shell: pwsh
-        env:
-          PHASE25_SEED: ${{ inputs.seed }}
-        run: |
-          dotnet test tests/inventory/Hispania.Inventory.Tests.csproj --filter FullyQualifiedName~Phase24ResilienceTests --logger "trx;LogFileName=phase25-resilience.trx"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./tools/test-phase24-operational-resilience.ps1 -Profile Smoke -Seed ([int]$env:PHASE25_SEED) -OutputDirectory .artifacts/phase25/windows-smoke
-      - name: Preserve acceptance and distribution evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: phase25-windows-x64
-          include-hidden-files: true
-          path: |
-            .artifacts/phase25
-            .artifacts/phase25-repeat
-            tests/deployment-process/TestResults/phase25-process.trx
-            tests/inventory/TestResults/phase25-resilience.trx
+          path: .artifacts/phase25

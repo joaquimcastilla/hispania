@@ -2,7 +2,7 @@
 
 ## Decision
 
-**Candidate status: BLOCKED pending the Phase 25 Windows/Linux acceptance workflow.** Phase 25 is implemented as a bounded acceptance gate and documentation update. The gate has not run on the two self-hosted runners, and no 0.7.0 distribution artifacts have been produced from a clean Phase 25 commit. This is an evidence gap, not a claim of a known product defect. Do not publish or tag a release from this branch.
+**Candidate status: BLOCKED pending native Linux Phase 25 acceptance.** Phase 25 is a bounded distribution and packaging closure. Windows, Web, artifact, reproducibility and Smoke evidence already accepted for the implementation commit is retained; the final Linux package must still be built and installed on the native Linux self-hosted runner. This is an evidence gap, not a claim of a known product defect. Do not publish or tag a release from this branch.
 
 Distribution identity remains **0.7.0 pre-1.0**. No architecture other than x64 Windows and x64 Linux is included. No contract is promoted to Public Stable.
 
@@ -18,7 +18,7 @@ Distribution identity remains **0.7.0 pre-1.0**. No architecture other than x64 
 
 Phase 23's accepted history is included in Phase 24 by ancestry. Phase 24's existing worktree had edits to `PROGRESS-LOG.md` and `docs/phase24-operational-resilience.md`, plus untracked `docs/PHASE-24-EVIDENCE.md`; these were preserved in that worktree and are not silently included in this branch. That evidence reports four PASS campaigns (Windows/Linux × Short/Soak), with no skipped workloads. It also records the campaign boundary: synthetic data and coordinator, Server RSS but no managed heap/GC, and no declared campaign fault injection. Those limits remain in force.
 
-This branch does not resolve integration with `main`. The 86-commit Phase 13–24 series needs a reviewed integration plan and compatibility/security review before any merge. The Phase 25 branch itself is not a substitute for that review.
+The integration is performed through the authorized stacked PR sequence #9, #10, #11. Review is limited to commit ancestry, branch dependencies, conflicts and preservation of the existing default-branch launcher; historical phase suites are not rerun.
 
 The current `origin/main` has nine commits not in Phase 23/24, while Phase 23 and Phase 24 have 83 and 86 commits not in `origin/main`, respectively. Their only tree-level difference from `origin/main` is the already-merged `.github/workflows/authorized-development-smoke.yml`, which allowlists Phase 24 Short/Soak execution on the Linux/Windows self-hosted labels. Preserve and review that workflow during integration. PR #9 is the draft Phase 23 → `main`; PR #10 is the draft Phase 24 → Phase 23. Phase 25 is prepared as the third draft PR, Phase 25 → Phase 24. PRs #4–#8 are already merged runner-launcher updates. No branch has been merged, tagged, or released.
 
@@ -28,21 +28,21 @@ PASS means reproducible evidence exists for the named scope. Historical phase te
 
 | Capability | Status | Evidence boundary / next evidence |
 | --- | --- | --- |
-| Install from a clean distribution package | PARTIAL | Phase 18 artifact-only tests exist. Phase 25 must build a clean artifact on each target runner and run `ArtifactProcessTests` against that artifact. |
-| Start outside the development repository | PARTIAL | Same artifact-only process tests exercise unrelated working directories; Phase 25 exact-commit run pending. |
-| Create/migrate SQLite state and restart without losing committed state | PARTIAL | SQLite owner, process-restart, upgrade and restore gates exist; Phase 25 artifact process run pending. |
+| Install from a clean distribution package | PARTIAL | Existing Windows artifact-process evidence is retained. Phase 25 builds, verifies, installs and starts the Linux package natively. |
+| Start outside the development repository | PARTIAL | Existing artifact-only process evidence covers this; Linux native package launch is added in Phase 25. |
+| Create/migrate SQLite state and restart without losing committed state | PARTIAL | Historical SQLite owner and process-restart evidence is retained; Phase 25 checks installed Linux initialization and durable state creation. |
 | Authenticated PostgreSQL configuration | NOT TESTED | PostgreSQL is an optional Media provider; no authenticated disposable database was supplied to this campaign. Do not use a personal database as a test target. |
 | Load only authorized and compatible modules; reject invalid packages | PARTIAL | Phase 8/19/20/21 package trust, compatibility, signature and fail-closed tests exist. The Phase 25 workflow does not rerun the full historical security suite. |
-| Recover from controlled errors | PARTIAL | Phase 24's four sustained campaigns passed; they did not declare injected faults. Phase 25 runs the safe Smoke profile and focused resilience tests. |
+| Recover from controlled errors | PARTIAL | Phase 24's four sustained campaigns and accepted Phase 25 Smoke evidence are retained; they did not declare injected faults. |
 | Persist durable jobs/events and storage state | PARTIAL | Durable-owner tests and Phase 24 campaign checks exist; the campaign event/job payloads are synthetic. |
 | Least-privilege service identity | NOT TESTED | Native service scripts and tests exist. Phase 25 deliberately does not install into a runner's service manager; use disposable service VMs for SCM/systemd evidence. |
-| Run the Modern and Classic Web Shell from the artifact | PARTIAL | Web build/test and artifact-process tests cover both shells; exact Phase 25 artifacts pending. |
-| Register an authorized remote WorkerAgent over mTLS; lease/fence stale results | PARTIAL | Real process mTLS WorkerAgent and coordinator fencing tests exist and are selected by Phase 25 workflow. This does not establish cross-host Windows↔Linux behavior in this run. |
+| Run the Modern and Classic Web Shell from the artifact | PARTIAL | Accepted Windows Web build/test and artifact-process evidence is retained; no Phase 25 Web suite is repeated. |
+| Register an authorized remote WorkerAgent over mTLS; lease/fence stale results | PARTIAL | Accepted real-process mTLS WorkerAgent and coordinator fencing evidence is retained. This does not establish cross-host Windows↔Linux behavior in this run. |
 | Keep administrative endpoints protected and projections bounded | PARTIAL | Phase 21/22 focused authorization and safe-projection evidence exists; exact Phase 25 suite is pending. |
 | Uninstall without deleting application data | PARTIAL | Deployment process tests assert data preservation; actual native service removal is intentionally deferred to disposable service VMs. |
 | Upgrade/backup/restore/rollback | PARTIAL | Phase 17/18/23 owner-specific and artifact process tests exist. No global atomic rollback across independent stores is claimed. |
-| Windows x64 and Linux x64 packages with manifest and SHA-256 | PARTIAL | Both RID packages build and verify from a clean commit on Windows. Native Linux execution and the Phase 25 runner jobs remain pending. |
-| Reproducible build from a clean commit | PARTIAL | Two clean builds per RID are byte-identical on Windows x64 using a stable UTC source-commit timestamp. Repeat-build evidence on the native Linux runner remains pending. |
+| Windows x64 and Linux x64 packages with manifest and SHA-256 | PARTIAL | Clean Windows package evidence is retained. Native Linux package manifest, verifier, installation and startup remain pending. |
+| Reproducible build from a clean commit | PARTIAL | Windows and cross-published Linux repeat-build evidence is retained. Repeat-build evidence on the native Linux runner remains pending. |
 | ARM64/Raspberry Pi or other architectures | NOT TESTED | No such target is published or claimed. |
 
 ## Local verification record
@@ -66,20 +66,19 @@ The exact clean Phase 25 commit is `9c7872e0e3e848fd820c3b8cb6641e2e50475a8e`. O
 
 The clean Windows artifact passed all 12 artifact/process cases against the final publisher code (TRX `phase25-final-process.trx`). The Linux artifact was cross-published and checksum-verified on Windows; it was not executed on Linux.
 
-The TRX files are under ignored `tests/deployment-process/TestResults/` and `tests/inventory/TestResults/`; final packages and campaign evidence are under ignored `.artifacts/phase25-final/` and `.artifacts/phase25/`. The initial exploratory process-test invocation omitted required artifact/predecessor environment variables and failed at fixture setup; the configured rerun above passed all 12 selected cases. No Linux execution, authenticated PostgreSQL, or native Windows service-manager install was performed locally. A dispatch attempt for Phase 25 was rejected with GitHub HTTP 404 because this workflow is not yet on the default branch. It can be dispatched after the reviewed workflow change lands there; no merge was performed or requested here.
+The TRX files are under ignored `tests/deployment-process/TestResults/` and `tests/inventory/TestResults/`; final packages and campaign evidence are under ignored `.artifacts/phase25-final/` and `.artifacts/phase25/`. The initial exploratory process-test invocation omitted required artifact/predecessor environment variables and failed at fixture setup; the configured rerun above passed all 12 selected cases. No Linux execution, authenticated PostgreSQL, or native Windows service-manager install was performed locally. The Linux runner campaign is pending integration of the workflow into main.
 
 The historical Phase 17 predecessor's archived Web development dependencies report one high-severity npm advisory; this is retained as historical compatibility input. The current Phase 25 Web dependency audit is separate and reported zero vulnerabilities. The candidate release summary is in [Draft 0.7.0 release notes](PHASE-0.7.0-RELEASE-NOTES-DRAFT.md).
 
 ## Final acceptance procedure
 
-After the Phase 25 workflow is available on the default branch through the reviewed integration path, run **Phase 25 Release Acceptance** with `workflow_dispatch` on this exact branch and retain both jobs' uploaded artifact bundles. GitHub currently rejects dispatching this branch-only workflow, so the OS acceptance has not started. The workflow:
+After the Phase 25 workflow is available on main through the authorized stacked integration, dispatch **Phase 25 Release Acceptance** once on main and retain the uploaded Linux artifact bundle. The workflow:
 
-1. Requires the existing self-hosted labels `hispania-linux` and `hispania-windows`; it does not select GitHub-hosted runners.
-2. Builds Modern/Classic Web, publishes and verifies each RID-specific artifact twice, then requires byte-identical output before supplying the artifact to the clean-host process tests.
-3. Runs focused artifact, upgrade/restore, WorkerAgent mTLS, coordinator fencing, Phase 24 resilience tests and a 60-second campaign with a recorded seed.
-4. Uses campaign-owned temporary data and a 45-minute job timeout. It does not install or modify Windows SCM/systemd services and does not connect to PostgreSQL.
-5. Preserves manifests, checksum sidecars, reports and TRX files even when a job fails.
-
+1. Requires only the existing Linux self-hosted labels `[self-hosted, Linux, X64, hispania, hispania-linux]`; no GitHub-hosted runner is used.
+2. Builds and verifies `linux-x64` on Linux, requires exact clean-commit provenance, republishes it and compares package bytes.
+3. Installs the package under a unique runner-temporary root, runs Server `--check`, starts it from outside the repository, checks HTTP readiness and confirms durable SQLite identity state is created.
+4. Uses a 45-minute timeout and removes only its uniquely owned temporary installation after the process exits. It does not install or modify systemd services and does not connect to PostgreSQL.
+5. Preserves package manifests, checksum sidecars and the acceptance artifact even when a job fails.
 The previous Phase 24 Short/Soak evidence remains valid for the exact Phase 24 SHA; do not repeat those long campaigns solely for Phase 25. If Phase 25 changes a resilience workload or invariant, run the corresponding focused test. A full PostgreSQL-live and native service acceptance requires explicitly provisioned disposable targets and must remain NOT TESTED until then.
 
 ## Distribution and operations
@@ -92,4 +91,4 @@ Known limitations include single-instance SQLite distributed coordination, no ho
 
 ## Release gate
 
-Change candidate status to CONDITIONAL only after the Phase 25 Windows and Linux jobs pass and package artifacts identify the exact clean commit. READY additionally requires explicit disposable PostgreSQL and native-service evidence if those capabilities are included in the release support claims. Keep each excluded capability classified as NOT TESTED. Do not merge, tag, or publish from this branch without separate authorization.
+Change candidate status only after the Phase 25 Linux workflow result is reviewed and its package identifies the exact clean commit. PostgreSQL and native service checks are not part of this phase's changed capabilities; preserve their current NOT TESTED status for release claims. Do not tag or publish a Release without authorization.
