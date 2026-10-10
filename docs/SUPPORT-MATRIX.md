@@ -15,7 +15,7 @@ This is a support target and evidence map, not a deployment certification. Valid
 | WorkerAgent | Validated | mTLS, restart, stale-generation rejection and two-host evidence | Existing retry-safe allowlisted work only; protocol remains experimental pending old-peer fixtures |
 | Modern Web | Validated | Existing npm builds/tests and auth/Admin parity gates | Required static shell and selected Platform screens, explicit DTO scope |
 | Classic Web | Validated | Same shared screen tests and separate artifact build | Required parity for declared Platform screens |
-| Dynamic Web modules | Unsupported | Static route/build registration only | Explicitly outside 1.0 scope |
+| Dynamic Web contributions | Experimental | Phase 20 signed declarative schema, shared Modern/Classic registry and fixed authorized operations; no executable package JavaScript or hostile-code browser sandbox | Remains experimental; scope defined in Phase 20 and Platform 1.0 plan |
 
 Recorded evidence is from Phase 13; Phase 14 local execution is separately reported in `PHASE-14-VALIDATION.md`. “Validated” does not imply stable APIs, long-term operation, old-binary compatibility, backup/restore or every security/deployment scenario. See [closure](PHASE-13-CLOSURE.md) and [scope](PLATFORM-1.0-SCOPE.md).
 

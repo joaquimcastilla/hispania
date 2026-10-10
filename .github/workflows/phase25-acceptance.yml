@@ -44,6 +44,12 @@ jobs:
         run: |
           $manifest = Get-Content -Raw .artifacts/phase25/linux-x64/artifact-manifest.json | ConvertFrom-Json
           if ($manifest.sourceDirty -ne $false -or $manifest.gitSha -cne $env:GITHUB_SHA) { throw 'Linux package must identify the exact clean workflow commit.' }
+      - name: Repeat publication and verify byte identity
+        shell: pwsh
+        run: |
+          ./tools/publish-production.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase25-repeat/linux-x64 -SkipWebBuild
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/verify-production-reproducibility.ps1 -FirstDirectory .artifacts/phase25/linux-x64 -SecondDirectory .artifacts/phase25-repeat/linux-x64
       - name: Build the exact preserved Phase 17 upgrade predecessor
         shell: pwsh
         run: ./tools/publish-phase17-predecessor.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase25/predecessor-linux-x64
@@ -69,6 +75,7 @@ jobs:
           include-hidden-files: true
           path: |
             .artifacts/phase25
+            .artifacts/phase25-repeat
             tests/deployment-process/TestResults/phase25-process.trx
             tests/inventory/TestResults/phase25-resilience.trx
 
@@ -101,6 +108,12 @@ jobs:
         run: |
           $manifest = Get-Content -Raw .artifacts/phase25/win-x64/artifact-manifest.json | ConvertFrom-Json
           if ($manifest.sourceDirty -ne $false -or $manifest.gitSha -cne $env:GITHUB_SHA) { throw 'Windows package must identify the exact clean workflow commit.' }
+      - name: Repeat publication and verify byte identity
+        shell: pwsh
+        run: |
+          ./tools/publish-production.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase25-repeat/win-x64 -SkipWebBuild
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/verify-production-reproducibility.ps1 -FirstDirectory .artifacts/phase25/win-x64 -SecondDirectory .artifacts/phase25-repeat/win-x64
       - name: Build the exact preserved Phase 17 upgrade predecessor
         shell: pwsh
         run: ./tools/publish-phase17-predecessor.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase25/predecessor-win-x64
@@ -126,5 +139,6 @@ jobs:
           include-hidden-files: true
           path: |
             .artifacts/phase25
+            .artifacts/phase25-repeat
             tests/deployment-process/TestResults/phase25-process.trx
             tests/inventory/TestResults/phase25-resilience.trx
