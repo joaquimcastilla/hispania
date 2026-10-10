@@ -14,7 +14,7 @@ The current candidate is **0.7.0-rc.1**, a pre-1.0 release candidate prepared fo
 | Linux x64 (`linux-x64`) | Native package accepted | Accepted on Ubuntu 24.04 x64; Phase 25 did not install a systemd service. |
 | ARM64, Raspberry Pi, macOS, other targets | Not validated | No support claim is made. |
 
-RC1 is not a stable release. No tag or GitHub Release has been created. Public contracts remain pre-1.0; no subsystem or contract has been promoted to stable.
+RC1 is a public pre-release, not a stable release. Public contracts remain pre-1.0; no subsystem or contract has been promoted to stable.
 
 ## Architecture
 
@@ -66,7 +66,7 @@ Configure `/srv/hispania/config/production.json`, provision the first operator t
 - [Security model](docs/SECURITY_MODEL.md) · [Security policy](SECURITY.md)
 - [Architecture](docs/ARCHITECTURE.md) · [Module development](docs/MODULE_SYSTEM.md)
 - [Support matrix](docs/SUPPORT-MATRIX.md) · [Compatibility policy](docs/COMPATIBILITY-POLICY.md)
-- [Release notes: 0.7.0 RC1](docs/PHASE-0.7.0-RELEASE-NOTES-DRAFT.md)
+- [Release notes: 0.7.0 RC1](docs/RELEASE-NOTES-0.7.0-rc.1.md)
 - [Progress log](PROGRESS-LOG.md) · [Roadmap](docs/ROADMAP.md)
 
 ## Develop and contribute
@@ -77,4 +77,4 @@ Use .NET SDK 10.0.401 and Node.js 24.19.0 for the repository's pinned validation
 - Propose changes with a [Pull Request](https://github.com/joaquimcastilla/hispania/pulls).
 - Report security issues using the private contact route in [SECURITY.md](SECURITY.md), not a public issue.
 
-The repository does not currently include a root `LICENSE` file. No open-source license is asserted by this README; review repository terms before redistributing.
+HISPANIA's original project materials are offered for personal, local, non-commercial use under the [HISPANIA Personal and Non-Commercial License](LICENSE.md). This is not an open-source license and does not grant commercial or redistribution rights. Third-party components remain under their own licenses. The license applies to copyrightable project material; it cannot reserve the underlying software ideas or independently created implementations.

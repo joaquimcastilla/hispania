@@ -38,6 +38,7 @@ try {
     }
     New-Item -ItemType Directory -Path (Join-Path $outputRoot 'operations') | Out-Null
     Copy-Item -LiteralPath 'deployment/windows-service.ps1','deployment/hispania.service.in','deployment/install-systemd.sh' -Destination (Join-Path $outputRoot 'operations')
+    Copy-Item -LiteralPath 'LICENSE.md' -Destination (Join-Path $outputRoot 'LICENSE.md')
     $sourceSha = (& git rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Source SHA unavailable.' }
     $sourceDirty = @(& git status --porcelain --untracked-files=normal).Count -ne 0

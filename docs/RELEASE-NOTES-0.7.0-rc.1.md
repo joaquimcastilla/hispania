@@ -1,6 +1,6 @@
 # HISPANIA 0.7.0 RC1 — Release Notes
 
-**Prepared release candidate; not yet published.** This is a pre-1.0 review build, not a stable release. The candidate version is `0.7.0-rc.1`; the intended tag is `v0.7.0-rc.1`. No tag, Release, or Release assets exist yet.
+This is the public pre-1.0 review build `0.7.0-rc.1`, not a stable release. Its tag is `v0.7.0-rc.1`.
 
 ## Summary
 
@@ -20,6 +20,10 @@ This release candidate makes no new domain feature claim. It brings the accepted
 - Deployment CLI and operating guides for configuration, secrets, backup/restore, upgrades and rollback.
 
 See [Architecture](ARCHITECTURE.md), [Support Matrix](SUPPORT-MATRIX.md), [Module System](MODULE_SYSTEM.md) and [operations](operations/PRODUCTION-QUICKSTART.md) for scope and limits.
+
+## License and personal use
+
+Original HISPANIA project material is made available for personal, local, non-commercial use under the repository's [HISPANIA Personal and Non-Commercial License](../LICENSE.md). This is a custom, source-available license, not an open-source license. It does not grant commercial use, resale, or redistribution rights. Third-party components remain under their respective licenses. Copyright protects original expression such as code and documentation; it does not reserve abstract software ideas or independently created implementations.
 
 ## Architecture and extensibility
 
@@ -71,7 +75,7 @@ Read [Security Operations](security/SECURITY-OPERATIONS.md), [Security Configura
 
 ## Validation evidence
 
-Phase 25 final Linux acceptance passed on `main` SHA `8817b912b8f1748977f9145942d2dc30ad492b8e`, using the native Ubuntu 24.04 x64 runner. The workflow built a clean `linux-x64` package, verified manifest provenance, repeated publication and compared package contents, installed the package in an isolated temporary home, ran `--check`, started outside the checkout, returned HTTP 200, created `identity.sqlite` and cleaned up. See [base workflow 38064897483 and artifact 11674122162](phase25-release-readiness.md). The final preparation-branch run is listed in the [Phase 25 workflow history](https://github.com/joaquimcastilla/hispania/actions/workflows/phase25-acceptance.yml).
+Phase 25 acceptance passed on the accepted base and again for the RC preparation commit using the native Ubuntu 24.04 x64 runner. The workflow builds a clean `linux-x64` package, verifies manifest provenance, repeats publication and compares package contents, installs the package in an isolated temporary home, runs `--check`, starts outside the checkout, checks HTTP 200, creates `identity.sqlite` and cleans up. See [base workflow 38064897483 and artifact 11674122162](phase25-release-readiness.md) and the [Phase 25 workflow history](https://github.com/joaquimcastilla/hispania/actions/workflows/phase25-acceptance.yml). The release assets' manifests identify the exact source commit used for this candidate.
 
 Windows x64 and prior phase test evidence are reused within their recorded scope. The RC1 package artifacts must identify the final clean preparation commit; Phase 25 manifests and checksums from earlier SHAs are not RC1 checksums. Repeated content comparison demonstrates package-directory repeatability on one build host. It does not, on its own, establish ZIP byte reproducibility or cross-platform build reproducibility.
 

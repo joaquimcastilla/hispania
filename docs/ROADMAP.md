@@ -7,7 +7,7 @@ The active HISPANIA roadmap comprising Phases 1–25 is complete. Phase acceptan
 | Workstream | State |
 |---|---|
 | Phases 1–25 | Complete and accepted within their recorded scopes |
-| 0.7.0-rc.1 preparation | In review; packages and documentation must identify the final clean preparation commit |
+| 0.7.0-rc.1 | Public pre-release; package provenance is recorded in each distribution manifest |
 | Later improvements | Proposed only; not accepted roadmap commitments |
 
 Support limits and non-validated features remain in the [Support Matrix](SUPPORT-MATRIX.md), [Phase 25 record](phase25-release-readiness.md), Phase-specific documents and [Platform 1.0 scope](PLATFORM-1.0-SCOPE.md). Future directions are proposals, not implemented work.

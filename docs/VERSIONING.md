@@ -1,6 +1,6 @@
 # Versioning
 
-HISPANIA `0.7.0-rc.1` is the current pre-1.0 release candidate, prepared for review and not yet published. `0.7.0` was the prior integrated distribution baseline, not a stable release. The authoritative current distribution value is root `version.json`. It deliberately does not set MSBuild `Version`, `AssemblyVersion`, npm versions, wire generations or manifest host bounds. Production publication tooling consumes that file for artifact metadata. Assemblies retain their current build defaults; no independently published Platform/Module SDK release is established here.
+HISPANIA `0.7.0-rc.1` is the current public pre-1.0 release candidate, not a stable release. `0.7.0` was the prior integrated distribution baseline, not a stable release. The authoritative current distribution value is root `version.json`. It deliberately does not set MSBuild `Version`, `AssemblyVersion`, npm versions, wire generations or manifest host bounds. Production publication tooling consumes that file for artifact metadata. Assemblies retain their current build defaults; no independently published Platform/Module SDK release is established here.
 
 | Axis | Current source/value | Meaning and consumers | Visibility / evolution |
 | --- | --- | --- | --- |
