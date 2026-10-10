@@ -39,6 +39,11 @@ jobs:
       - name: Build and verify linux-x64 distribution artifact
         shell: pwsh
         run: ./tools/publish-production.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase25/linux-x64
+      - name: Require exact clean-commit artifact provenance
+        shell: pwsh
+        run: |
+          $manifest = Get-Content -Raw .artifacts/phase25/linux-x64/artifact-manifest.json | ConvertFrom-Json
+          if ($manifest.sourceDirty -ne $false -or $manifest.gitSha -cne $env:GITHUB_SHA) { throw 'Linux package must identify the exact clean workflow commit.' }
       - name: Build the exact preserved Phase 17 upgrade predecessor
         shell: pwsh
         run: ./tools/publish-phase17-predecessor.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase25/predecessor-linux-x64
@@ -91,6 +96,11 @@ jobs:
       - name: Build and verify win-x64 distribution artifact
         shell: pwsh
         run: ./tools/publish-production.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase25/win-x64
+      - name: Require exact clean-commit artifact provenance
+        shell: pwsh
+        run: |
+          $manifest = Get-Content -Raw .artifacts/phase25/win-x64/artifact-manifest.json | ConvertFrom-Json
+          if ($manifest.sourceDirty -ne $false -or $manifest.gitSha -cne $env:GITHUB_SHA) { throw 'Windows package must identify the exact clean workflow commit.' }
       - name: Build the exact preserved Phase 17 upgrade predecessor
         shell: pwsh
         run: ./tools/publish-phase17-predecessor.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase25/predecessor-win-x64

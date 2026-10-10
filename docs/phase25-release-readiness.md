@@ -39,7 +39,7 @@ PASS means reproducible evidence exists for the named scope. Historical phase te
 | Uninstall without deleting application data | PARTIAL | Deployment process tests assert data preservation; actual native service removal is intentionally deferred to disposable service VMs. |
 | Upgrade/backup/restore/rollback | PARTIAL | Phase 17/18/23 owner-specific and artifact process tests exist. No global atomic rollback across independent stores is claimed. |
 | Windows x64 and Linux x64 packages with manifest and SHA-256 | NOT TESTED | `tools/publish-production.ps1` produces a verified per-file manifest and manifest checksum. The Phase 25 runner jobs are prepared but have not run. |
-| Reproducible build from a clean commit | NOT TESTED | Phase 25 records exact SHA and SDK in package manifests. Repeat-build byte identity has not been demonstrated; manifest build time currently makes whole-manifest hashes differ between builds. |
+| Reproducible build from a clean commit | PARTIAL | Clean publication metadata uses a stable UTC source-commit timestamp, and the workflow enforces exact SHA/clean-tree provenance. Repeat-build byte identity still needs to be measured on the two target runners. |
 | ARM64/Raspberry Pi or other architectures | NOT TESTED | No such target is published or claimed. |
 
 ## Local verification record
@@ -49,12 +49,14 @@ Windows x64, 2026-10-10, on the Phase 25 working tree:
 - `npm ci`: passed; current dependency audit reported 0 vulnerabilities.
 - `npm run build`: Modern and Classic builds passed.
 - `npm test`: 95/95 passed.
-- Production `win-x64` artifact: publisher completed and `Hispania.Deployment.dll verify` passed. This first local package records `sourceDirty=true`, so it is test input only and not a release artifact.
+- Production `win-x64` artifact: publisher completed and `Hispania.Deployment.dll verify` passed. The first local package records `sourceDirty=true`, so it was test input only and not a release artifact.
 - Focused artifact/process integration: 12/12 passed using that package and the exact archived Phase 17 predecessor. Coverage includes artifact-only startup and both Web variants, persistence/restart, bootstrap and backup/restore, upgrade/recovery, uninstall data preservation, standalone WorkerAgent mTLS and coordinator fencing.
 - `Phase24ResilienceTests`: 11/11 passed.
 - Phase 24 Smoke, seed `25001`: PASS; owned Server process and isolated campaign data were cleaned up. This is a 60-second wiring/recovery check, not sustained stability or injected-fault evidence.
 
-The TRX files are under ignored `tests/deployment-process/TestResults/` and `tests/inventory/TestResults/`; package and campaign evidence is under ignored `.artifacts/phase25/`. The initial exploratory process-test invocation omitted required artifact/predecessor environment variables and failed at fixture setup; the configured rerun above passed all 12 selected cases. No Linux execution, authenticated PostgreSQL, or native Windows service-manager install was performed locally. Phase 25's workflow prepares the Linux run and clean-source artifacts but has not been dispatched.
+After committing Phase 25, clean `win-x64` and `linux-x64` artifacts were published locally from commit `5736280234f34330c56fc9aca688159070a40c9e`; both record `sourceDirty=false` and pass the built-in deployment verifier. The clean Windows artifact passed the same 12 process cases (TRX `phase25-clean-process.trx`). The Linux artifact was cross-published and checksum-verified on Windows; it was not executed on Linux. Repeat-build byte identity has not yet been measured.
+
+The TRX files are under ignored `tests/deployment-process/TestResults/` and `tests/inventory/TestResults/`; package and campaign evidence is under ignored `.artifacts/phase25/` and `.artifacts/phase25-clean/`. The initial exploratory process-test invocation omitted required artifact/predecessor environment variables and failed at fixture setup; the configured rerun above passed all 12 selected cases. No Linux execution, authenticated PostgreSQL, or native Windows service-manager install was performed locally. Phase 25's workflow prepares the Linux run and clean-source artifacts but has not been dispatched.
 
 The historical Phase 17 predecessor's archived Web development dependencies report one high-severity npm advisory; this is retained as historical compatibility input. The current Phase 25 Web dependency audit is separate and reported zero vulnerabilities.
 
