@@ -109,9 +109,16 @@ public sealed class Phase24ResilienceTests
             Assert.Equal("PASS", document.GetProperty("status").GetString());
             Assert.True(document.GetProperty("sustainedDurationSeconds").GetDouble() >= 3);
             Assert.True(document.GetProperty("intervalMetrics").GetArrayLength() >= 2);
+            var intervalTotals = new Dictionary<string, long>(StringComparer.Ordinal);
+            foreach (var interval in document.GetProperty("intervalMetrics").EnumerateArray())
+                foreach (var operation in interval.GetProperty("workloadOperations").EnumerateObject())
+                    intervalTotals[operation.Name] = intervalTotals.GetValueOrDefault(operation.Name) + operation.Value.GetInt64();
             var counts = document.GetProperty("metrics").GetProperty("workloadOperations");
             foreach (var workload in new[] { "health", "jobs", "events", "storage", "worker" })
+            {
                 Assert.True(counts.GetProperty(workload).GetInt64() > 0, $"{workload} did not repeat during the campaign.");
+                Assert.True(intervalTotals.GetValueOrDefault(workload) > 0, $"{workload} has no per-interval activity evidence.");
+            }
             Assert.Equal("passed", document.GetProperty("cleanup").GetString());
             Assert.Contains(CampaignCoverage.Limitations, text => text.Contains("remote WorkerAgent", StringComparison.Ordinal));
             owner.Dispose();

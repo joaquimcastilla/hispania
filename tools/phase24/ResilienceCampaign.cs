@@ -300,9 +300,6 @@ public sealed class CampaignRunner
     private long workerChecks;
     private readonly WorkloadOperationMetrics workloadMetrics = new();
     private readonly List<object> intervals = [];
-    private long intervalRequests;
-    private long intervalErrors;
-    private long intervalTimeouts;
     private readonly BoundedLatencyStatistics intervalLatencies = new();
 
     public CampaignRunner(ResilienceManifest manifest, CampaignOwnership owner, string repositoryRoot)
@@ -465,7 +462,7 @@ public sealed class CampaignRunner
     private async Task SendHealthRequestAsync(HttpClient client, int requestIndex, CancellationToken ct)
     {
         if (server is null || server.HasExited) { RecordOperation("health", error: true); Interlocked.Increment(ref healthErrors); return; }
-        var before = Stopwatch.GetTimestamp(); Interlocked.Increment(ref healthRequests); Interlocked.Increment(ref intervalRequests);
+        var before = Stopwatch.GetTimestamp(); Interlocked.Increment(ref healthRequests);
         try
         {
             using var response = await client.GetAsync(serverUrl + (requestIndex % 2 == 0 ? "/healthz" : "/readyz"), ct);
@@ -492,8 +489,6 @@ public sealed class CampaignRunner
     private void RecordOperation(string workload, bool error = false, bool timeout = false)
     {
         workloadMetrics.Record(workload, error, timeout);
-        if (error) Interlocked.Increment(ref intervalErrors);
-        if (timeout) Interlocked.Increment(ref intervalTimeouts);
     }
 
     private async Task RunJobOperationAsync(string storeRoot, CancellationToken ct)
@@ -641,6 +636,9 @@ public sealed class CampaignRunner
     {
         var previousAt = DateTimeOffset.UtcNow;
         var previousCpu = server?.TotalProcessorTime ?? TimeSpan.Zero;
+        var previousOperations = new Dictionary<string, long>(StringComparer.Ordinal);
+        var previousErrors = new Dictionary<string, long>(StringComparer.Ordinal);
+        var previousTimeouts = new Dictionary<string, long>(StringComparer.Ordinal);
         while (DateTimeOffset.UtcNow < stopAt)
         {
             ct.ThrowIfCancellationRequested();
@@ -660,7 +658,11 @@ public sealed class CampaignRunner
             metrics.Add(new(at, "campaign.disk_bytes", diskBytes, "derived", "bytes"));
             metrics.Add(new(at, "jobs.queue_depth", Math.Max(0, jobsEnqueued - jobsCompleted), "real", "jobs"));
             var operationMetrics = workloadMetrics.Snapshot();
-            intervals.Add(new { atUtc = at, elapsedSeconds = (at - start).TotalSeconds, requests = Interlocked.Exchange(ref intervalRequests, 0), errors = Interlocked.Exchange(ref intervalErrors, 0), timeouts = Interlocked.Exchange(ref intervalTimeouts, 0), latencyP50Ms = intervalLatencies.Percentile(50), latencyP95Ms = intervalLatencies.Percentile(95), latencyP99Ms = intervalLatencies.Percentile(99), workloadOperations = operationMetrics.Operations, workloadErrors = operationMetrics.Errors, workloadTimeouts = operationMetrics.Timeouts, processWorkingSetBytes = server.WorkingSet64, processCpuPercent = cpuPercent, diskBytes, invariants = new { serverAlive = server is { HasExited: false }, jobsConfirmed = jobsCompleted <= jobsEnqueued, eventsConfirmed = eventsDelivered <= eventsPublished } });
+            var intervalOperations = Difference(operationMetrics.Operations, previousOperations);
+            var intervalErrors = Difference(operationMetrics.Errors, previousErrors);
+            var intervalTimeouts = Difference(operationMetrics.Timeouts, previousTimeouts);
+            previousOperations = operationMetrics.Operations; previousErrors = operationMetrics.Errors; previousTimeouts = operationMetrics.Timeouts;
+            intervals.Add(new { atUtc = at, elapsedSeconds = (at - start).TotalSeconds, requests = intervalOperations.Values.Sum(), errors = intervalErrors.Values.Sum(), timeouts = intervalTimeouts.Values.Sum(), latencyP50Ms = intervalLatencies.Percentile(50), latencyP95Ms = intervalLatencies.Percentile(95), latencyP99Ms = intervalLatencies.Percentile(99), workloadOperations = intervalOperations, workloadErrors = intervalErrors, workloadTimeouts = intervalTimeouts, cumulativeWorkloadOperations = operationMetrics.Operations, processWorkingSetBytes = server.WorkingSet64, processCpuPercent = cpuPercent, diskBytes, invariants = new { serverAlive = server is { HasExited: false }, jobsConfirmed = jobsCompleted <= jobsEnqueued, eventsConfirmed = eventsDelivered <= eventsPublished } });
             intervalLatencies.Reset();
             if (server is null || server.HasExited || jobsCompleted > jobsEnqueued || eventsDelivered > eventsPublished) throw new InvalidDataException("Campaign invariant failed during the sustained workload window.");
             await Task.Delay(TimeSpan.FromMilliseconds(Math.Min(manifest.WorkloadIntervalMilliseconds, Math.Max(100, (stopAt - DateTimeOffset.UtcNow).TotalMilliseconds))), ct);
@@ -673,6 +675,9 @@ public sealed class CampaignRunner
         try { process.Refresh(); return [new(at, "process.working_set_bytes", process.WorkingSet64, "real", "bytes"), new(at, "process.cpu_total_ms", process.TotalProcessorTime.TotalMilliseconds, "real", "ms"), new(at, "process.thread_count", process.Threads.Count, "real", "threads"), new(at, "process.handle_count", OperatingSystem.IsWindows() ? process.HandleCount : null, OperatingSystem.IsWindows() ? "real" : "unavailable", "handles", OperatingSystem.IsWindows() ? null : "handle count not exposed by this process API on this platform"), new(at, "harness.managed_heap_bytes", GC.GetTotalMemory(false), "real", "bytes"), new(at, "harness.gc_gen0", GC.CollectionCount(0), "real", "collections"), new(at, "harness.gc_gen1", GC.CollectionCount(1), "real", "collections"), new(at, "harness.gc_gen2", GC.CollectionCount(2), "real", "collections")]; }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { return [new(at, "process.metrics", null, "unavailable", null, ex.GetType().Name)]; }
     }
+
+    private static Dictionary<string, long> Difference(Dictionary<string, long> current, Dictionary<string, long> previous) =>
+        current.ToDictionary(pair => pair.Key, pair => Math.Max(0, pair.Value - previous.GetValueOrDefault(pair.Key)), StringComparer.Ordinal);
 
     private async Task StopOwnedServerAsync(bool ordered = false)
     {
