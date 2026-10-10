@@ -24,7 +24,7 @@ concurrency:
 jobs:
   validate-target:
     if: github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hispania-linux-ci]
     timeout-minutes: 5
     outputs:
       sha: ${{ steps.validate.outputs.sha }}
