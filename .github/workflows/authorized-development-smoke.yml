@@ -70,6 +70,8 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
         with:
           dotnet-version: 10.0.x
       - name: Run Phase 24 Smoke campaign
@@ -107,6 +109,8 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
         with:
           dotnet-version: 10.0.x
       - name: Run Phase 24 Smoke campaign
