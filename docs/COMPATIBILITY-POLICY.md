@@ -1,6 +1,6 @@
 # Compatibility policy
 
-The integrated documentation baseline is HISPANIA 0.7.0. Distribution SemVer is independent of SDK releases, module implementation identities, route/wire generations, schema migrations and instrumentation identities. No complete subsystem or catalog entry is Public Stable in Phase 14.
+The current integrated distribution candidate is HISPANIA 0.7.0-rc.1; 0.7.0 is its earlier pre-release baseline. Distribution SemVer is independent of SDK releases, module implementation identities, route/wire generations, schema migrations and instrumentation identities. No complete subsystem or catalog entry is Public Stable.
 
 ## Meaning of a commitment
 

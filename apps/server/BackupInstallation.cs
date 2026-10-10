@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Security.Cryptography;
 using System.Text.Json;
+using NuGet.Versioning;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 
@@ -272,7 +273,7 @@ internal static class BackupInstallation
         var manifestText = await File.ReadAllTextAsync(manifestPath, token);
         using (var document = JsonDocument.Parse(manifestText)) RejectDuplicateProperties(document.RootElement);
         var manifest = JsonSerializer.Deserialize<Manifest>(manifestText, Json) ?? throw new InvalidDataException("Invalid manifest.");
-        if (manifest.BackupFormatGeneration != FormatGeneration || manifest.BackupId == Guid.Empty || !Version.TryParse(manifest.DistributionVersion, out var distribution) || distribution > Version.Parse(DistributionVersion()) ||
+        if (manifest.BackupFormatGeneration != FormatGeneration || manifest.BackupId == Guid.Empty || !IsDistributionVersionCompatible(manifest.DistributionVersion, DistributionVersion()) ||
             manifest.ConsistencyMode != "offline-exclusive-installation-lock" || manifest.Provider is not ("sqlite" or "postgresql") || manifest.StorageProvider != "filesystem" || manifest.CreatedUtc == default || manifest.CreatedUtc.Offset != TimeSpan.Zero ||
             manifest.Files is null || manifest.RequiredComponents is null || manifest.Reprovision is null || manifest.Warnings is null)
             throw new InvalidDataException("Unsupported backup metadata.");
@@ -430,6 +431,15 @@ internal static class BackupInstallation
             using var document = JsonDocument.Parse(File.ReadAllText(path)); return document.RootElement.GetProperty("distributionVersion").GetString()!;
         }
         throw new InvalidDataException("Distribution metadata is unavailable.");
+    }
+
+    internal static bool IsDistributionVersionCompatible(string candidate, string current)
+    {
+        if (string.IsNullOrWhiteSpace(candidate) || string.IsNullOrWhiteSpace(current) ||
+            !NuGetVersion.TryParse(candidate, out var candidateVersion) || !NuGetVersion.TryParse(current, out var currentVersion)) return false;
+        // A release candidate and its eventual stable release share the same data-compatibility line.
+        if (candidateVersion.Major == currentVersion.Major && candidateVersion.Minor == currentVersion.Minor && candidateVersion.Patch == currentVersion.Patch) return true;
+        return VersionComparer.VersionRelease.Compare(candidateVersion, currentVersion) <= 0;
     }
 
     internal static FileStream Lock(string root)

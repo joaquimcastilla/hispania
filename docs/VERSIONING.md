@@ -1,10 +1,10 @@
 # Versioning
 
-HISPANIA 0.7.0 is the documentation baseline for the integrated distribution, not a release publication. The authoritative distribution value is the root `version.json`. It deliberately does not set MSBuild `Version`, `AssemblyVersion`, npm versions, wire generations or manifest host bounds. Production publication tooling consumes that file for artifact metadata. Assemblies retain their current build defaults; no independently published Platform/Module SDK release is established here.
+HISPANIA `0.7.0-rc.1` is the current public pre-1.0 release candidate, not a stable release. `0.7.0` was the prior integrated distribution baseline, not a stable release. The authoritative current distribution value is root `version.json`. It deliberately does not set MSBuild `Version`, `AssemblyVersion`, npm versions, wire generations or manifest host bounds. Production publication tooling consumes that file for artifact metadata. Assemblies retain their current build defaults; no independently published Platform/Module SDK release is established here.
 
 | Axis | Current source/value | Meaning and consumers | Visibility / evolution |
 | --- | --- | --- | --- |
-| HISPANIA Distribution Version | `version.json`: 0.7.0 | Integrated, tested server/runtime/web distribution; operators | Public pre-1.0 SemVer; patch preserves declared commitments, minor may break with notes |
+| HISPANIA Distribution Version | `version.json`: 0.7.0-rc.1 | Integrated, tested server/runtime/web distribution; operators | Public pre-1.0 SemVer; patch preserves declared commitments, minor may break with notes |
 | Platform SDK Version | `contracts/platform/Hispania.Platform.Contracts.csproj`; no explicit release version | Cross-domain CLR abstractions consumed by suites | Public experimental; future independent SDK SemVer, no assembly-default maturity claim |
 | Module SDK Version | `contracts/module-system/Hispania.ModuleSystem.Contracts.csproj`; no explicit release version | Module authors' CLR boundary | Public experimental; future SDK SemVer only with packaging and API baseline |
 | Module Implementation Version | `ModuleDescriptor.Version`, `ModuleManifest.Version`, extension templates | Identifies implementation/package; lifecycle, dependencies and persisted experiment identity | Author-owned version; CLR module identity remains `System.Version`; format-2 PackageVersion is independent strict SemVer 2 parsed by NuGet.Versioning |
@@ -37,7 +37,7 @@ Phase 20 adds the 25th version axis. Phase 18 adds the 24th version axis. Phase 
 All values above require compatibility decisions appropriate to their consumers, including internal persisted state. Public CLR visibility alone is not a stable promise. V1/V2/Version1/Version2 declarations are enumerated in the [catalog](compatibility/CONTRACT-CATALOG.md); the machine catalog records their interpretation and source. A technical V2 is never sufficient evidence for SemVer 2.0.
 
 ```text
-HISPANIA distribution 0.7.0
+HISPANIA distribution 0.7.0-rc.1
 ├── Platform / Module SDK: no independent released SemVer yet
 ├── package format generations 1 + 2 / module IPC generation 1
 ├── worker wire generation 1 / exact capability version

@@ -1,10 +1,10 @@
 # Logical version map
 
-These are ownership/release planning units, not new NuGet packages or physical version changes. Current distribution baseline is 0.7.0; only `version.json` records it. Provisional readiness labels from the maturity audit are not independently published release versions. Actual release numbers must be chosen when a unit ships and its promise is known.
+These are ownership/release planning units, not new NuGet packages or physical version changes. Current candidate distribution is 0.7.0-rc.1; only `version.json` records it. Provisional readiness labels from the maturity audit are not independently published release versions. Actual release numbers must be chosen when a unit ships and its promise is known.
 
 | Logical unit / owner | Existing implementation boundary | Planning baseline | Decision |
 | --- | --- | --- | --- |
-| Integrated Platform distribution / Platform | Server composition, runtime, Platform adapters and Web | 0.7.0 | Actual documentation identity, root version.json |
+| Integrated Platform distribution / Platform | Server composition, runtime, Platform adapters and Web | 0.7.0-rc.1 | Current candidate identity, root version.json; not published |
 | Platform SDK / Platform | contracts/platform | 0.x, unissued | One coherent SDK release unit; no package per abstraction |
 | Module SDK + Runtime / extensibility | contracts/module-system, core/runtime, ModuleHost, tooling | provisional 0.8.0 | Experimental readiness target, not assembly/API generation |
 | Worker stack / distributed runtime | Generic WorkerAgent, coordinator, owned SQLite state, contracts | provisional 0.8.0 | Wire generation separate; fencing candidate only |

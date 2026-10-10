@@ -180,7 +180,7 @@ public sealed class ProductionConfigurationTests
     public void ArtifactVerifierRejectsCorruptionAddedFilesMissingPayloadsAndFutureMetadata()
     {
         using var fixture = new Fixture("{}"); var artifact = Path.Combine(fixture.Home, "artifact");
-        var manifest = new ArtifactManifest { GitSha = new string('a', 40), TargetRid = OperatingSystem.IsWindows() ? "win-x64" : "linux-x64", BuildUtc = DateTimeOffset.UtcNow };
+        var manifest = new ArtifactManifest { DistributionVersion = "0.7.0", GitSha = new string('a', 40), TargetRid = OperatingSystem.IsWindows() ? "win-x64" : "linux-x64", BuildUtc = DateTimeOffset.UtcNow };
         foreach (var relative in new[] { "server/Hispania.Server.dll", "server/module-host/Hispania.ModuleHost.dll", "server/ffmpeg-worker/Hispania.FFmpeg.Worker.dll", "server/wwwroot/modern/index.html", "server/wwwroot/classic/index.html", "worker/Hispania.WorkerAgent.dll", "worker/module-host/Hispania.ModuleHost.dll" })
         {
             var path = Path.Combine(artifact, relative); Directory.CreateDirectory(Path.GetDirectoryName(path)!); File.WriteAllText(path, "metadata-validation-fixture");
@@ -190,6 +190,13 @@ public sealed class ProductionConfigurationTests
         var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
         File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, options));
         _ = ArtifactManifest.Verify(artifact);
+        manifest.DistributionVersion = "0.7.0-rc.1"; File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, options));
+        Assert.Equal("0.7.0-rc.1", ArtifactManifest.Verify(artifact).DistributionVersion);
+        manifest.DistributionVersion = "0.7.0-rc.01"; File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, options));
+        Assert.Equal(5, Assert.Throws<DeploymentException>(() => ArtifactManifest.Verify(artifact)).ExitCode);
+        manifest.DistributionVersion = null!; File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, options));
+        Assert.Equal(5, Assert.Throws<DeploymentException>(() => ArtifactManifest.Verify(artifact)).ExitCode);
+        manifest.DistributionVersion = "0.7.0"; File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, options));
         var server = Path.Combine(artifact, "server", "Hispania.Server.dll"); File.AppendAllText(server, "corrupt");
         Assert.Equal(5, Assert.Throws<DeploymentException>(() => ArtifactManifest.Verify(artifact)).ExitCode);
         File.WriteAllText(server, "metadata-validation-fixture");

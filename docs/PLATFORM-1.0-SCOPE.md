@@ -1,6 +1,6 @@
 # Platform 1.0 scope
 
-This document defines the stabilization target, not a current 1.0 declaration. HISPANIA remains 0.7.0 / M3. Owners must select precise catalog surfaces and pass category-specific API, old-consumer, populated-upgrade, restore and deployment/security gates before publication. Feature existence alone is insufficient.
+This document defines the stabilization target, not a current 1.0 declaration. HISPANIA is at 0.7.0-rc.1, still pre-1.0. Owners must select precise catalog surfaces and pass category-specific API, old-consumer, populated-upgrade, restore and deployment/security gates before publication. Feature existence alone is insufficient.
 
 ## Required for 1.0
 

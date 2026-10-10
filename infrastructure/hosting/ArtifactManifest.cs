@@ -1,12 +1,13 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Hispania.Hosting;
 
 public sealed class ArtifactManifest
 {
     public int ManifestGeneration { get; set; } = 1;
-    public string DistributionVersion { get; set; } = "0.7.0";
+    public string DistributionVersion { get; set; } = "";
     public string GitSha { get; set; } = "";
     public bool SourceDirty { get; set; }
     public string TargetRid { get; set; } = "";
@@ -34,7 +35,7 @@ public sealed class ArtifactManifest
             var path = Path.Combine(artifact, "artifact-manifest.json");
             if (new FileInfo(path).Length > 16 * 1024 * 1024) throw new InvalidDataException();
             var manifest = JsonSerializer.Deserialize<ArtifactManifest>(File.ReadAllText(path), ProductionConfiguration.Json) ?? throw new InvalidDataException();
-            if (manifest.ManifestGeneration != 1 || manifest.DistributionVersion != "0.7.0" || manifest.GitSha.Length != 40 || !manifest.GitSha.All(Uri.IsHexDigit) || manifest.TargetRid is not ("win-x64" or "linux-x64") || manifest.BuildConfiguration != "Release" || manifest.BuildUtc == default) throw new InvalidDataException();
+            if (manifest.ManifestGeneration != 1 || manifest.DistributionVersion is null || !IsSemVer(manifest.DistributionVersion) || manifest.GitSha.Length != 40 || !manifest.GitSha.All(Uri.IsHexDigit) || manifest.TargetRid is not ("win-x64" or "linux-x64") || manifest.BuildConfiguration != "Release" || manifest.BuildUtc == default) throw new InvalidDataException();
             stage = "file inventory";
             var files = Directory.EnumerateFiles(artifact, "*", SearchOption.AllDirectories).Select(file => Path.GetRelativePath(artifact, file).Replace('\\', '/')).Where(file => file != "artifact-manifest.json").Order(StringComparer.Ordinal).ToArray();
             if (!files.SequenceEqual(manifest.Files.Keys.Order(StringComparer.Ordinal))) throw new InvalidDataException();
@@ -55,4 +56,8 @@ public sealed class ArtifactManifest
         catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or UnauthorizedAccessException or InvalidOperationException)
         { throw new DeploymentException(5, $"Artifact integrity validation failed ({stage}); supply a complete trusted publication and verify its external checksum."); }
     }
+
+    private static bool IsSemVer(string? value) => value is not null && Regex.IsMatch(value,
+        @"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$",
+        RegexOptions.CultureInvariant);
 }
