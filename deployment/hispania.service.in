@@ -1,0 +1,30 @@
+[Unit]
+Description=HISPANIA @ROLE@
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=@USER@
+Group=@GROUP@
+WorkingDirectory=@HOME@
+ExecStart=/usr/bin/dotnet "@HOME@/app/@DIRECTORY@/@ASSEMBLY@.dll" --home "@HOME@"
+Environment=DOTNET_ENVIRONMENT=Production
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=40
+KillMode=mixed
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadOnlyPaths="@HOME@/app" "@HOME@/config" "@HOME@/secrets"
+ReadWritePaths="@HOME@/state" "@HOME@/logs" "@HOME@/backups" "@HOME@/run"
+ReadWritePaths="@HOME@/state.maintenance.lock"
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

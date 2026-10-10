@@ -1,0 +1,1836 @@
+{
+  "assets.sqlite": {
+    "platform_assets": {
+      "columns": [
+        "id",
+        "type",
+        "mime",
+        "size",
+        "metadata",
+        "scope_domain",
+        "owner_id",
+        "policy_id",
+        "public_read",
+        "content_handle",
+        "status",
+        "created_utc",
+        "updated_utc",
+        "provider_id"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000033",
+          "0",
+          "application/octet-stream",
+          "5",
+          "{\"label\":\"TEST ONLY historical bytes\"}",
+          "inventory",
+          "00000000-0000-0000-0000-00000000003d",
+          "test-policy",
+          "1",
+          "storage://filesystem/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "0",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "filesystem"
+        ],
+        [
+          "00000000-0000-0000-0000-000000000034",
+          "0",
+          "application/octet-stream",
+          "5",
+          "{\"label\":\"TEST ONLY historical bytes\"}",
+          "inventory",
+          "00000000-0000-0000-0000-00000000003d",
+          "test-policy",
+          "0",
+          "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+          "0",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "filesystem"
+        ]
+      ]
+    }
+  },
+  "audit.sqlite": {
+    "platform_audit": {
+      "columns": [
+        "id",
+        "timestamp",
+        "actor",
+        "correlation",
+        "domain",
+        "action",
+        "resource_type",
+        "resource_id",
+        "result",
+        "metadata"
+      ],
+      "rows": [
+        [
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "00000000-0000-0000-0000-000000000001",
+          "test-correlation",
+          "platform.identity",
+          "TEST_ONLY_historical",
+          "user",
+          "00000000-0000-0000-0000-000000000001",
+          "success",
+          "{\"safe\":\"historical\"}"
+        ],
+        [
+          "2",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "00000000-0000-0000-0000-000000000001",
+          "test-correlation",
+          "platform.identity",
+          "TEST_ONLY_historical",
+          "user",
+          "00000000-0000-0000-0000-000000000001",
+          "failure",
+          "{\"safe\":\"historical\"}"
+        ]
+      ]
+    }
+  },
+  "coordinator.sqlite": {
+    "distributed_coordinator_state": {
+      "columns": [
+        "id",
+        "payload"
+      ],
+      "rows": [
+        [
+          "1",
+          "{\"Workers\":[],\"Jobs\":[{\"Request\":{\"JobId\":\"test-historical-work\",\"ContractId\":\"test.capability\",\"ContractVersion\":\"1.0\",\"Operation\":\"Run\",\"Payload\":{},\"HasExternalSideEffects\":false,\"RetrySafe\":true,\"CorrelationId\":\"test-correlation\",\"TimeoutSeconds\":null,\"CausationId\":null,\"TraceParent\":null,\"TraceState\":null},\"State\":0,\"NodeId\":null,\"Generation\":7,\"LeaseExpiresAtUtc\":null,\"Result\":null,\"FailureCode\":null},{\"Request\":{\"JobId\":\"test-historical-completed\",\"ContractId\":\"test.capability\",\"ContractVersion\":\"1.0\",\"Operation\":\"Run\",\"Payload\":{},\"HasExternalSideEffects\":false,\"RetrySafe\":true,\"CorrelationId\":\"test-correlation\",\"TimeoutSeconds\":null,\"CausationId\":null,\"TraceParent\":null,\"TraceState\":null},\"State\":3,\"NodeId\":null,\"Generation\":9,\"LeaseExpiresAtUtc\":null,\"Result\":{\"Value\":\"historical\"},\"FailureCode\":null},{\"Request\":{\"JobId\":\"test-historical-running\",\"ContractId\":\"test.capability\",\"ContractVersion\":\"1.0\",\"Operation\":\"Run\",\"Payload\":{},\"HasExternalSideEffects\":false,\"RetrySafe\":true,\"CorrelationId\":\"test-correlation\",\"TimeoutSeconds\":null,\"CausationId\":null,\"TraceParent\":null,\"TraceState\":null},\"State\":2,\"NodeId\":\"test-old-worker\",\"Generation\":8,\"LeaseExpiresAtUtc\":\"2026-09-22T00:00:00.0000000+00:00\",\"Result\":null,\"FailureCode\":null}]}"
+        ]
+      ]
+    }
+  },
+  "events.sqlite": {
+    "Deliveries": {
+      "columns": [
+        "DeliveryId",
+        "EventId",
+        "SubscriberId",
+        "Status",
+        "AttemptCount",
+        "NextAttemptAt",
+        "LastError",
+        "DeliveredAt",
+        "DeadLetteredAt"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000083",
+          "00000000-0000-0000-0000-00000000001f",
+          "test-a",
+          "2",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          null,
+          "2026-09-22T00:00:00.0000000+00:00",
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-000000000084",
+          "00000000-0000-0000-0000-000000000020",
+          "test-a",
+          "0",
+          "0",
+          "2026-09-22T00:00:00.0000000+00:00",
+          null,
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-000000000085",
+          "00000000-0000-0000-0000-000000000021",
+          "test-a",
+          "1",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          null,
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-000000000086",
+          "00000000-0000-0000-0000-000000000022",
+          "test-a",
+          "0",
+          "2",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "TEST_ONLY_RETRY",
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-000000000087",
+          "00000000-0000-0000-0000-000000000023",
+          "test-a",
+          "3",
+          "5",
+          "2026-09-22T00:00:00.0000000+00:00",
+          null,
+          null,
+          "2026-09-22T00:00:00.0000000+00:00"
+        ],
+        [
+          "00000000-0000-0000-0000-0000000000c7",
+          "00000000-0000-0000-0000-000000000020",
+          "test-b",
+          "0",
+          "0",
+          "2026-09-22T00:00:00.0000000+00:00",
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    "DeliveryAttempts": {
+      "columns": [
+        "AttemptId",
+        "DeliveryId",
+        "AttemptNumber",
+        "FinishedAt",
+        "Outcome",
+        "Error"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-0000000000e7",
+          "00000000-0000-0000-0000-000000000083",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2",
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-0000000000e9",
+          "00000000-0000-0000-0000-000000000085",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "1",
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-0000000000ea",
+          "00000000-0000-0000-0000-000000000086",
+          "2",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "0",
+          "TEST_ONLY_RETRY"
+        ],
+        [
+          "00000000-0000-0000-0000-0000000000eb",
+          "00000000-0000-0000-0000-000000000087",
+          "5",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "3",
+          null
+        ]
+      ]
+    },
+    "Events": {
+      "columns": [
+        "EventId",
+        "EventType",
+        "Version",
+        "OccurredAt",
+        "CorrelationId",
+        "CausationId",
+        "Producer",
+        "PayloadJson",
+        "TraceParent",
+        "TraceState"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-00000000001f",
+          "test.historical.event",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "test-correlation",
+          "test-cause",
+          "TEST-ONLY",
+          "{\"Value\":\"historical\"}",
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-000000000020",
+          "test.historical.event",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "test-correlation",
+          "test-cause",
+          "TEST-ONLY",
+          "{\"Value\":\"historical\"}",
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-000000000021",
+          "test.historical.event",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "test-correlation",
+          "test-cause",
+          "TEST-ONLY",
+          "{\"Value\":\"historical\"}",
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-000000000022",
+          "test.historical.event",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "test-correlation",
+          "test-cause",
+          "TEST-ONLY",
+          "{\"Value\":\"historical\"}",
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-000000000023",
+          "test.historical.event",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "test-correlation",
+          "test-cause",
+          "TEST-ONLY",
+          "{\"Value\":\"historical\"}",
+          null,
+          null
+        ]
+      ]
+    },
+    "Subscribers": {
+      "columns": [
+        "SubscriberId"
+      ],
+      "rows": [
+        [
+          "test-a"
+        ],
+        [
+          "test-b"
+        ]
+      ]
+    }
+  },
+  "identity-authorization.sqlite": {
+    "authorization_bootstrap": {
+      "columns": [
+        "id",
+        "consumed"
+      ],
+      "rows": [
+        [
+          "1",
+          "1"
+        ]
+      ]
+    },
+    "authorization_role_permissions": {
+      "columns": [
+        "role_id",
+        "permission_id",
+        "created_utc"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000015",
+          "platform.authorization.manage",
+          "2026-09-22T00:00:00.0000000+00:00"
+        ],
+        [
+          "00000000-0000-0000-0000-000000000015",
+          "platform.identity.read",
+          "2026-09-22T00:00:00.0000000+00:00"
+        ],
+        [
+          "00000000-0000-0000-0000-000000000016",
+          "platform.identity.read",
+          "2026-09-22T00:00:00.0000000+00:00"
+        ]
+      ]
+    },
+    "authorization_roles": {
+      "columns": [
+        "role_id",
+        "name",
+        "description",
+        "created_utc",
+        "updated_utc"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000015",
+          "test_admin",
+          "TEST ONLY historical role",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00"
+        ],
+        [
+          "00000000-0000-0000-0000-000000000016",
+          "test_partial",
+          "TEST ONLY historical role",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00"
+        ]
+      ]
+    },
+    "authorization_user_roles": {
+      "columns": [
+        "user_id",
+        "role_id",
+        "assigned_utc"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000001",
+          "00000000-0000-0000-0000-000000000015",
+          "2026-09-22T00:00:00.0000000+00:00"
+        ],
+        [
+          "00000000-0000-0000-0000-000000000002",
+          "00000000-0000-0000-0000-000000000016",
+          "2026-09-22T00:00:00.0000000+00:00"
+        ]
+      ]
+    },
+    "identity_credentials": {
+      "columns": [
+        "user_id",
+        "algorithm",
+        "iterations",
+        "salt",
+        "password_hash"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000001",
+          "pbkdf2-sha256-v1",
+          "600000",
+          "AQEBAQEBAQEBAQEBAQEBAQ==",
+          "z4C9oXEJFL+J41XCgcMUGjMLBf/zlMV1J0ERz3y4rD8="
+        ],
+        [
+          "00000000-0000-0000-0000-000000000002",
+          "pbkdf2-sha256-v1",
+          "600000",
+          "AgICAgICAgICAgICAgICAg==",
+          "HeFrX/VRc6Px4Hs595sSxsqGI/L4SiNEajJ4gaEFSPk="
+        ],
+        [
+          "00000000-0000-0000-0000-000000000003",
+          "pbkdf2-sha256-v1",
+          "600000",
+          "AwMDAwMDAwMDAwMDAwMDAw==",
+          "nN+5mGAx99+xUeAG5T7EZlqTyCX3QZ5gDbxJ7NNXTZY="
+        ],
+        [
+          "00000000-0000-0000-0000-000000000004",
+          "pbkdf2-sha256-v1",
+          "600000",
+          "BAQEBAQEBAQEBAQEBAQEBA==",
+          "oKqSpO3lJJDzmyj0AW0IA6V3gZO3WiSmt4LqdSWC2jk="
+        ]
+      ]
+    },
+    "identity_sessions": {
+      "columns": [
+        "session_id",
+        "user_id",
+        "token_hash",
+        "created_utc",
+        "expires_utc",
+        "revoked_utc"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-00000000000b",
+          "00000000-0000-0000-0000-000000000001",
+          "9F0B51FB6CAF97A3677EA223B757F7197C2114685A62ADE3FA33CB52E2FC6031",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2099-01-01T00:00:00.0000000+00:00",
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-00000000000c",
+          "00000000-0000-0000-0000-000000000001",
+          "6152F92881104444A185C8B5A82B15C39DBE40AD51D4654959CD5B9B99658DE9",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2099-01-01T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00"
+        ],
+        [
+          "00000000-0000-0000-0000-00000000000d",
+          "00000000-0000-0000-0000-000000000001",
+          "11F569A7B1DFD5600495FFA220C15E83E9F9987CEB5A62D46ECB62C671EADF37",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          null
+        ]
+      ]
+    },
+    "identity_users": {
+      "columns": [
+        "user_id",
+        "username",
+        "display_name",
+        "status",
+        "created_utc",
+        "updated_utc"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000001",
+          "test_admin",
+          "test_admin",
+          "0",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00"
+        ],
+        [
+          "00000000-0000-0000-0000-000000000002",
+          "test_partial",
+          "test_partial",
+          "0",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00"
+        ],
+        [
+          "00000000-0000-0000-0000-000000000003",
+          "test_ordinary",
+          "test_ordinary",
+          "0",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00"
+        ],
+        [
+          "00000000-0000-0000-0000-000000000004",
+          "test_disabled",
+          "test_disabled",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00"
+        ]
+      ]
+    }
+  },
+  "inventory.sqlite": {
+    "item_assets": {
+      "columns": [
+        "item_id",
+        "asset_id"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-00000000003d",
+          "00000000-0000-0000-0000-000000000033"
+        ]
+      ]
+    },
+    "items": {
+      "columns": [
+        "id",
+        "sku",
+        "name"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-00000000003d",
+          "TEST-HISTORICAL",
+          "Historical item"
+        ]
+      ]
+    },
+    "locations": {
+      "columns": [
+        "id",
+        "warehouse_id",
+        "code",
+        "name"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-00000000003f",
+          "00000000-0000-0000-0000-00000000003e",
+          "TEST-LOC",
+          "Historical location"
+        ]
+      ]
+    },
+    "movements": {
+      "columns": [
+        "id",
+        "item_id",
+        "kind",
+        "quantity",
+        "source_id",
+        "destination_id",
+        "timestamp",
+        "actor_id",
+        "correlation_id"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000040",
+          "00000000-0000-0000-0000-00000000003d",
+          "0",
+          "10",
+          null,
+          "00000000-0000-0000-0000-00000000003f",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "00000000-0000-0000-0000-000000000001",
+          "test-correlation"
+        ],
+        [
+          "00000000-0000-0000-0000-000000000041",
+          "00000000-0000-0000-0000-00000000003d",
+          "1",
+          "3",
+          "00000000-0000-0000-0000-00000000003f",
+          null,
+          "2026-09-22T00:00:00.0000000+00:00",
+          "00000000-0000-0000-0000-000000000001",
+          "test-correlation"
+        ]
+      ]
+    },
+    "stock": {
+      "columns": [
+        "item_id",
+        "location_id",
+        "quantity"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-00000000003d",
+          "00000000-0000-0000-0000-00000000003f",
+          "7"
+        ]
+      ]
+    },
+    "warehouses": {
+      "columns": [
+        "id",
+        "code",
+        "name"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-00000000003e",
+          "TEST-WH",
+          "Historical warehouse"
+        ]
+      ]
+    }
+  },
+  "jobs.sqlite": {
+    "platform_job_attempts": {
+      "columns": [
+        "attempt_id",
+        "job_id",
+        "attempt_number",
+        "started_at",
+        "completed_at",
+        "outcome",
+        "error_summary",
+        "executor",
+        "executor_kind",
+        "worker_id",
+        "capability",
+        "generation",
+        "lease_id"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000157",
+          "00000000-0000-0000-0000-00000000002b",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          null,
+          null,
+          null,
+          "historical-local",
+          "local",
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-000000000158",
+          "00000000-0000-0000-0000-00000000002c",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "0",
+          null,
+          "historical-local",
+          "local",
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-000000000159",
+          "00000000-0000-0000-0000-00000000002d",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "1",
+          null,
+          "historical-local",
+          "local",
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-00000000015a",
+          "00000000-0000-0000-0000-00000000002e",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2",
+          null,
+          "historical-local",
+          "local",
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-00000000015b",
+          "00000000-0000-0000-0000-00000000002f",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "1",
+          null,
+          "historical-local",
+          "local",
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    "platform_jobs": {
+      "columns": [
+        "job_id",
+        "job_type",
+        "status",
+        "created_at",
+        "scheduled_at",
+        "started_at",
+        "completed_at",
+        "attempt_count",
+        "max_attempts",
+        "timeout_seconds",
+        "correlation_id",
+        "causation_id",
+        "idempotency_key",
+        "payload_json",
+        "result_json",
+        "error_summary",
+        "executor",
+        "lease_expires_at",
+        "cancel_requested",
+        "terminal_audit_recorded",
+        "execution_policy",
+        "worker_id",
+        "capability",
+        "generation",
+        "lease_id",
+        "trace_parent",
+        "trace_state"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000029",
+          "test.historical.job",
+          "0",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          null,
+          null,
+          "0",
+          "5",
+          null,
+          "test-correlation",
+          "test-cause",
+          "TEST-ONLY-idempotent",
+          "{\"Value\":\"TEST_ONLY\"}",
+          null,
+          null,
+          "historical-local",
+          null,
+          "0",
+          "0",
+          "0",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-00000000002a",
+          "test.historical.job",
+          "0",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2099-01-01T00:00:00.0000000+00:00",
+          null,
+          null,
+          "0",
+          "5",
+          null,
+          "test-correlation",
+          "test-cause",
+          null,
+          "{\"Value\":\"TEST_ONLY\"}",
+          null,
+          null,
+          "historical-local",
+          null,
+          "0",
+          "0",
+          "0",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-00000000002b",
+          "test.historical.job",
+          "1",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          null,
+          "1",
+          "5",
+          null,
+          "test-correlation",
+          "test-cause",
+          null,
+          "{\"Value\":\"TEST_ONLY\"}",
+          null,
+          null,
+          "historical-local",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "0",
+          "0",
+          "0",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-00000000002c",
+          "test.historical.job",
+          "2",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "1",
+          "5",
+          null,
+          "test-correlation",
+          "test-cause",
+          null,
+          "{\"Value\":\"TEST_ONLY\"}",
+          null,
+          null,
+          "historical-local",
+          null,
+          "0",
+          "0",
+          "0",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-00000000002d",
+          "test.historical.job",
+          "3",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "1",
+          "5",
+          null,
+          "test-correlation",
+          "test-cause",
+          null,
+          "{\"Value\":\"TEST_ONLY\"}",
+          null,
+          null,
+          "historical-local",
+          null,
+          "0",
+          "0",
+          "0",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-00000000002e",
+          "test.historical.job",
+          "4",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "1",
+          "5",
+          null,
+          "test-correlation",
+          "test-cause",
+          null,
+          "{\"Value\":\"TEST_ONLY\"}",
+          null,
+          null,
+          "historical-local",
+          null,
+          "0",
+          "0",
+          "0",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "00000000-0000-0000-0000-00000000002f",
+          "test.historical.job",
+          "5",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "2026-09-22T00:00:00.0000000+00:00",
+          "1",
+          "5",
+          null,
+          "test-correlation",
+          "test-cause",
+          null,
+          "{\"Value\":\"TEST_ONLY\"}",
+          null,
+          null,
+          "historical-local",
+          null,
+          "0",
+          "0",
+          "0",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    }
+  },
+  "media-initial.sqlite": {
+    "__EFMigrationsLock": {
+      "columns": [
+        "Id",
+        "Timestamp"
+      ],
+      "rows": []
+    },
+    "artwork_references": {
+      "columns": [
+        "id",
+        "target_kind",
+        "target_id",
+        "role_code",
+        "locator_scheme",
+        "locator_value"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-00000000004B",
+          "work",
+          "00000000-0000-0000-0000-000000000047",
+          "poster",
+          "asset",
+          "00000000-0000-0000-0000-000000000033"
+        ]
+      ]
+    },
+    "asset_coverage_intervals": {
+      "columns": [
+        "coverage_id",
+        "ordinal",
+        "start_ticks",
+        "end_ticks"
+      ],
+      "rows": []
+    },
+    "asset_coverages": {
+      "columns": [
+        "id",
+        "timeline_id",
+        "asset_id",
+        "state_code",
+        "coverage_kind_code",
+        "alignment_offset_ticks"
+      ],
+      "rows": []
+    },
+    "asset_roles": {
+      "columns": [
+        "asset_id",
+        "role_code"
+      ],
+      "rows": []
+    },
+    "assets": {
+      "columns": [
+        "id",
+        "media_kind_code"
+      ],
+      "rows": []
+    },
+    "audio_technical_profiles": {
+      "columns": [
+        "representation_id",
+        "sample_rate",
+        "channel_count"
+      ],
+      "rows": []
+    },
+    "collection_memberships": {
+      "columns": [
+        "id",
+        "collection_id",
+        "media_entity_id",
+        "position_code",
+        "position_value"
+      ],
+      "rows": []
+    },
+    "collections": {
+      "columns": [
+        "id",
+        "category_code"
+      ],
+      "rows": []
+    },
+    "creator_contributions": {
+      "columns": [
+        "id",
+        "creator_id",
+        "target_kind",
+        "target_id",
+        "role_code"
+      ],
+      "rows": []
+    },
+    "creators": {
+      "columns": [
+        "id",
+        "kind_code"
+      ],
+      "rows": []
+    },
+    "external_identifier_association_relations": {
+      "columns": [
+        "association_id",
+        "related_association_id",
+        "kind_code"
+      ],
+      "rows": []
+    },
+    "external_identifier_associations": {
+      "columns": [
+        "id",
+        "provider_code",
+        "namespace_code",
+        "identifier_value",
+        "current_status_code",
+        "target_kind",
+        "target_id"
+      ],
+      "rows": []
+    },
+    "external_identifier_lifecycle_entries": {
+      "columns": [
+        "id",
+        "association_id",
+        "status_code",
+        "occurred_utc_ticks",
+        "occurred_offset_minutes"
+      ],
+      "rows": []
+    },
+    "image_technical_profiles": {
+      "columns": [
+        "representation_id",
+        "format_code"
+      ],
+      "rows": []
+    },
+    "library_imports": {
+      "columns": [
+        "id",
+        "root_key",
+        "relative_path",
+        "status_code",
+        "observed_length",
+        "observed_utc_ticks",
+        "observed_offset_minutes",
+        "successful_length",
+        "successful_utc_ticks",
+        "successful_offset_minutes",
+        "work_id",
+        "media_entity_id",
+        "timeline_id",
+        "source_id",
+        "video_asset_id",
+        "video_representation_id",
+        "video_coverage_id",
+        "audio_asset_id",
+        "audio_representation_id",
+        "audio_coverage_id"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000049",
+          "test-movies",
+          "Historical/movie.mp4",
+          "unsupported",
+          "5",
+          "638940096000000000",
+          "0",
+          null,
+          null,
+          null,
+          "00000000-0000-0000-0000-000000000047",
+          "00000000-0000-0000-0000-000000000048",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    "media_entities": {
+      "columns": [
+        "id",
+        "work_id",
+        "category_code"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000048",
+          "00000000-0000-0000-0000-000000000047",
+          "movie"
+        ]
+      ]
+    },
+    "media_sources": {
+      "columns": [
+        "id",
+        "scheme",
+        "opaque_value"
+      ],
+      "rows": []
+    },
+    "metadata_assertions": {
+      "columns": [
+        "id",
+        "target_kind",
+        "target_id",
+        "field_code",
+        "value_kind",
+        "text_value",
+        "decimal_value",
+        "utc_ticks",
+        "offset_minutes",
+        "status_code",
+        "provenance_origin"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-00000000004A",
+          "work",
+          "00000000-0000-0000-0000-000000000047",
+          "title",
+          "text",
+          "Manual historical title",
+          null,
+          null,
+          null,
+          "active",
+          "manual"
+        ]
+      ]
+    },
+    "release_group_memberships": {
+      "columns": [
+        "release_group_id",
+        "release_id"
+      ],
+      "rows": []
+    },
+    "release_groups": {
+      "columns": [
+        "id",
+        "category_code"
+      ],
+      "rows": []
+    },
+    "release_media_entity_memberships": {
+      "columns": [
+        "release_id",
+        "media_entity_id"
+      ],
+      "rows": []
+    },
+    "releases": {
+      "columns": [
+        "id",
+        "category_code"
+      ],
+      "rows": []
+    },
+    "representation_source_bindings": {
+      "columns": [
+        "representation_id",
+        "source_id",
+        "container_namespace",
+        "container_code",
+        "stream_index"
+      ],
+      "rows": []
+    },
+    "technical_representations": {
+      "columns": [
+        "id",
+        "asset_id",
+        "profile_kind",
+        "codec_namespace",
+        "codec_code",
+        "width",
+        "height",
+        "frame_rate_numerator",
+        "frame_rate_denominator",
+        "bit_depth",
+        "bit_rate",
+        "sample_rate",
+        "channel_count"
+      ],
+      "rows": []
+    },
+    "text_technical_profiles": {
+      "columns": [
+        "representation_id",
+        "format_code"
+      ],
+      "rows": []
+    },
+    "timelines": {
+      "columns": [
+        "id",
+        "media_entity_id",
+        "duration_ticks"
+      ],
+      "rows": []
+    },
+    "video_technical_profiles": {
+      "columns": [
+        "representation_id",
+        "width",
+        "height"
+      ],
+      "rows": []
+    },
+    "works": {
+      "columns": [
+        "id",
+        "category_code"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000047",
+          "movie"
+        ]
+      ]
+    }
+  },
+  "media-library.sqlite": {
+    "__EFMigrationsLock": {
+      "columns": [
+        "Id",
+        "Timestamp"
+      ],
+      "rows": []
+    },
+    "artwork_references": {
+      "columns": [
+        "id",
+        "target_kind",
+        "target_id",
+        "role_code",
+        "locator_scheme",
+        "locator_value",
+        "provenance_origin_code",
+        "provenance_provider_code",
+        "provenance_identifier_provider_code",
+        "provenance_identifier_namespace_code",
+        "provenance_identifier_value",
+        "provenance_observed_utc_ticks",
+        "provenance_observed_offset_minutes",
+        "provenance_confidence"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-00000000004B",
+          "work",
+          "00000000-0000-0000-0000-000000000047",
+          "poster",
+          "asset",
+          "00000000-0000-0000-0000-000000000033",
+          "manual",
+          null,
+          null,
+          null,
+          null,
+          "0",
+          "0",
+          null
+        ]
+      ]
+    },
+    "asset_coverage_intervals": {
+      "columns": [
+        "coverage_id",
+        "ordinal",
+        "start_ticks",
+        "end_ticks"
+      ],
+      "rows": []
+    },
+    "asset_coverages": {
+      "columns": [
+        "id",
+        "timeline_id",
+        "asset_id",
+        "state_code",
+        "coverage_kind_code",
+        "alignment_offset_ticks"
+      ],
+      "rows": []
+    },
+    "asset_roles": {
+      "columns": [
+        "asset_id",
+        "role_code"
+      ],
+      "rows": []
+    },
+    "assets": {
+      "columns": [
+        "id",
+        "media_kind_code"
+      ],
+      "rows": []
+    },
+    "audio_technical_profiles": {
+      "columns": [
+        "representation_id",
+        "sample_rate",
+        "channel_count"
+      ],
+      "rows": []
+    },
+    "collection_memberships": {
+      "columns": [
+        "id",
+        "collection_id",
+        "media_entity_id",
+        "position_code",
+        "position_value"
+      ],
+      "rows": []
+    },
+    "collections": {
+      "columns": [
+        "id",
+        "category_code"
+      ],
+      "rows": []
+    },
+    "creator_contributions": {
+      "columns": [
+        "id",
+        "creator_id",
+        "target_kind",
+        "target_id",
+        "role_code"
+      ],
+      "rows": []
+    },
+    "creators": {
+      "columns": [
+        "id",
+        "kind_code"
+      ],
+      "rows": []
+    },
+    "external_identifier_association_relations": {
+      "columns": [
+        "association_id",
+        "related_association_id",
+        "kind_code",
+        "reason",
+        "evidence_origin_code",
+        "evidence_provider_code",
+        "evidence_identifier_provider_code",
+        "evidence_identifier_namespace_code",
+        "evidence_identifier_value",
+        "evidence_observed_utc_ticks",
+        "evidence_observed_offset_minutes",
+        "evidence_confidence"
+      ],
+      "rows": []
+    },
+    "external_identifier_associations": {
+      "columns": [
+        "id",
+        "provider_code",
+        "namespace_code",
+        "identifier_value",
+        "current_status_code",
+        "target_kind",
+        "target_id"
+      ],
+      "rows": []
+    },
+    "external_identifier_lifecycle_entries": {
+      "columns": [
+        "id",
+        "association_id",
+        "status_code",
+        "occurred_utc_ticks",
+        "occurred_offset_minutes",
+        "ordinal",
+        "reason",
+        "evidence_origin_code",
+        "evidence_provider_code",
+        "evidence_identifier_provider_code",
+        "evidence_identifier_namespace_code",
+        "evidence_identifier_value",
+        "evidence_observed_utc_ticks",
+        "evidence_observed_offset_minutes",
+        "evidence_confidence"
+      ],
+      "rows": []
+    },
+    "image_technical_profiles": {
+      "columns": [
+        "representation_id",
+        "format_code"
+      ],
+      "rows": []
+    },
+    "library_imports": {
+      "columns": [
+        "id",
+        "root_key",
+        "relative_path",
+        "status_code",
+        "observed_length",
+        "observed_utc_ticks",
+        "observed_offset_minutes",
+        "successful_length",
+        "successful_utc_ticks",
+        "successful_offset_minutes",
+        "work_id",
+        "media_entity_id",
+        "timeline_id",
+        "source_id",
+        "video_asset_id",
+        "video_representation_id",
+        "video_coverage_id",
+        "audio_asset_id",
+        "audio_representation_id",
+        "audio_coverage_id"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000049",
+          "test-movies",
+          "Historical/movie.mp4",
+          "unsupported",
+          "5",
+          "638940096000000000",
+          "0",
+          null,
+          null,
+          null,
+          "00000000-0000-0000-0000-000000000047",
+          "00000000-0000-0000-0000-000000000048",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    "media_entities": {
+      "columns": [
+        "id",
+        "work_id",
+        "category_code"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000048",
+          "00000000-0000-0000-0000-000000000047",
+          "movie"
+        ]
+      ]
+    },
+    "media_sources": {
+      "columns": [
+        "id",
+        "scheme",
+        "opaque_value"
+      ],
+      "rows": []
+    },
+    "metadata_assertions": {
+      "columns": [
+        "id",
+        "target_kind",
+        "target_id",
+        "field_code",
+        "value_kind",
+        "text_value",
+        "decimal_value",
+        "utc_ticks",
+        "offset_minutes",
+        "status_code",
+        "provenance_origin",
+        "integer_value",
+        "boolean_value",
+        "date_value",
+        "superseded_by_assertion_id",
+        "provenance_origin_code",
+        "provenance_provider_code",
+        "provenance_identifier_provider_code",
+        "provenance_identifier_namespace_code",
+        "provenance_identifier_value",
+        "provenance_observed_utc_ticks",
+        "provenance_observed_offset_minutes",
+        "provenance_confidence"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-00000000004A",
+          "work",
+          "00000000-0000-0000-0000-000000000047",
+          "title",
+          "text",
+          "Manual historical title",
+          null,
+          null,
+          null,
+          "active",
+          "manual",
+          null,
+          null,
+          null,
+          null,
+          "manual",
+          null,
+          null,
+          null,
+          null,
+          "0",
+          "0",
+          null
+        ]
+      ]
+    },
+    "metadata_credits": {
+      "columns": [
+        "id",
+        "target_id",
+        "person_id",
+        "credit_type",
+        "character",
+        "job",
+        "ordinal",
+        "provider_code",
+        "observed_utc_ticks"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-00000000004D",
+          "00000000-0000-0000-0000-000000000047",
+          "00000000-0000-0000-0000-00000000004C",
+          "cast",
+          "TEST ONLY",
+          null,
+          null,
+          "test",
+          "0"
+        ]
+      ]
+    },
+    "metadata_field_locks": {
+      "columns": [
+        "work_id",
+        "field_code",
+        "is_locked"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000047",
+          "title",
+          "1"
+        ]
+      ]
+    },
+    "metadata_genres": {
+      "columns": [
+        "id",
+        "target_id",
+        "name",
+        "normalized_name",
+        "ordinal",
+        "provider_code",
+        "observed_utc_ticks"
+      ],
+      "rows": []
+    },
+    "metadata_persons": {
+      "columns": [
+        "id",
+        "provider_code",
+        "external_id",
+        "name",
+        "profile_artwork_locator",
+        "biography",
+        "birthday",
+        "deathday",
+        "place_of_birth",
+        "profile_observed_utc_ticks"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-00000000004C",
+          "test",
+          "test-person",
+          "TEST ONLY Person",
+          null,
+          "Historical biography",
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    "metadata_refresh_states": {
+      "columns": [
+        "id",
+        "target_kind",
+        "target_id",
+        "provider_code",
+        "external_identifier_key",
+        "external_identifier_provider_code",
+        "external_identifier_namespace_code",
+        "external_identifier_value",
+        "last_attempt_utc_ticks",
+        "last_attempt_offset_minutes",
+        "last_success_utc_ticks",
+        "last_success_offset_minutes",
+        "mapping_version",
+        "payload_fingerprint_key",
+        "payload_fingerprint",
+        "status_code"
+      ],
+      "rows": []
+    },
+    "metadata_settings": {
+      "columns": [
+        "work_id",
+        "language",
+        "region",
+        "lock_item_metadata"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000047",
+          "es",
+          "ES",
+          "1"
+        ]
+      ]
+    },
+    "metadata_studios": {
+      "columns": [
+        "id",
+        "target_id",
+        "external_id",
+        "name",
+        "ordinal",
+        "provider_code",
+        "observed_utc_ticks"
+      ],
+      "rows": []
+    },
+    "metadata_tags": {
+      "columns": [
+        "id",
+        "target_id",
+        "name",
+        "normalized_name",
+        "ordinal",
+        "provider_code",
+        "observed_utc_ticks"
+      ],
+      "rows": []
+    },
+    "release_group_memberships": {
+      "columns": [
+        "release_group_id",
+        "release_id"
+      ],
+      "rows": []
+    },
+    "release_groups": {
+      "columns": [
+        "id",
+        "category_code"
+      ],
+      "rows": []
+    },
+    "release_media_entity_memberships": {
+      "columns": [
+        "release_id",
+        "media_entity_id"
+      ],
+      "rows": []
+    },
+    "releases": {
+      "columns": [
+        "id",
+        "category_code"
+      ],
+      "rows": []
+    },
+    "representation_source_bindings": {
+      "columns": [
+        "representation_id",
+        "source_id",
+        "container_namespace",
+        "container_code",
+        "stream_index"
+      ],
+      "rows": []
+    },
+    "technical_representations": {
+      "columns": [
+        "id",
+        "asset_id",
+        "profile_kind",
+        "codec_namespace",
+        "codec_code",
+        "width",
+        "height",
+        "frame_rate_numerator",
+        "frame_rate_denominator",
+        "bit_depth",
+        "bit_rate",
+        "sample_rate",
+        "channel_count"
+      ],
+      "rows": []
+    },
+    "text_technical_profiles": {
+      "columns": [
+        "representation_id",
+        "format_code"
+      ],
+      "rows": []
+    },
+    "timelines": {
+      "columns": [
+        "id",
+        "media_entity_id",
+        "duration_ticks"
+      ],
+      "rows": []
+    },
+    "video_technical_profiles": {
+      "columns": [
+        "representation_id",
+        "width",
+        "height"
+      ],
+      "rows": []
+    },
+    "works": {
+      "columns": [
+        "id",
+        "category_code"
+      ],
+      "rows": [
+        [
+          "00000000-0000-0000-0000-000000000047",
+          "movie"
+        ]
+      ]
+    }
+  }
+}

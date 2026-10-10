@@ -22,9 +22,21 @@ public sealed class LibraryReadiness
     public void MarkReady() => IsReady = true;
 }
 
-public sealed class PersistenceStartupService(ILibraryPersistenceInitializer initializer, EfLibraryCatalogStore store) : IHostedService
+public sealed class PersistenceStartupService(ILibraryPersistenceInitializer initializer, EfLibraryCatalogStore store, IServiceProvider? services = null) : IHostedService
 {
-    public Task StartAsync(CancellationToken cancellationToken) => initializer.InitializeAsync(store, cancellationToken);
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        if (services is not null)
+        {
+            _ = services.GetRequiredService<Hispania.Identity.Application.IIdentityStore>();
+            _ = services.GetRequiredService<Hispania.Authorization.Application.IPlatformAuthorizationStore>();
+            _ = services.GetRequiredService<Hispania.Platform.Contracts.Assets.IPlatformAssetMetadataRepository>();
+            _ = services.GetRequiredService<Hispania.Platform.Persistence.Sqlite.SqlitePlatformAuditStore>();
+            _ = services.GetRequiredService<Hispania.Inventory.Application.IInventoryStore>();
+            _ = services.GetRequiredService<Hispania.ModuleSystem.Contracts.IDistributedWorkStateStoreV1>();
+        }
+        await initializer.InitializeAsync(store, cancellationToken);
+    }
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
@@ -75,10 +87,10 @@ public sealed class AutomaticMovieMetadataEnrichmentHostedService(MovieMetadataA
             return LastRun;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception exception)
+        catch (Exception)
         {
             LastRun = new MovieMetadataEnrichmentRunResult(0, 0, 1, []);
-            LogRunAborted(logger, exception);
+            LogRunAborted(logger, null);
             return LastRun;
         }
         finally
@@ -112,9 +124,9 @@ public sealed class AutomaticMovieMetadataEnrichmentHostedService(MovieMetadataA
             return LastManualRun;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception exception)
+        catch (Exception)
         {
-            LogRunAborted(logger, exception);
+            LogRunAborted(logger, null);
             throw;
         }
         finally
@@ -128,7 +140,7 @@ public sealed class AutomaticMovieMetadataEnrichmentHostedService(MovieMetadataA
     {
         try { await indexDocument.WriteAsync(cancellationToken); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception exception) { LogIndexWriteFailed(logger, exception); }
+        catch (Exception) { LogIndexWriteFailed(logger, null); }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

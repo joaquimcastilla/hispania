@@ -5,6 +5,7 @@
     <RootNamespace>Hispania.Runtime</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="NuGet.Versioning" Version="7.9.0" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />
   </ItemGroup>

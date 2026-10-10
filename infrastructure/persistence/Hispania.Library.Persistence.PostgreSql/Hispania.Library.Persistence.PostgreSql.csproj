@@ -12,4 +12,5 @@
     <ProjectReference Include="..\..\..\contracts\library\Hispania.Library.Contracts.csproj" />
     <ProjectReference Include="..\..\..\contracts\metadata\Hispania.Metadata.Contracts.csproj" />
   </ItemGroup>
+  <ItemGroup><Compile Include="../schema-support/EfSchemaGuard.cs" Link="Schema/EfSchemaGuard.cs" /></ItemGroup>
 </Project>

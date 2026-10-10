@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><IsPackable>false</IsPackable></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../infrastructure/platform/persistence-sqlite/Hispania.Platform.Persistence.Sqlite.csproj" />
+    <ProjectReference Include="../../application/platform/jobs/Hispania.Platform.Jobs.Application.csproj" />
+    <ProjectReference Include="../../application/inventory/Hispania.Inventory.Application.csproj" />
+  </ItemGroup>
+</Project>

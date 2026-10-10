@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /><ProjectReference Include="../../core/runtime/Hispania.Runtime.csproj" /><ProjectReference Include="../../contracts/extension-demo/Hispania.ExtensionDemo.Contracts.csproj" /></ItemGroup>
+</Project>

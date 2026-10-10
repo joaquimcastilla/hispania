@@ -1,0 +1,81 @@
+# Phase 17 — Backup, Restore & Disaster Recovery
+
+Status: Phase 17 — ready for CI; local portable implementation validated, mandatory live PostgreSQL acceptance pending. Base SHA `3a74632684aae4a2d85bcfd738046594809a5a6a`, branch `feature/phase-17-backup-restore`. Distribution 0.7.0; **23 independent version axes**, including Backup Format Generation 1; 0 Public Stable. Phase 15 evidence is unchanged. See [ADR-0042](adr/ADR-0042-backup-restore-and-disaster-recovery.md).
+
+## Consistency and operations
+
+Initial mode is **offline-exclusive-installation-lock**. Start the server with `Backup:ManagedRoot` to opt into the exclusive installation control root. Original configured durable paths are preserved; the bundle and clean destination use a canonical layout. The server acquires `<root>.maintenance.lock` before any store opens. It retains the lock until process exit. The backup executable acquires the same OS-exclusive lock, rejects immediately if busy, and never signals or kills the running host. This bounds barrier admission without an indefinite timeout. Gracefully stop the server and ensure trusted child/extension processes have exited before backup. External database/filesystem writers are unsupported.
+
+The consistency point begins once shutdown has completed and the backup owns the lock. All host mutation entry points, Identity/RBAC, Inventory, Media, Assets, Audit, Jobs and Events dispatchers and coordinator writers are then inactive. Operations committed before shutdown remain included; cancelled or uncommitted operations retain existing owner semantics. This implementation also stops reads: it does not claim an online read-preserving barrier. No global transaction exists across SQLite, PostgreSQL and filesystem.
+
+Pending Jobs, future schedules, attempts, idempotency keys, delivery subscriptions/retries/DLQ and persisted lease records are preserved. Running/Processing is not rewritten to succeeded. Recovery uses existing expiry/acquisition rules and may repeat effects: at-least-once, never exactly-once. Coordinator high-water and work records remain durable; subsequent startup retains the existing generation/fencing semantics. Active Identity sessions survive if still valid; revoked/expired sessions and disabled users stay invalid. RBAC bootstrap consumption is copied, never reset.
+
+## Layout and component inventory
+
+| Component | Canonical bundle/destination content | Capture |
+| --- | --- | --- |
+| Identity + Authorization | `platform/identity.sqlite` | SQLite backup API; co-owned schema metadata |
+| Events, Jobs, Assets, Audit | `platform/{events,jobs,assets,audit}.sqlite` | SQLite backup API |
+| Inventory | `inventory.sqlite` | SQLite backup API |
+| Coordinator | `coordinator.sqlite` | SQLite backup API |
+| Media SQLite | `media.sqlite` | SQLite backup API; known EF prefix |
+| Media PostgreSQL | external configured database → `media.dump` | custom logical dump; EF lineage and tool version |
+| Storage | `storage/**` | streamed original bytes |
+| Extensions | `extensions/**` | original installed bytes, manifests and signatures |
+| Configuration/trust | `portable.json` | explicit portable field allowlist |
+| Playback experiments | `playback.json`, when present | original schema-1 JSON |
+
+Identity and Authorization are logical owners of one physical file. Do not confuse eight physical SQLite captures with independent security stores. Empty Storage/Extensions directories are represented by required inventory entries. Derived metadata indexes, transfer partials, transcoding caches, process locks and arbitrary configuration files are excluded. No invented persistent module catalog is added. Runtime lifecycle/loaded-process state is not restored; normal discovery/activation policy applies. Public trust anchors, trusted extension IDs and revoked publisher IDs are portable. Private keys are not.
+
+Start the current host offline with the original machine configuration plus `Backup:ManagedRoot`. Explicit existing durable paths are preserved, including paths outside that control root; source capture maps them to canonical bundle entries. Known legacy `catalog.sqlite`, `distributed-coordinator.sqlite` and Platform assets directories are recognized when canonical defaults are absent. `backup-layout.local.json` records machine paths locally and is excluded from the bundle. PostgreSQL source host/port/database are recorded without passwords in `postgres-source.local.json`; capture checks libpq coordinates against that installation before dumping, so a differently configured database cannot silently substitute for Media. The existing coordinator lock also excludes a running pre-Phase-17 instance. Stop the old instance before configuring the control root, and use the same original machine settings for subsequent source starts. Do not point at unrelated empty paths and assume state was imported. Host B uses the canonical restored root and newly provisioned destination configuration. External Library media sources are not Platform Storage assets: reprovision them with the same logical root keys at destination paths. Backup does not yet include external Library source bytes.
+
+## Format, integrity and publication
+
+Directory bundle generation 1 contains `manifest.json`, portable configuration and component payloads. Manifest records distribution version, UUID BackupId, UTC creation time, consistency mode, Media provider, ordered required components, per-file component/path/size/SHA-256/schema, reprovisioning requirements and orphan warnings. Paths are relative bundle paths, never portable physical source paths. Manifest records the filesystem Storage provider explicitly. Provider IDs and opaque Asset handles remain owner data. Optional playback JSON records schema 1; unknown/future JSON schemas reject before target modification, even when hashes have been recomputed. Playback backup parsing is bounded to 4 MiB.
+
+SQLite capture uses the SQLite backup API, then changes only the snapshot to DELETE journal mode, so committed WAL content becomes a standalone database. Integrity checks run against snapshots; source journal mode and business data are unchanged. PostgreSQL uses `pg_dump --format=custom --no-owner --no-acl`; client/server major versions must match. `pg_dump`, `pg_restore`, and `psql` must be available, or explicitly selected with `HISPANIA_PG_DUMP_PATH`, `HISPANIA_PG_RESTORE_PATH`, `HISPANIA_PSQL_PATH`. Libpq `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER` and secret credentials are supplied externally. The source PostgreSQL schema must be the known EF lineage.
+
+Missing Asset bytes, unsupported providers, malformed handles and size disagreement fail capture. Unreferenced Storage objects are preserved and recorded as warnings, without reconciliation. All required stores must exist. Bytes/hashes are streamed with bounded buffers. Bundle construction uses a sibling `.tmp-<uuid>` directory, verifies it, then renames it into the final destination. A failed or cancelled capture never publishes partial success. A process kill may leave staging to remove after inspection; published bundles are complete. Rename provides local filesystem atomic visibility, not a power-loss/directory-fsync guarantee.
+
+Verification bounds the manifest to 4 MiB, rejects duplicate JSON properties/components/files, unsupported generation, future distribution/schema metadata, traversal/absolute/ambiguous paths, reparse points, missing/unlisted payload, wrong hashes and sizes. SHA-256 provides integrity, **not authenticity** against an attacker who replaces both manifest and payload. Treat a backup's SQL and trusted extension content as operator-authorized material.
+
+## Clean-host restore procedure
+
+Host B initially retains current binaries, a minimal machine-specific host configuration, reprovisioned secrets and an **absent** destination root. It must not reuse source stores. For PostgreSQL supply an empty dedicated database; populated databases are rejected. Local overwrite, partial restore and merge restore are unsupported.
+
+```text
+dotnet Hispania.Server.dll --backup-create SOURCE_ROOT BUNDLE
+dotnet Hispania.Server.dll --backup-verify BUNDLE
+dotnet Hispania.Server.dll --backup-restore BUNDLE CLEAN_ROOT
+dotnet Hispania.Server.dll --Backup:ManagedRoot=CLEAN_ROOT [machine configuration]
+```
+
+Stop Host A before create. Destination must not overlap the source. Verify is also the read-only local integrity/compatibility dry-run; target capacity, lock and empty-PostgreSQL checks run during restore preflight. Preflight failure does not change existing application state. Restore copies to a sibling root and checks staged hashes before switching, including the PostgreSQL dump copied into protected staging. PostgreSQL never restores from mutable input after preflight. Current owner migrations run at next normal startup; schema guards prevent readiness on failure.
+
+Before switch, cancellation removes staging. After switch begins, complete the controlled sequence rather than honouring cancellation between components. `<root>.restore-in-progress` blocks startup following an interrupted switch. Local state publishes by one rename. PostgreSQL restore uses a single database transaction before local rename; there is no cross-provider transaction. If PostgreSQL was restored but local publication/marker removal failed, keep the marker and do not start. Inspect the target; recreate the empty target PostgreSQL database and remove the failed unpublished local staging/marker only as a deliberate offline recovery step, then retry. No global rollback is promised.
+
+## Secrets and protection
+
+Exclude DB passwords, private publisher signing keys, bootstrap/admin tokens, API keys, worker client certificates/private credentials and experiment assignment salts. Reprovision them externally. Public trust/revocation configuration is included. Identity credential hashes and hashed session tokens are necessary durable security records and **are included**; the bundle is sensitive. Jobs/events/package files can contain application-supplied data; this implementation does not redact arbitrary payloads. Staging/destination roots are owner-only on Unix; Windows inherits destination-parent ACLs. Destination ACL/encryption provisioning remains an operator responsibility; no secret escrow/encryption platform is introduced.
+
+## Evidence and remaining acceptance
+
+`tools/test-phase17-backup-restore.ps1` requires 39 portable cases without skips, including historical populated semantic table snapshots, all file hashes, WAL capture, corruption preflight, cancellation/exclusion, secret configuration filtering, orphan reporting, a 20 MiB streaming payload, a real HTTP host destruction/rebuild and nine exact-checkpoint process deaths. Mixed-provider PostgreSQL is a separate required Linux test: populated historical database → dump → drop source database/delete source root → independent target credentials → restore → semantic rows → current EF reader/migration.
+
+Local portable validation: 39/39 passed, zero skips, including source-path preservation, filesystem-root overlap rejection, playback schema checks and missing declared module payload rejection. Dedicated post-restore tests exercise Identity/RBAC, expired Running Jobs, Processing Events, coordinator fencing, owner readers, migrations, signed installed payloads and publisher revocation. PostgreSQL tooling is absent on this Windows host; **live mixed-provider evidence is not yet available**. CI installs PostgreSQL 16 clients and forbids a skipped mixed test. Ready for CI means implementation and local regression are complete; it does not declare the phase validated or closed. Mandatory live Linux evidence remains pending. Structured CLI logs carry operation/status/duration, omit paths and tool stderr; Meter `Hispania.Backup` records duration, failures, bytes and component counts with operation-only labels. No admin endpoint is exposed, so no new RBAC permission or runtime Audit event is claimed.
+
+RPO is the last successfully captured consistency point; post-backup changes are lost in a disaster. RTO includes manual shutdown/provisioning, verification/copy/dump restore, migrations, startup and application validation. Test timings are indicative, not SLAs. There is no continuous backup, zero-RPO, HA, cloud/incremental backup, retention scheduler or instant restore. The offline shutdown/child-writer operational boundary requires operator discipline; the source-path test preserves scattered stores, destroys their original paths and restores only the canonical bundle. The Windows portable evidence does not replace mandatory live mixed-provider Linux evidence.
+
+Indicative Windows process-test timings (2026-10-06, including CLI process startup): backup 776 ms; verification 505 ms; restore 653 ms; restored host Ready 2874 ms. These are a small test installation, not RTO SLAs. Full solution build: zero compiler warnings/errors. Web: 74/74 and Modern/Classic builds passed. Closure/concurrency: 210/210 passed.
+
+Final full .NET regression: 636 passed, zero failures, two PostgreSQL infrastructure skips (the existing isolated-provider test and the new mixed-provider disaster test). After the final filesystem-root overlap guard, the solution rebuilt with zero warnings/errors and all 39 portable cases passed again without skips. Phase 14: 3/3; Phase 15: 16/16; Phase 16 portable: 36/36. Immutable compatibility files and distribution version are unchanged. Linux live PostgreSQL is not locally verified.
+
+## Pre-push architecture and acceptance review � 2026-10-06
+
+Server owns offline CLI orchestration, configured installation paths, component selection, bundle format, staging and publication. Generic SQLite integrity/adoption-ledger inspection lives in the SQLite infrastructure provider; Media SQLite/PostgreSQL own their accepted EF histories. The host delegates those checks and never adopts or migrates a domain schema. Platform references neither Media nor Inventory implementation. Playback JSON is already a host-owned store. Module Runtime's backup entry point delegates to existing package integrity validation; hashing now streams without changing lifecycle, update/rollback or trust semantics.
+
+Stopping HISPANIA does not stop another PostgreSQL client, administrator, script or filesystem writer. The installation lock excludes cooperating HISPANIA hosts/operations, not arbitrary clients. Operators must quiesce every writer to each configured store/asset/package path and the dedicated Media database. A pg_dump alone uses PostgreSQL's consistent database snapshot; that provider guarantee does not align its snapshot with other stores when external writes occur. Cross-component offline consistency requires that precondition. PostgreSQL --single-transaction gives component-level transaction atomicity only; it is not a global restore transaction.
+
+Staging is always a sibling of the final directory, so publication assumes a local same-filesystem directory rename. Cross-volume publication is unsupported; a failed rename cannot publish success. Atomic visibility does not guarantee power-loss durability. Unencrypted bundles are sensitive even without plaintext secret escrow; SHA-256 does not provide confidentiality or authenticate a replaced manifest and payload.
+
+The strengthened portable gate requires 45 cases: four additional hostile size/component cases, link aliases and restore/startup lock exclusion. Source/captured/restored semantic snapshots explicitly check SQLite integrity and foreign keys. Linux must execute link checks; Windows records a coverage limitation if it cannot create symlinks, rather than claiming those assertions ran. Nine interruption cases are real killed child processes paused by diagnostic checkpoints, not exception fault injection. The mixed PostgreSQL test seeds manual metadata through the current owner, drops the source database and deletes its local root, restores a different empty database, then uses current readers for IDs/relationships, manual metadata/locks, constraints and migration history. Only synthetic fixture data enters CI dumps; credentials are externally supplied to child environments, never shell-interpolated or logged. Tool/server versions are diagnosed in CI.

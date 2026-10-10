@@ -3,6 +3,14 @@ namespace Hispania.ModuleSystem.Contracts;
 /// <summary>Declarative metadata for a native module. Metadata is never executable.</summary>
 public sealed record ModuleManifest
 {
+    /// <summary>Format-2 package implementation SemVer, independent of the CLR module version.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? PackageVersion { get; init; }
+    /// <summary>Format-2 required package dependencies. Null preserves historical signing bytes.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public PackageDependency[]? PackageDependencies { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? RequiredModuleHostProtocol { get; init; }
     public required string Id { get; init; }
     public required string Name { get; init; }
     public required string Version { get; init; }
@@ -36,3 +44,5 @@ public sealed record ModuleManifest
     /// <summary>Version of the .hispania package container format.</summary>
     public int PackageFormatVersion { get; init; } = 1;
 }
+
+public sealed record PackageDependency(string PackageId, string VersionRange);

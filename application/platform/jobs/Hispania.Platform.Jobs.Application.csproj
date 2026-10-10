@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><AssemblyName>Hispania.Platform.Jobs.Application</AssemblyName><RootNamespace>Hispania.Platform.Jobs.Application</RootNamespace></PropertyGroup><ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /><ProjectReference Include="..\..\..\contracts\platform\Hispania.Platform.Contracts.csproj" /></ItemGroup></Project>

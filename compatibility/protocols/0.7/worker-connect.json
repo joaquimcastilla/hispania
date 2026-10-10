@@ -1,0 +1,18 @@
+{
+  "MinimumProtocolVersion": 1,
+  "MaximumProtocolVersion": 1,
+  "Inventory": {
+    "OperatingSystem": "TEST-OS",
+    "Architecture": "x64",
+    "LogicalCpuCount": 2,
+    "AvailableMemoryBytes": null,
+    "MaximumConcurrentJobs": 1,
+    "Accelerators": [],
+    "Capabilities": [
+      {
+        "ContractId": "test.baseline.echo",
+        "ContractVersion": "1.0"
+      }
+    ]
+  }
+}

@@ -1,0 +1,147 @@
+name: Production Deployment
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: phase21-self-hosted
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  linux-production:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && (github.ref == 'refs/heads/feature/phase-21-security-operations-hardening' || github.ref == 'refs/heads/feature/phase-22-retention-reconciliation-capacity' || github.ref == 'refs/heads/feature/phase-23-e2e-compatibility-upgrades')
+    runs-on: [self-hosted, hispania, hispania-linux]
+    env:
+      HISPANIA_PHASE18_SERVICE_ROOT: /opt/hispania-phase18-ci
+      HISPANIA_PHASE21_NATIVE_HELPER: /usr/local/sbin/hispania-phase21-service
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install native Media and offline backup prerequisites
+        shell: pwsh
+        run: ./tools/ci/self-hosted-preflight.ps1
+      - run: npm ci
+        working-directory: apps/web
+      - name: Audit current production dependencies
+        run: npm audit --omit=dev
+        working-directory: apps/web
+      - name: Publish actual linux-x64 production artifact
+        shell: pwsh
+        run: ./tools/publish-production.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase18/linux-x64
+      - name: Provision fake secret classes and verify production logger redaction
+        shell: pwsh
+        run: dotnet test tests/deployment/Hispania.Deployment.Tests.csproj --filter FullyQualifiedName~Phase21SecretCanary --results-directory .artifacts/phase18/evidence --logger "trx;LogFileName=secret-canaries.trx"
+      - name: Archive and checksum linux-x64 artifact
+        shell: pwsh
+        run: |
+          tar -czf .artifacts/phase18/linux-x64.tar.gz -C .artifacts/phase18/linux-x64 .
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact archive failed.' }
+          (Get-FileHash .artifacts/phase18/linux-x64.tar.gz -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content .artifacts/phase18/linux-x64.tar.gz.sha256
+      - name: Publish exact archived Phase 17 predecessor
+        shell: pwsh
+        run: ./tools/publish-phase17-predecessor.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase18/predecessor-linux-x64
+      - name: Publish exact Phase 19 Web predecessor
+        shell: pwsh
+        run: ./tools/publish-phase19-predecessor.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase20/predecessor-linux-x64
+      - name: Require clean-host, real systemd Server and Worker, rotation, upgrade and disaster recovery
+        shell: pwsh
+        run: |
+          ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/linux-x64 -PredecessorDirectory .artifacts/phase18/predecessor-linux-x64 -WebPredecessorDirectory .artifacts/phase20/predecessor-linux-x64 -ResultsDirectory .artifacts/phase18/evidence -RequirePostgreSql -RequireNativeService 2>&1 | Tee-Object -FilePath .artifacts/phase18/production-gate.log
+      - name: Scan production artifacts and captured local outputs for secret canaries
+        if: always()
+        shell: pwsh
+        run: ./tools/test-security-canaries.ps1 -EvidenceDirectory .artifacts/phase18 -ArtifactDirectory .artifacts/phase18/linux-x64
+      - name: Preserve production evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase18-linux-evidence
+          path: |
+            .artifacts/phase18/evidence
+            .artifacts/phase18/*.build-evidence.json
+            .artifacts/phase18/*.manifest.sha256
+            .artifacts/phase18/linux-x64/artifact-manifest.json
+            .artifacts/phase18/*.npm-audit.json
+            .artifacts/phase18/linux-x64.tar.gz*
+
+  windows-production:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && (github.ref == 'refs/heads/feature/phase-21-security-operations-hardening' || github.ref == 'refs/heads/feature/phase-22-retention-reconciliation-capacity' || github.ref == 'refs/heads/feature/phase-23-e2e-compatibility-upgrades')
+    runs-on: [self-hosted, hispania, hispania-windows]
+    env:
+      HISPANIA_PHASE18_SERVICE_ROOT: C:\ProgramData\HispaniaPhase18CI
+      HISPANIA_PHASE21_NATIVE_HELPER: C:\ProgramData\HispaniaPhase21CI\windows-native-service-helper.ps1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install FFmpeg tools
+        shell: pwsh
+        run: |
+          ./tools/ci/self-hosted-preflight.ps1
+      - run: npm ci
+        working-directory: apps/web
+      - name: Audit current production dependencies
+        run: npm audit --omit=dev
+        working-directory: apps/web
+      - name: Publish actual win-x64 production artifact
+        shell: pwsh
+        run: ./tools/publish-production.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase18/win-x64
+      - name: Provision fake secret classes and verify production logger redaction
+        shell: pwsh
+        run: dotnet test tests/deployment/Hispania.Deployment.Tests.csproj --filter FullyQualifiedName~Phase21SecretCanary --results-directory .artifacts/phase18/evidence --logger "trx;LogFileName=secret-canaries.trx"
+      - name: Archive and checksum win-x64 artifact
+        shell: pwsh
+        run: |
+          Compress-Archive -Path .artifacts/phase18/win-x64/* -DestinationPath .artifacts/phase18/win-x64.zip
+          (Get-FileHash .artifacts/phase18/win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content .artifacts/phase18/win-x64.zip.sha256
+      - name: Publish exact archived Phase 17 predecessor
+        shell: pwsh
+        run: ./tools/publish-phase17-predecessor.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase18/predecessor-win-x64
+      - name: Publish exact Phase 19 Web predecessor
+        shell: pwsh
+        run: ./tools/publish-phase19-predecessor.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase20/predecessor-win-x64
+      - name: Require clean-host, real SCM Server and Worker, upgrade and disaster recovery
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path $env:HISPANIA_PHASE18_SERVICE_ROOT -Force | Out-Null
+          ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/win-x64 -PredecessorDirectory .artifacts/phase18/predecessor-win-x64 -WebPredecessorDirectory .artifacts/phase20/predecessor-win-x64 -ResultsDirectory .artifacts/phase18/evidence -RequireNativeService 2>&1 | Tee-Object -FilePath .artifacts/phase18/production-gate.log
+      - name: Scan production artifacts and captured local outputs for secret canaries
+        if: always()
+        shell: pwsh
+        run: ./tools/test-security-canaries.ps1 -EvidenceDirectory .artifacts/phase18 -ArtifactDirectory .artifacts/phase18/win-x64
+      - name: Preserve production evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase18-windows-evidence
+          path: |
+            .artifacts/phase18/evidence
+            .artifacts/phase18/*.build-evidence.json
+            .artifacts/phase18/*.manifest.sha256
+            .artifacts/phase18/win-x64/artifact-manifest.json
+            .artifacts/phase18/*.npm-audit.json
+            .artifacts/phase18/win-x64.zip*

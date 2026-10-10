@@ -1,28 +1,81 @@
 using Hispania.Inventory.Application;
+using Hispania.Inventory.Contracts;
 using Hispania.Inventory.Persistence.Sqlite;
 using Hispania.Media.Domain.Works;
 using Hispania.Library.Application;
+using Hispania.Library.Contracts;
 using Hispania.Metadata.Application;
 using Hispania.Playback.Application;
 using Hispania.Transcoding.FFmpeg;
 using Hispania.Library.Persistence.Sqlite;
 using Hispania.Platform.Contracts.Events;
 using Hispania.Platform.Contracts.Audit;
+using Hispania.Platform.Contracts.Jobs;
+using Hispania.Platform.Jobs.Application;
 using Hispania.Platform.Persistence.Sqlite;
+using Hispania.Platform.Contracts.Storage;
+using Hispania.Platform.Storage.Application;
+using Hispania.Platform.Storage.Filesystem;
+using Hispania.Platform.WorkerAgentJobs;
+using Hispania.Authorization.Application;
 using Hispania.Runtime;
+using Hispania.ModuleSystem.Contracts;
 using Xunit;
 
 namespace Hispania.Inventory.Tests;
 
 public sealed class PlatformDependencyTests
 {
+    private static readonly string[] ForbiddenPlatformImplementations = ["Media", "Inventory", "Playback", "Library", "Metadata", "FFmpeg", "Server"];
+    [Fact]
+    public void EveryPlatformProjectReferenceClosureExcludesDomainImplementations()
+    {
+        var root = FindRepositoryRoot();
+        using var filter = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "Hispania.Platform.slnf")));
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in filter.RootElement.GetProperty("solution").GetProperty("projects").EnumerateArray())
+            Visit(Path.GetFullPath(Path.Combine(root, project.GetString()!)));
+        Assert.True(visited.Count >= 17, "The complete Platform project graph must be inspected.");
+
+        void Visit(string project)
+        {
+            if (!visited.Add(project)) return;
+            var relative = Path.GetRelativePath(root, project).Replace('\\', '/');
+            Assert.DoesNotContain(ForbiddenPlatformImplementations,
+                forbidden => Path.GetFileName(project).Contains(forbidden, StringComparison.OrdinalIgnoreCase));
+            Assert.False(relative.StartsWith("tests/", StringComparison.OrdinalIgnoreCase));
+            var xml = System.Xml.Linq.XDocument.Load(project);
+            foreach (var reference in xml.Descendants("ProjectReference"))
+                Visit(Path.GetFullPath(Path.Combine(Path.GetDirectoryName(project)!, reference.Attribute("Include")!.Value.Replace('\\', Path.DirectorySeparatorChar))));
+        }
+    }
+
     [Fact]
     public void PlatformAndInventoryAssembliesHaveNoCrossDomainImplementationReferences()
     {
+        AssertNoForbiddenReferences(typeof(Hispania.Platform.Observability.Application.PlatformHealthV1).Assembly, "Media", "Inventory", "Server", "Persistence");
         AssertNoForbiddenReferences(typeof(IPlatformEvent).Assembly, "Media", "Inventory", "Store");
+        AssertNoForbiddenReferences(typeof(IPlatformJobServiceV1).Assembly, "Media", "Inventory");
+        AssertNoForbiddenReferences(typeof(PlatformJobService).Assembly, "Media", "Inventory");
+        AssertNoForbiddenReferences(typeof(DistributedPlatformJobExecutor).Assembly, "Media", "Inventory", "Platform.Persistence", "Jobs.Application");
+        Assert.Contains(typeof(DistributedPlatformJobExecutor).Assembly.GetReferencedAssemblies(), reference => reference.Name == typeof(IDistributedWorkCoordinatorV1).Assembly.GetName().Name);
+        AssertNoForbiddenReferences(typeof(DistributedPlatformJobExecutor).Assembly, "Hispania.WorkerAgent", "Hispania.Server");
+        AssertNoForbiddenReferences(typeof(IDurablePlatformEventBusV1).Assembly, "Media", "Inventory", "Store");
+        AssertNoForbiddenReferences(typeof(IStorageProviderV1).Assembly, "Media", "Inventory", "Storage.Filesystem");
+        AssertNoForbiddenReferences(typeof(SqliteDurablePlatformEventBus).Assembly, "Media", "Inventory", "Store");
+        Assert.Contains(typeof(InventoryService).Assembly.GetReferencedAssemblies(), reference => reference.Name == typeof(IDurablePlatformEventBusV1).Assembly.GetName().Name);
         AssertNoForbiddenReferences(typeof(LocalPlatformEventBus).Assembly, "Media", "Inventory", "Store");
         AssertNoForbiddenReferences(typeof(InventoryService).Assembly, "Media", "Playback", "Library", "Metadata", "Store");
+        AssertNoForbiddenReferences(typeof(InventoryService).Assembly, "Authorization.Application");
         AssertNoForbiddenReferences(typeof(InventorySqliteStore).Assembly, "Media", "Playback", "Library", "Metadata", "Store");
+        AssertNoForbiddenReferences(typeof(DirectPlayPlanner).Assembly, "Authorization.Application");
+        AssertNoForbiddenReferences(typeof(LibraryScanner).Assembly, "Authorization.Application");
+        AssertNoForbiddenReferences(typeof(AuthorizationService).Assembly, "Media", "Inventory");
+        Assert.Equal("inventory.read", InventoryPermissionIds.Read);
+        Assert.Equal("inventory.write", InventoryPermissionIds.Write);
+        Assert.Equal("media.library.read", MediaPermissionIds.LibraryRead);
+        Assert.Equal("media.playback.use", MediaPermissionIds.PlaybackUse);
+        Assert.Equal("media.admin", MediaPermissionIds.Admin);
         Assert.DoesNotContain(typeof(Work).Assembly.GetReferencedAssemblies(), reference => reference.Name?.Contains("Inventory", StringComparison.OrdinalIgnoreCase) == true);
         AssertNoInventoryReference(typeof(LibraryScanner).Assembly);
         AssertNoInventoryReference(typeof(MovieMetadataApplicationService).Assembly);
@@ -54,7 +107,10 @@ public sealed class PlatformDependencyTests
         Assert.DoesNotContain("Inventory", assetsProject, StringComparison.OrdinalIgnoreCase);
         var worker = System.Reflection.Assembly.LoadFrom(Path.Combine(root, "apps", "worker-agent", "bin", configuration, "net10.0", "Hispania.WorkerAgent.dll"));
         AssertNoForbiddenReferences(worker, "FFmpeg", "Playback", "Inventory", "Media");
-        AssertNoForbiddenReferences(typeof(PersistentPlatformAssetStore).Assembly, "FFmpeg", "Playback", "Inventory", "Media", "Store");
+        AssertNoForbiddenReferences(worker, "Platform.Jobs.Application");
+        AssertNoForbiddenReferences(typeof(PersistentPlatformAssetStore).Assembly, "FFmpeg", "Playback", "Inventory", "Media", "Store", "Storage.Filesystem");
+        AssertNoForbiddenReferences(typeof(StorageProviderRegistryV1).Assembly, "Media", "Inventory", "Storage.Filesystem");
+        AssertNoForbiddenReferences(typeof(SqlitePlatformJobStore).Assembly, "Media", "Inventory");
         Assert.DoesNotContain(typeof(IPlatformAuditWriter).GetMethods(), method => method.Name != "WriteAsync");
         Assert.DoesNotContain(typeof(IPlatformAuditReader).GetMethods(), method => method.Name != "QueryAsync");
 
@@ -72,6 +128,9 @@ public sealed class PlatformDependencyTests
             Assert.DoesNotContain("playback", path, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("transcoding-ffmpeg", path, StringComparison.OrdinalIgnoreCase);
         }
+        Assert.Contains(filter.RootElement.GetProperty("solution").GetProperty("projects").EnumerateArray(), project => project.GetString() == "application/platform/jobs/Hispania.Platform.Jobs.Application.csproj");
+        Assert.Contains(filter.RootElement.GetProperty("solution").GetProperty("projects").EnumerateArray(), project => project.GetString() == "application/platform/storage/Hispania.Platform.Storage.Application.csproj");
+        Assert.Contains(filter.RootElement.GetProperty("solution").GetProperty("projects").EnumerateArray(), project => project.GetString() == "infrastructure/platform/storage-filesystem/Hispania.Platform.Storage.Filesystem.csproj");
     }
 
     private static void AssertNoForbiddenReferences(System.Reflection.Assembly assembly, params string[] forbidden)

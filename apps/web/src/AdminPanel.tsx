@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { sessionFetch } from "./AuthContext";
 import "./AdminPanel.css";
 
 type ScanResult = { library: { discovered: number; imported: number; skipped: number; failed: number }; metadata: { processedItems: number; conflicts: number; failures: number; itemsWithoutMetadata: { displayName: string; reasonCode: string; detail: string }[] } };
@@ -33,7 +34,7 @@ export function AdminPanel({ movieCount, onMetadataUpdated }: { movieCount: numb
     setError(null);
     setResultIssues([]);
     try {
-      const response = await fetch(mode === "all" ? "/api/v1/admin/metadata/scan" : "/api/v1/admin/metadata/scan-new", { method: "POST" });
+      const response = await sessionFetch(mode === "all" ? "/api/v1/admin/metadata/scan" : "/api/v1/admin/metadata/scan-new", { method: "POST" });
       if (response.status === 409) throw new Error("Ya hay un escaneo de metadata en curso.");
       if (response.status === 503) throw new Error("TMDB no está habilitado. Introduce el token TMDB en HISPANIA Dev Launcher y pulsa Reiniciar; después vuelve a escanear.");
       if (!response.ok) throw new Error("No se pudo completar el escaneo de metadata.");

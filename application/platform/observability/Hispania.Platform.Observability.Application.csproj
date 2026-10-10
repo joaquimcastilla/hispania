@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>Hispania.Platform.Observability.Application</AssemblyName><RootNamespace>Hispania.Platform.Observability.Application</RootNamespace></PropertyGroup>
+  <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /><ProjectReference Include="../../../contracts/platform/Hispania.Platform.Contracts.csproj" /></ItemGroup>
+</Project>

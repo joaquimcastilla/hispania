@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import "./InventoryPage.css";
+import { sessionFetch } from "./AuthContext";
 
 type WrappedId = { value: string };
 type InventoryItem = { id: WrappedId; sku: string; name: string; assets: { id: WrappedId }[] };
@@ -10,7 +11,7 @@ type Asset = { id: WrappedId; type: string; mimeType: string; size: number; meta
 type PlaybackCapability = { available: boolean; streamUrl: string; mimeType: string };
 
 async function get<T>(path: string, signal: AbortSignal): Promise<T> {
-  const response = await fetch(path, { signal });
+  const response = await sessionFetch(path, { signal });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json() as Promise<T>;
 }

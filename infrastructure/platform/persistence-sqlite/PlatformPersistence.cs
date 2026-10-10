@@ -1,7 +1,16 @@
 using System.Text.Json;
 using System.Globalization;
 using Hispania.Platform.Contracts.Assets;
+using Hispania.Platform.Contracts.Jobs;
+using Hispania.Platform.Jobs.Application;
 using Hispania.Platform.Contracts.Audit;
+using Hispania.Platform.Contracts.Identity;
+using Hispania.Identity.Application;
+using Hispania.Authorization.Application;
+using Hispania.Platform.Contracts.Authorization;
+using Hispania.Platform.Contracts.Storage;
+using Hispania.Platform.Contracts.Maintenance;
+using Hispania.Platform.Maintenance.Application;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -11,75 +20,134 @@ public static class PlatformPersistenceRegistration
 {
     public static IServiceCollection AddPlatformSqlitePersistence(this IServiceCollection services, string metadataPath, string contentPath, string auditPath, long maximumAssetBytes = 100 * 1024 * 1024)
     {
-        services.AddSingleton<IPlatformAssetContentProvider>(_ => new FileAssetContentProvider(contentPath));
         services.AddSingleton<IPlatformAssetMetadataRepository>(_ => new SqliteAssetMetadataRepository(metadataPath));
-        services.AddSingleton<IPlatformAssetStore>(sp => new PersistentPlatformAssetStore(sp.GetRequiredService<IPlatformAssetContentProvider>(), sp.GetRequiredService<IPlatformAssetMetadataRepository>(), maximumAssetBytes));
+        services.AddSingleton<IPlatformAssetStore>(sp => new PersistentPlatformAssetStore(sp.GetRequiredService<IStorageProviderResolverV1>(), sp.GetRequiredService<IPlatformAssetMetadataRepository>(), maximumAssetBytes));
         services.AddSingleton<SqlitePlatformAuditStore>(_ => new SqlitePlatformAuditStore(auditPath));
         services.AddSingleton<IPlatformAuditWriter>(sp => sp.GetRequiredService<SqlitePlatformAuditStore>());
         services.AddSingleton<IPlatformAuditReader>(sp => sp.GetRequiredService<SqlitePlatformAuditStore>());
         return services;
     }
-}
 
-public sealed class FileAssetContentProvider(string root) : IPlatformAssetContentProvider
-{
-    private readonly string _root = Prepare(root);
-    private static string Prepare(string path) { Directory.CreateDirectory(path); return Path.GetFullPath(path); }
-    private string Resolve(string handle) => Path.Combine(_root, Convert.ToHexString(Convert.FromHexString(handle)) + ".blob");
-    public async ValueTask<string> StoreAsync(Stream content, long maximumBytes, CancellationToken cancellationToken = default)
+    public static IServiceCollection AddPlatformIdentitySqlite(this IServiceCollection services, string path, IPlatformAuditWriter? auditWriter = null, IdentityOptions? options = null)
     {
-        var handle = Convert.ToHexString(Guid.NewGuid().ToByteArray()); var target = Resolve(handle); var temporary = target + ".partial"; long total = 0;
-        try
-        {
-            await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
-            {
-                var buffer = new byte[81920]; int read;
-                while ((read = await content.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
-                { total += read; if (total > maximumBytes) throw new InvalidDataException("Asset exceeds the configured size limit."); await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false); }
-            }
-            File.Move(temporary, target); return handle;
-        }
-        catch { if (File.Exists(temporary)) File.Delete(temporary); throw; }
+        services.AddSingleton<SqliteIdentityStore>(_ => new SqliteIdentityStore(path));
+        services.AddSingleton<IIdentityStore>(sp => sp.GetRequiredService<SqliteIdentityStore>());
+        services.AddSingleton<IdentityService>(sp => new IdentityService(sp.GetRequiredService<IIdentityStore>(), auditWriter ?? sp.GetService<IPlatformAuditWriter>(), options, sp.GetService<Hispania.Platform.Contracts.Observability.IPlatformMetricsV1>()));
+        services.AddSingleton<IIdentityQueryV1>(sp => sp.GetRequiredService<IdentityService>());
+        services.AddSingleton<IIdentityCommandV1>(sp => sp.GetRequiredService<IdentityService>());
+        return services;
     }
-    public ValueTask<Stream?> OpenReadAsync(string handle, CancellationToken cancellationToken = default)
-    { cancellationToken.ThrowIfCancellationRequested(); var path = Resolve(handle); return ValueTask.FromResult<Stream?>(File.Exists(path) ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true) : null); }
-    public ValueTask DeleteAsync(string handle, CancellationToken cancellationToken = default)
-    { cancellationToken.ThrowIfCancellationRequested(); var path = Resolve(handle); if (File.Exists(path)) File.Delete(path); return ValueTask.CompletedTask; }
+
+    public static IServiceCollection AddPlatformAuthorizationSqlite(this IServiceCollection services, string path, string? bootstrapToken = null)
+    {
+        services.AddSingleton<SqlitePlatformAuthorizationStore>(_ => new SqlitePlatformAuthorizationStore(path));
+        services.AddSingleton<IPlatformAuthorizationStore>(sp => sp.GetRequiredService<SqlitePlatformAuthorizationStore>());
+        services.AddSingleton<IAuthorizationServiceV1>(sp => new AuthorizationService(sp.GetRequiredService<IPlatformAuthorizationStore>(), sp.GetRequiredService<IIdentityQueryV1>()));
+        services.AddSingleton<IAuthorizationAdministrationV1>(sp => new AuthorizationAdministrationService(sp.GetRequiredService<IPlatformAuthorizationStore>(), sp.GetRequiredService<IIdentityQueryV1>(), sp.GetService<IPlatformAuditWriter>(), bootstrapToken));
+        return services;
+    }
+
+    public static IServiceCollection AddPlatformJobsSqlite(this IServiceCollection services, string path,
+        TimeSpan? idempotencyHorizon = null)
+    {
+        services.AddSingleton<SqlitePlatformJobStore>(_ => new SqlitePlatformJobStore(path,
+            idempotencyHorizon: idempotencyHorizon));
+        services.AddSingleton<IPlatformJobStoreV1>(sp => sp.GetRequiredService<SqlitePlatformJobStore>());
+        services.AddSingleton<IRetentionOwnerV1>(sp => sp.GetRequiredService<SqlitePlatformJobStore>());
+        return services;
+    }
+
+    public static IServiceCollection AddPlatformMaintenanceSqlite(this IServiceCollection services, string path)
+    {
+        services.AddSingleton<IMaintenanceRunStoreV1>(_ => new SqliteMaintenanceRunStoreV1(path));
+        services.AddSingleton<MaintenanceCoordinatorV1>();
+        return services;
+    }
 }
 
 public sealed class PersistentPlatformAssetStore : IPlatformAssetStore
 {
-    private readonly IPlatformAssetContentProvider _content;
+    private readonly IStorageProviderResolverV1 _storage;
     private readonly IPlatformAssetMetadataRepository _metadata;
     private readonly long _maximumBytes;
-    public PersistentPlatformAssetStore(IPlatformAssetContentProvider contentProvider, IPlatformAssetMetadataRepository metadataRepository, long maximumBytes) { _content = contentProvider; _metadata = metadataRepository; _maximumBytes = maximumBytes; }
+    public PersistentPlatformAssetStore(IStorageProviderResolverV1 storage, IPlatformAssetMetadataRepository metadataRepository, long maximumBytes) { _storage = storage; _metadata = metadataRepository; _maximumBytes = maximumBytes; }
     public async ValueTask<AssetMetadata> StoreAsync(AssetType type, string mimeType, Stream content, AssetScope scope, AssetAccessPolicy accessPolicy, IReadOnlyDictionary<string, string>? metadata = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(mimeType) || mimeType.Length > 127 || string.IsNullOrWhiteSpace(scope.Domain) || string.IsNullOrWhiteSpace(scope.OwnerId)) throw new ArgumentException("Asset MIME type and ownership scope are required.");
-        var handle = await _content.StoreAsync(content, _maximumBytes, cancellationToken).ConfigureAwait(false);
+        var provider = _storage.Resolve(_storage.DefaultProviderId);
+        var stored = await provider.WriteAsync(content, _maximumBytes, cancellationToken).ConfigureAwait(false);
         try
         {
-            await using var input = await _content.OpenReadAsync(handle, cancellationToken).ConfigureAwait(false) ?? throw new IOException("Stored content could not be reopened.");
-            var now = DateTimeOffset.UtcNow; var item = new AssetMetadata(AssetId.New(), type, mimeType, input.Length, Sanitize(metadata), scope, accessPolicy, handle, AssetStatus.Ready, now, now);
+            var now = DateTimeOffset.UtcNow; var item = new AssetMetadata(AssetId.New(), type, mimeType, stored.Metadata.Size, Sanitize(metadata), scope, accessPolicy, stored.Handle.Value, AssetStatus.Ready, now, now, provider.ProviderId);
             await _metadata.SaveAsync(item, cancellationToken).ConfigureAwait(false); return item;
         }
-        catch { await _content.DeleteAsync(handle, CancellationToken.None).ConfigureAwait(false); throw; }
+        catch { await provider.DeleteAsync(stored.Handle, CancellationToken.None).ConfigureAwait(false); throw; }
     }
     public ValueTask<AssetMetadata?> GetMetadataAsync(AssetId id, CancellationToken cancellationToken = default) => _metadata.GetAsync(id, cancellationToken);
     public async ValueTask<Stream?> OpenReadAsync(AssetId id, CancellationToken cancellationToken = default)
-    { var item = await _metadata.GetAsync(id, cancellationToken).ConfigureAwait(false); return item is { Status: AssetStatus.Ready } ? await _content.OpenReadAsync(item.ContentHandle, cancellationToken).ConfigureAwait(false) : null; }
+    { var item = await _metadata.GetAsync(id, cancellationToken).ConfigureAwait(false); if (item is not { Status: AssetStatus.Ready }) return null; var (provider, handle) = Resolve(item); return await provider.OpenReadAsync(handle, cancellationToken).ConfigureAwait(false); }
     public async ValueTask<bool> DeleteAsync(AssetId id, CancellationToken cancellationToken = default)
-    { var item = await _metadata.GetAsync(id, cancellationToken).ConfigureAwait(false); if (item is null || !await _metadata.DeleteAsync(id, cancellationToken).ConfigureAwait(false)) return false; await _content.DeleteAsync(item.ContentHandle, cancellationToken).ConfigureAwait(false); return true; }
+    { var item = await _metadata.GetAsync(id, cancellationToken).ConfigureAwait(false); if (item is null) return false; var (provider, handle) = Resolve(item); if (!await _metadata.DeleteAsync(id, cancellationToken).ConfigureAwait(false)) return false; await provider.DeleteAsync(handle, cancellationToken).ConfigureAwait(false); return true; }
+    private (IStorageProviderV1 Provider, StorageObjectHandle Handle) Resolve(AssetMetadata item)
+    {
+        var providerId = string.IsNullOrWhiteSpace(item.ProviderId) ? "filesystem" : item.ProviderId;
+        var handle = new StorageObjectHandle(item.ContentHandle);
+        var provider = item.ContentHandle.StartsWith("storage://", StringComparison.Ordinal) ? _storage.Resolve(handle) : _storage.Resolve(providerId);
+        if (!string.Equals(provider.ProviderId, providerId, StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("Asset provider and storage handle do not match.");
+        return (provider, handle);
+    }
     private static readonly string[] SensitiveKeys = ["token", "secret", "password", "credential", "authorization", "content", "body", "key"];
     private static Dictionary<string, string> Sanitize(IReadOnlyDictionary<string, string>? values) => (values ?? new Dictionary<string, string>()).Where(p => !SensitiveKeys.Any(s => p.Key.Contains(s, StringComparison.OrdinalIgnoreCase))).Take(32).ToDictionary(p => p.Key[..Math.Min(p.Key.Length, 64)], p => p.Value[..Math.Min(p.Value.Length, 512)], StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class SqliteAssetMetadataRepository(string path) : IPlatformAssetMetadataRepository
 {
-    private readonly string _connection = Initialize(path, "CREATE TABLE IF NOT EXISTS platform_assets(id TEXT PRIMARY KEY,type INTEGER NOT NULL,mime TEXT NOT NULL,size INTEGER NOT NULL,metadata TEXT NOT NULL,scope_domain TEXT NOT NULL,owner_id TEXT NOT NULL,policy_id TEXT NOT NULL,public_read INTEGER NOT NULL,content_handle TEXT NOT NULL,status INTEGER NOT NULL,created_utc TEXT NOT NULL,updated_utc TEXT NOT NULL);");
-    private static string Initialize(string path, string sql) { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!); var cs = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate }.ToString(); using var c = new SqliteConnection(cs); c.Open(); using var cmd = c.CreateCommand(); cmd.CommandText = sql; cmd.ExecuteNonQuery(); return cs; }
-    public async ValueTask SaveAsync(AssetMetadata metadata, CancellationToken cancellationToken = default) { await using var c = new SqliteConnection(_connection); await c.OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "INSERT INTO platform_assets VALUES($id,$type,$mime,$size,$metadata,$domain,$owner,$policy,$public,$handle,$status,$created,$updated)"; q.Parameters.AddWithValue("$id", metadata.Id.Value.ToString("D")); q.Parameters.AddWithValue("$type", (int)metadata.Type); q.Parameters.AddWithValue("$mime", metadata.MimeType); q.Parameters.AddWithValue("$size", metadata.Size); q.Parameters.AddWithValue("$metadata", JsonSerializer.Serialize(metadata.Metadata)); q.Parameters.AddWithValue("$domain", metadata.Scope.Domain); q.Parameters.AddWithValue("$owner", metadata.Scope.OwnerId); q.Parameters.AddWithValue("$policy", metadata.AccessPolicy.PolicyId); q.Parameters.AddWithValue("$public", metadata.AccessPolicy.PublicRead); q.Parameters.AddWithValue("$handle", metadata.ContentHandle); q.Parameters.AddWithValue("$status", (int)metadata.Status); q.Parameters.AddWithValue("$created", metadata.CreatedAtUtc.ToString("O")); q.Parameters.AddWithValue("$updated", metadata.UpdatedAtUtc.ToString("O")); await q.ExecuteNonQueryAsync(cancellationToken); }
-    public async ValueTask<AssetMetadata?> GetAsync(AssetId id, CancellationToken cancellationToken = default) { await using var c = new SqliteConnection(_connection); await c.OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "SELECT type,mime,size,metadata,scope_domain,owner_id,policy_id,public_read,content_handle,status,created_utc,updated_utc FROM platform_assets WHERE id=$id"; q.Parameters.AddWithValue("$id", id.Value.ToString("D")); await using var r = await q.ExecuteReaderAsync(cancellationToken); if (!await r.ReadAsync(cancellationToken)) return null; return new AssetMetadata(id,(AssetType)r.GetInt32(0),r.GetString(1),r.GetInt64(2),JsonSerializer.Deserialize<Dictionary<string,string>>(r.GetString(3)) ?? new(),new(r.GetString(4),r.GetString(5)),new(r.GetString(6),r.GetBoolean(7)),r.GetString(8),(AssetStatus)r.GetInt32(9),DateTimeOffset.Parse(r.GetString(10), CultureInfo.InvariantCulture),DateTimeOffset.Parse(r.GetString(11), CultureInfo.InvariantCulture)); }
+    // Owner-local operational validation; handle interpretation stays with the owning adapter.
+    public static string[] ValidateBackupStorage(string metadataPath, string storageRoot)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = metadataPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+        connection.Open(); using var query = connection.CreateCommand();
+        query.CommandText = "SELECT content_handle,size,provider_id FROM platform_assets";
+        var expected = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        using var reader = query.ExecuteReader();
+        while (reader.Read())
+        {
+            if (reader.GetString(2) != "filesystem") throw new InvalidDataException("Backup encountered an unsupported Asset provider.");
+            var handle = reader.GetString(0); string id;
+            if (handle.StartsWith("storage://filesystem/", StringComparison.Ordinal))
+            {
+                id = handle["storage://filesystem/".Length..];
+                if (id.Length != 32 || id.Any(c => c is not (>= 'a' and <= 'f') and not (>= '0' and <= '9'))) throw new InvalidDataException("Invalid Asset handle.");
+            }
+            else
+            {
+                if (handle.Length != 32 || !handle.All(char.IsAsciiHexDigit)) throw new InvalidDataException("Invalid legacy Asset handle.");
+                id = handle.ToUpperInvariant();
+            }
+            var name = id + ".blob"; expected.Add(name); var file = Path.Combine(storageRoot, name);
+            if (!File.Exists(file) || (File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0 || new FileInfo(file).Length != reader.GetInt64(1))
+                throw new InvalidDataException("Asset metadata has missing or inconsistent Storage bytes.");
+        }
+        if (!Directory.Exists(storageRoot)) return [];
+        var orphans = Directory.EnumerateFiles(storageRoot).Count(file => !expected.Contains(Path.GetFileName(file)));
+        return orphans == 0 ? [] : [$"Storage contains {orphans} unreferenced objects; captured without reconciliation."];
+    }
+
+    private readonly string _connection = Initialize(path);
+    private static string Initialize(string path)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        var cs = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate }.ToString();
+        using var c = new SqliteConnection(cs); Hispania.Persistence.Schema.SqliteSchemaUpgrade.Open(c, "Platform.Assets");
+        Hispania.Persistence.Schema.SqliteSchemaUpgrade.Initialize(c, "Platform.Assets", "CREATE TABLE IF NOT EXISTS platform_assets(id TEXT PRIMARY KEY,type INTEGER NOT NULL,mime TEXT NOT NULL,size INTEGER NOT NULL,metadata TEXT NOT NULL,scope_domain TEXT NOT NULL,owner_id TEXT NOT NULL,policy_id TEXT NOT NULL,public_read INTEGER NOT NULL,content_handle TEXT NOT NULL,status INTEGER NOT NULL,created_utc TEXT NOT NULL,updated_utc TEXT NOT NULL,provider_id TEXT NOT NULL DEFAULT 'filesystem');",
+            [("platform_assets", "provider_id", "TEXT NOT NULL DEFAULT 'filesystem'")],
+            [new Hispania.Persistence.Schema.SqliteSchemaMigration(2, "0002_reconciliation_quarantine", (db, tx) => Hispania.Persistence.Schema.SqliteSchemaUpgrade.Execute(db, tx,
+                "CREATE INDEX IF NOT EXISTS ix_platform_assets_handle ON platform_assets(content_handle COLLATE NOCASE); CREATE TABLE IF NOT EXISTS asset_reconciliation_quarantine(finding_id TEXT PRIMARY KEY,content_handle TEXT NOT NULL,reason TEXT NOT NULL,observed_utc TEXT NOT NULL,resolved_utc TEXT);"))]);
+        return cs;
+    }
+
+    public async ValueTask SaveAsync(AssetMetadata metadata, CancellationToken cancellationToken = default) { await using var c = new SqliteConnection(_connection); await c.OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "INSERT INTO platform_assets(id,type,mime,size,metadata,scope_domain,owner_id,policy_id,public_read,content_handle,status,created_utc,updated_utc,provider_id) VALUES($id,$type,$mime,$size,$metadata,$domain,$owner,$policy,$public,$handle,$status,$created,$updated,$provider)"; q.Parameters.AddWithValue("$id", metadata.Id.Value.ToString("D")); q.Parameters.AddWithValue("$type", (int)metadata.Type); q.Parameters.AddWithValue("$mime", metadata.MimeType); q.Parameters.AddWithValue("$size", metadata.Size); q.Parameters.AddWithValue("$metadata", JsonSerializer.Serialize(metadata.Metadata)); q.Parameters.AddWithValue("$domain", metadata.Scope.Domain); q.Parameters.AddWithValue("$owner", metadata.Scope.OwnerId); q.Parameters.AddWithValue("$policy", metadata.AccessPolicy.PolicyId); q.Parameters.AddWithValue("$public", metadata.AccessPolicy.PublicRead); q.Parameters.AddWithValue("$handle", metadata.ContentHandle); q.Parameters.AddWithValue("$status", (int)metadata.Status); q.Parameters.AddWithValue("$created", metadata.CreatedAtUtc.ToString("O")); q.Parameters.AddWithValue("$updated", metadata.UpdatedAtUtc.ToString("O")); q.Parameters.AddWithValue("$provider", string.IsNullOrWhiteSpace(metadata.ProviderId) ? "filesystem" : metadata.ProviderId); await q.ExecuteNonQueryAsync(cancellationToken); }
+    public async ValueTask<AssetMetadata?> GetAsync(AssetId id, CancellationToken cancellationToken = default) { await using var c = new SqliteConnection(_connection); await c.OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText = "SELECT type,mime,size,metadata,scope_domain,owner_id,policy_id,public_read,content_handle,status,created_utc,updated_utc,provider_id FROM platform_assets WHERE id=$id"; q.Parameters.AddWithValue("$id", id.Value.ToString("D")); await using var r = await q.ExecuteReaderAsync(cancellationToken); if (!await r.ReadAsync(cancellationToken)) return null; return new AssetMetadata(id,(AssetType)r.GetInt32(0),r.GetString(1),r.GetInt64(2),JsonSerializer.Deserialize<Dictionary<string,string>>(r.GetString(3)) ?? new(),new(r.GetString(4),r.GetString(5)),new(r.GetString(6),r.GetBoolean(7)),r.GetString(8),(AssetStatus)r.GetInt32(9),DateTimeOffset.Parse(r.GetString(10), CultureInfo.InvariantCulture),DateTimeOffset.Parse(r.GetString(11), CultureInfo.InvariantCulture),r.GetString(12)); }
     public async ValueTask<bool> DeleteAsync(AssetId id, CancellationToken cancellationToken = default) { await using var c = new SqliteConnection(_connection); await c.OpenAsync(cancellationToken); await using var q = c.CreateCommand(); q.CommandText="DELETE FROM platform_assets WHERE id=$id"; q.Parameters.AddWithValue("$id",id.Value.ToString("D")); return await q.ExecuteNonQueryAsync(cancellationToken)>0; }
 }
 
@@ -87,7 +155,7 @@ public sealed class SqlitePlatformAuditStore : IPlatformAuditWriter, IPlatformAu
 {
     private static readonly string[] SensitiveKeys = ["token", "secret", "password", "credential", "authorization", "content", "body", "key"];
     private readonly string _connection;
-    public SqlitePlatformAuditStore(string path) { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!); _connection = new SqliteConnectionStringBuilder { DataSource=path, Mode=SqliteOpenMode.ReadWriteCreate }.ToString(); using var c=new SqliteConnection(_connection); c.Open(); using var q=c.CreateCommand(); q.CommandText="CREATE TABLE IF NOT EXISTS platform_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,timestamp TEXT NOT NULL,actor TEXT,correlation TEXT,domain TEXT NOT NULL,action TEXT NOT NULL,resource_type TEXT NOT NULL,resource_id TEXT NOT NULL,result TEXT NOT NULL,metadata TEXT NOT NULL); CREATE INDEX IF NOT EXISTS ix_platform_audit_timestamp ON platform_audit(timestamp DESC);"; q.ExecuteNonQuery(); }
-    public async ValueTask WriteAsync(AuditRecord record, CancellationToken cancellationToken=default) { var safe=record with { Metadata=record.Metadata.Where(p=>!SensitiveKeys.Any(s=>p.Key.Contains(s,StringComparison.OrdinalIgnoreCase))).Take(32).ToDictionary(p=>p.Key[..Math.Min(64,p.Key.Length)],p=>p.Value[..Math.Min(512,p.Value.Length)]) }; await using var c=new SqliteConnection(_connection); await c.OpenAsync(cancellationToken); await using var q=c.CreateCommand(); q.CommandText="INSERT INTO platform_audit(timestamp,actor,correlation,domain,action,resource_type,resource_id,result,metadata) VALUES($t,$actor,$correlation,$domain,$action,$type,$id,$result,$metadata)"; q.Parameters.AddWithValue("$t",safe.Timestamp.ToUniversalTime().ToString("O")); q.Parameters.AddWithValue("$actor",(object?)safe.ActorId??DBNull.Value); q.Parameters.AddWithValue("$correlation",(object?)safe.CorrelationId??DBNull.Value); q.Parameters.AddWithValue("$domain",safe.Domain); q.Parameters.AddWithValue("$action",safe.Action); q.Parameters.AddWithValue("$type",safe.ResourceType); q.Parameters.AddWithValue("$id",safe.ResourceId); q.Parameters.AddWithValue("$result",safe.Result); q.Parameters.AddWithValue("$metadata",JsonSerializer.Serialize(safe.Metadata)); await q.ExecuteNonQueryAsync(cancellationToken); }
+    public SqlitePlatformAuditStore(string path) { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!); _connection = new SqliteConnectionStringBuilder { DataSource=path, Mode=SqliteOpenMode.ReadWriteCreate }.ToString(); using var c=new SqliteConnection(_connection); Hispania.Persistence.Schema.SqliteSchemaUpgrade.Open(c, "Platform.Audit"); Hispania.Persistence.Schema.SqliteSchemaUpgrade.Initialize(c, "Platform.Audit", "CREATE TABLE IF NOT EXISTS platform_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,timestamp TEXT NOT NULL,actor TEXT,correlation TEXT,domain TEXT NOT NULL,action TEXT NOT NULL,resource_type TEXT NOT NULL,resource_id TEXT NOT NULL,result TEXT NOT NULL,metadata TEXT NOT NULL); CREATE INDEX IF NOT EXISTS ix_platform_audit_timestamp ON platform_audit(timestamp DESC);"); }
+    public async ValueTask WriteAsync(AuditRecord record, CancellationToken cancellationToken=default) { var safe=record with { CorrelationId=record.CorrelationId ?? Hispania.Platform.Contracts.Observability.PlatformCorrelationV1.Current?.CorrelationId, Metadata=record.Metadata.Where(p=>!SensitiveKeys.Any(s=>p.Key.Contains(s,StringComparison.OrdinalIgnoreCase))).Take(32).ToDictionary(p=>p.Key[..Math.Min(64,p.Key.Length)],p=>p.Value[..Math.Min(512,p.Value.Length)]) }; await using var c=new SqliteConnection(_connection); await c.OpenAsync(cancellationToken); await using var q=c.CreateCommand(); q.CommandText="INSERT INTO platform_audit(timestamp,actor,correlation,domain,action,resource_type,resource_id,result,metadata) VALUES($t,$actor,$correlation,$domain,$action,$type,$id,$result,$metadata)"; q.Parameters.AddWithValue("$t",safe.Timestamp.ToUniversalTime().ToString("O")); q.Parameters.AddWithValue("$actor",(object?)safe.ActorId??DBNull.Value); q.Parameters.AddWithValue("$correlation",(object?)safe.CorrelationId??DBNull.Value); q.Parameters.AddWithValue("$domain",safe.Domain); q.Parameters.AddWithValue("$action",safe.Action); q.Parameters.AddWithValue("$type",safe.ResourceType); q.Parameters.AddWithValue("$id",safe.ResourceId); q.Parameters.AddWithValue("$result",safe.Result); q.Parameters.AddWithValue("$metadata",JsonSerializer.Serialize(safe.Metadata)); await q.ExecuteNonQueryAsync(cancellationToken); }
     public async ValueTask<AuditPage> QueryAsync(AuditQuery query,CancellationToken cancellationToken=default) { var page=Math.Max(1,query.Page); var size=Math.Clamp(query.PageSize,1,200); await using var c=new SqliteConnection(_connection); await c.OpenAsync(cancellationToken); await using var q=c.CreateCommand(); q.CommandText="SELECT timestamp,actor,correlation,domain,action,resource_type,resource_id,result,metadata FROM platform_audit WHERE ($domain IS NULL OR domain=$domain) AND ($action IS NULL OR action=$action) AND ($type IS NULL OR resource_type=$type) AND ($id IS NULL OR resource_id=$id) AND ($actor IS NULL OR actor=$actor) AND ($correlation IS NULL OR correlation=$correlation) AND ($from IS NULL OR timestamp >= $from) AND ($to IS NULL OR timestamp <= $to) ORDER BY id DESC LIMIT $limit OFFSET $offset"; q.Parameters.AddWithValue("$domain",(object?)query.Domain??DBNull.Value); q.Parameters.AddWithValue("$action",(object?)query.Action??DBNull.Value); q.Parameters.AddWithValue("$type",(object?)query.ResourceType??DBNull.Value); q.Parameters.AddWithValue("$id",(object?)query.ResourceId??DBNull.Value); q.Parameters.AddWithValue("$actor",(object?)query.ActorId??DBNull.Value); q.Parameters.AddWithValue("$correlation",(object?)query.CorrelationId??DBNull.Value); q.Parameters.AddWithValue("$from",(object?)query.FromUtc?.ToUniversalTime().ToString("O")??DBNull.Value); q.Parameters.AddWithValue("$to",(object?)query.ToUtc?.ToUniversalTime().ToString("O")??DBNull.Value); q.Parameters.AddWithValue("$limit",size+1); q.Parameters.AddWithValue("$offset",(page-1)*size); var list=new List<AuditRecord>(); await using var r=await q.ExecuteReaderAsync(cancellationToken); while(await r.ReadAsync(cancellationToken)) list.Add(new(DateTimeOffset.Parse(r.GetString(0), CultureInfo.InvariantCulture),r.IsDBNull(1)?null:r.GetString(1),r.IsDBNull(2)?null:r.GetString(2),r.GetString(3),r.GetString(4),r.GetString(5),r.GetString(6),r.GetString(7),JsonSerializer.Deserialize<Dictionary<string,string>>(r.GetString(8))??new())); var more=list.Count>size; if(more) list.RemoveAt(list.Count-1); return new(list,page,size,more); }
 }

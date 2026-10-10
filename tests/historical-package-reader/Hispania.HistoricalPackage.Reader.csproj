@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Reference Include="Hispania.Runtime"><HintPath>$(HistoricalRuntimeRoot)/Hispania.Runtime.dll</HintPath></Reference>
+    <Reference Include="Hispania.ModuleSystem.Contracts"><HintPath>$(HistoricalRuntimeRoot)/Hispania.ModuleSystem.Contracts.dll</HintPath></Reference>
+    <Reference Include="Hispania.Platform.Contracts"><HintPath>$(HistoricalRuntimeRoot)/Hispania.Platform.Contracts.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>

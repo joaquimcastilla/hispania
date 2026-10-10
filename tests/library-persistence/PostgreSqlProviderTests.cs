@@ -43,10 +43,13 @@ public sealed class PostgreSqlProviderTests
     }
 
     [PostgreSqlIntegrationFact]
+    [Trait("Category", "Phase16PostgreSqlHistoricalUpgrade")]
     public async Task PostgreSqlMigrationAndConnectionFailureRecoveryUseAnIsolatedSchema()
     {
         var baseConnectionString = Environment.GetEnvironmentVariable("HISPANIA_POSTGRES_TEST_CONNECTION");
         Assert.False(string.IsNullOrWhiteSpace(baseConnectionString));
+
+        await HistoricalPostgreSqlUpgradeEvidence.RunAsync(baseConnectionString!);
 
         var adminBuilder = new NpgsqlConnectionStringBuilder(baseConnectionString);
         var schema = "hispania_test_" + Guid.NewGuid().ToString("N");

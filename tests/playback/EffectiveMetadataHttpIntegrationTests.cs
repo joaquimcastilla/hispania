@@ -253,12 +253,15 @@ public sealed class EffectiveMetadataHttpIntegrationTests
             builder.Services.AddSingleton<IMediaCatalogReader>(catalog);
             builder.Services.AddSingleton<IEffectiveMetadataResolver, EffectiveMetadataResolver>();
             builder.Services.AddSingleton<IEffectiveMetadataProjectionReader, EffectiveMetadataProjectionReader>();
+            DomainAuthorizationTestHost.AddAuthorizedUser(builder.Services);
             var app = builder.Build();
             await app.Services.GetRequiredService<SqliteMigrationRunner>().MigrateAndLoadAsync(app.Services.GetRequiredService<EfLibraryCatalogStore>(), default);
             app.MapEffectiveMetadataEndpoints();
             app.MapMediaListEndpoint();
             await app.StartAsync();
-            return new Host(app, app.GetTestClient(), app.Services.GetRequiredService<IMetadataEnrichmentStore>(), entry, directory);
+            var client = app.GetTestClient();
+            DomainAuthorizationTestHost.Authenticate(client);
+            return new Host(app, client, app.Services.GetRequiredService<IMetadataEnrichmentStore>(), entry, directory);
         }
 
         public async ValueTask DisposeAsync()

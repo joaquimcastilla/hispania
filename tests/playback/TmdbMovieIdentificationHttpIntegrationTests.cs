@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.Json;
 using Hispania.Library.Application;
 using Hispania.Library.Contracts;
+using Hispania.Platform.Contracts.Authorization;
+using Hispania.Platform.Contracts.Identity;
 using Hispania.Library.Persistence.EFCore;
 using Hispania.Library.Persistence.Sqlite;
 using Hispania.Media.Domain.Enrichment;
@@ -513,6 +515,8 @@ public sealed class TmdbMovieIdentificationHttpIntegrationTests
         {
             var catalog = new InMemoryMediaCatalog(); catalog.Upsert(entry);
             var builder = WebApplication.CreateBuilder(); builder.WebHost.UseTestServer();
+            builder.Services.AddSingleton<IIdentityQueryV1, SessionIdentityQuery>();
+            builder.Services.AddSingleton<IAuthorizationServiceV1, AllowDomainAuthorization>();
             builder.Services.AddSqliteLibraryPersistence(Path.Combine(directory, "metadata.sqlite"));
             builder.Services.AddSingleton<IMetadataEnrichmentStore>(sp => new ExistingWorkStore(sp.GetRequiredService<EfMetadataEnrichmentStore>()));
             builder.Services.AddSingleton<IMediaCatalogReader>(catalog);
@@ -530,7 +534,8 @@ public sealed class TmdbMovieIdentificationHttpIntegrationTests
             await app.Services.GetRequiredService<SqliteMigrationRunner>().MigrateAndLoadAsync(app.Services.GetRequiredService<EfLibraryCatalogStore>(), default);
             app.MapGet("/healthz", () => Results.Ok()); app.MapTmdbMovieMetadataEndpoints(); app.MapEffectiveMetadataEndpoints(); app.MapMetadataEditingEndpoints(); app.MapMediaListEndpoint(); app.MapArtworkDeliveryEndpoints();
             await app.StartAsync();
-            return new Host(app, app.GetTestClient(), app.Services.GetRequiredService<IMetadataEnrichmentStore>(), app.Services.GetRequiredService<IRichMetadataStore>(), entry, catalog, directory, handler, app.Services.GetRequiredService<MovieMetadataAutoEnrichmentService>(), app.Services.GetRequiredService<MovieMetadataApplicationService>());
+            var client = app.GetTestClient(); client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Session", "test-session-token-with-sufficient-length");
+            return new Host(app, client, app.Services.GetRequiredService<IMetadataEnrichmentStore>(), app.Services.GetRequiredService<IRichMetadataStore>(), entry, catalog, directory, handler, app.Services.GetRequiredService<MovieMetadataAutoEnrichmentService>(), app.Services.GetRequiredService<MovieMetadataApplicationService>());
         }
         public void AddCatalogEntry(MediaCatalogEntry entry) => Catalog.Upsert(entry);
         public Task<HttpResponseMessage> SelectAsync(string id) => PostAsync("select", id);
@@ -545,6 +550,23 @@ public sealed class TmdbMovieIdentificationHttpIntegrationTests
         var client = new HttpClient(handler) { BaseAddress = new Uri("https://tmdb.invalid/3/"), Timeout = TimeSpan.FromSeconds(5) };
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "fake-token");
         return new TmdbMovieMetadataProvider(client, new TmdbMovieMetadataProviderOptions { Enabled = true, ReadAccessToken = "fake-token" });
+    }
+
+    private sealed class SessionIdentityQuery : IIdentityQueryV1
+    {
+        private static readonly UserId Id = new(Guid.Parse("00000000-0000-0000-0000-000000000001"));
+        public ValueTask<User?> GetUserAsync(UserId id, CancellationToken cancellationToken = default) => ValueTask.FromResult<User?>(id == Id ? new User(Id, "test", "Test", UserStatus.Enabled, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow) : null);
+        public ValueTask<User?> GetUserByUsernameAsync(string username, CancellationToken cancellationToken = default) => ValueTask.FromResult<User?>(null);
+        public ValueTask<IReadOnlyList<User>> ListUsersAsync(CancellationToken cancellationToken = default) => ValueTask.FromResult<IReadOnlyList<User>>([]);
+        public ValueTask<Session?> ValidateSessionAsync(string token, CancellationToken cancellationToken = default) => ValueTask.FromResult<Session?>(token.Length >= 32 ? new Session(SessionId.New(), Id, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), null) : null);
+        public ValueTask<User?> GetCurrentUserAsync(string token, CancellationToken cancellationToken = default) => ValueTask.FromResult<User?>(null);
+    }
+
+    private sealed class AllowDomainAuthorization : IAuthorizationServiceV1
+    {
+        public ValueTask<bool> HasPermissionAsync(UserId userId, string permissionId, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
+        public ValueTask<IReadOnlySet<string>> GetEffectivePermissionsAsync(UserId userId, CancellationToken cancellationToken = default) => ValueTask.FromResult<IReadOnlySet<string>>(new HashSet<string>(StringComparer.Ordinal));
+        public ValueTask<AuthorizationDecision> RequirePermissionAsync(UserId? userId, string permissionId, CancellationToken cancellationToken = default) => ValueTask.FromResult(new AuthorizationDecision(userId is not null, userId is not null));
     }
 
     private sealed class ExistingWorkStore(EfMetadataEnrichmentStore inner) : IMetadataEnrichmentStore

@@ -12,7 +12,7 @@ Phase 11 has a generic module runtime, capability selection, extension lifecycle
 
 | Area | Classification | Findings |
 | --- | --- | --- |
-| `core/kernel` | Platform | Minimal host/runtime primitives; no Media project reference. |
+| `core/kernel` | Platform placeholder | Empty SDK library; no source or project references. Phase 14 source review corrects the earlier “minimal host/runtime primitives” description; actual primitives live in `core/runtime`. |
 | `core/runtime` | Platform, with generic module and distributed-work mechanisms | References module-system contracts; no direct Media implementation reference found. It is still a broad runtime assembly. |
 | `contracts/module-system` | Platform | Module lifecycle, manifests, capability selection, package trust, and worker protocol contracts. |
 | `contracts/library`, `contracts/metadata`, `contracts/playback` | Media | Public domain contracts; several deliberately carry Media-owned types such as `MediaSource`, `MediaEntityId`, `WorkId`, and movie metadata. |

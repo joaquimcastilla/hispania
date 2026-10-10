@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>Hispania.HistoricalWeb.Reader</AssemblyName></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NuGet.Versioning" Version="7.9.0" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Reference Include="Hispania.Runtime"><HintPath>$(HistoricalRuntimeRoot)/Hispania.Runtime.dll</HintPath></Reference>
+    <Reference Include="Hispania.ModuleSystem.Contracts"><HintPath>$(HistoricalRuntimeRoot)/Hispania.ModuleSystem.Contracts.dll</HintPath></Reference>
+    <Reference Include="Hispania.Platform.Contracts"><HintPath>$(HistoricalRuntimeRoot)/Hispania.Platform.Contracts.dll</HintPath></Reference>
+  </ItemGroup>
+  <Target Name="HistoricalDependencies" AfterTargets="Build">
+    <ItemGroup><HistoricalFiles Include="$(HistoricalRuntimeRoot)/*.dll" /></ItemGroup>
+    <Copy SourceFiles="@(HistoricalFiles)" DestinationFolder="$(OutDir)" />
+  </Target>
+</Project>

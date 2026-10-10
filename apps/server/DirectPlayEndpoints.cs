@@ -12,13 +12,15 @@ public static class DirectPlayEndpoints
     public static IEndpointRouteBuilder MapDirectPlayEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapMediaListEndpoint();
-        endpoints.MapGet("/api/v1/media/{mediaEntityId}/stream", StreamAsync);
+        endpoints.MapGet("/api/v1/media/{mediaEntityId}/stream", StreamAsync)
+            .RequirePlatformPermission(MediaPermissionIds.PlaybackUse, allowLegacyAdminBearer: false);
         return endpoints;
     }
 
     public static IEndpointRouteBuilder MapMediaListEndpoint(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/v1/media", ListAsync);
+        endpoints.MapGet("/api/v1/media", ListAsync)
+            .RequirePlatformPermission(MediaPermissionIds.LibraryRead, allowLegacyAdminBearer: false);
         return endpoints;
     }
 

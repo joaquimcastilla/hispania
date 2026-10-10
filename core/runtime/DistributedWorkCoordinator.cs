@@ -237,6 +237,8 @@ public sealed class DistributedWorkCoordinator : IDistributedWorkCoordinatorV1
     {
         ArgumentNullException.ThrowIfNull(activeJobIds);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(leaseDuration, TimeSpan.Zero);
+        if (leaseDuration > TimeSpan.FromHours(1) || activeJobIds.Count > 1024 || activeJobIds.Any(id => string.IsNullOrWhiteSpace(id) || id.Length > 128 || id.Any(char.IsControl)))
+            throw new ArgumentException("Worker heartbeat exceeds metadata or lease bounds.", nameof(activeJobIds));
         lock (gate)
         {
             if (!workers.TryGetValue(nodeId, out var worker) || !worker.Authorized || !worker.Enabled) return false;
@@ -268,6 +270,7 @@ public sealed class DistributedWorkCoordinator : IDistributedWorkCoordinatorV1
         lock (gate)
         {
             if (!TryCurrentLease(nodeId, jobId, generation, out var job) || job.State is not (DistributedJobStateV1.Assigned or DistributedJobStateV1.Running)) return false;
+            if (result.ValueKind == JsonValueKind.Undefined || JsonSerializer.SerializeToUtf8Bytes(result).Length > 1024 * 1024) return false;
             job.State = DistributedJobStateV1.Completed;
             job.Result = result.Clone();
             job.LeaseExpiresAtUtc = null;
@@ -278,7 +281,7 @@ public sealed class DistributedWorkCoordinator : IDistributedWorkCoordinatorV1
 
     public bool Fail(string nodeId, string jobId, long generation, string failureCode)
     {
-        if (string.IsNullOrWhiteSpace(failureCode)) throw new ArgumentException("Failure code is required.", nameof(failureCode));
+        if (string.IsNullOrWhiteSpace(failureCode) || failureCode.Length > 128 || failureCode.Any(char.IsControl)) throw new ArgumentException("Bounded failure code is required.", nameof(failureCode));
         lock (gate)
         {
             if (!TryCurrentLease(nodeId, jobId, generation, out var job) || job.State is not (DistributedJobStateV1.Assigned or DistributedJobStateV1.Running)) return false;
@@ -352,7 +355,7 @@ public sealed class DistributedWorkCoordinator : IDistributedWorkCoordinatorV1
     private static bool SameRequest(DistributedJobRequestV1 left, DistributedJobRequestV1 right) =>
         left.JobId == right.JobId && left.ContractId == right.ContractId && left.ContractVersion == right.ContractVersion && left.Operation == right.Operation &&
         left.Payload.GetRawText() == right.Payload.GetRawText() && left.HasExternalSideEffects == right.HasExternalSideEffects &&
-        left.RetrySafe == right.RetrySafe && left.CorrelationId == right.CorrelationId;
+        left.RetrySafe == right.RetrySafe && left.CorrelationId == right.CorrelationId && left.TimeoutSeconds == right.TimeoutSeconds && left.CausationId == right.CausationId;
 
     private static string NormalizeThumbprint(string thumbprint) => thumbprint.Replace(":", string.Empty, StringComparison.Ordinal).Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
     private static bool TryNormalizeThumbprint(string? thumbprint, out string normalized)
@@ -375,6 +378,7 @@ public sealed class DistributedWorkCoordinator : IDistributedWorkCoordinatorV1
         ValidateId(request.JobId, nameof(request.JobId));
         if (string.IsNullOrWhiteSpace(request.ContractId) || request.ContractId.Length > 256 || string.IsNullOrWhiteSpace(request.ContractVersion) || request.ContractVersion.Length > 64 || string.IsNullOrWhiteSpace(request.Operation) || request.Operation.Length > 128)
             throw new ArgumentException("A bounded contract ID and version are required.", nameof(request));
+        if (request.TimeoutSeconds is <= 0 or > 86400) throw new ArgumentException("Distributed request timeout is outside the supported range.", nameof(request));
         if (JsonSerializer.SerializeToUtf8Bytes(request.Payload).Length > 1024 * 1024) throw new ArgumentException("Job payload exceeds the 1 MiB limit.", nameof(request));
     }
 
@@ -383,7 +387,9 @@ public sealed class DistributedWorkCoordinator : IDistributedWorkCoordinatorV1
         ArgumentNullException.ThrowIfNull(inventory);
         if (string.IsNullOrWhiteSpace(inventory.OperatingSystem) || inventory.OperatingSystem.Length > 64 || string.IsNullOrWhiteSpace(inventory.Architecture) || inventory.Architecture.Length > 64 ||
             inventory.LogicalCpuCount is < 1 or > 4096 || inventory.AvailableMemoryBytes < 0 || inventory.MaximumConcurrentJobs is < 1 or > 1024 ||
-            inventory.Capabilities.Count > 256 || inventory.Accelerators.Count > 64 || inventory.Capabilities.Any(static capability => string.IsNullOrWhiteSpace(capability.ContractId) || string.IsNullOrWhiteSpace(capability.ContractVersion)))
+            inventory.Capabilities is null || inventory.Accelerators is null || inventory.Capabilities.Count > 256 || inventory.Accelerators.Count > 64 ||
+            inventory.Accelerators.Any(static value => value is null || value.Length > 128 || value.Any(char.IsControl)) ||
+            inventory.Capabilities.Any(static capability => capability is null || string.IsNullOrWhiteSpace(capability.ContractId) || capability.ContractId.Length > 256 || string.IsNullOrWhiteSpace(capability.ContractVersion) || capability.ContractVersion.Length > 64))
             throw new ArgumentException("Worker inventory is malformed or exceeds limits.", nameof(inventory));
     }
 

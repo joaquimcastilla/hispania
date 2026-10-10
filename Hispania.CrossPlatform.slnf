@@ -36,7 +36,11 @@
       "tests\\library-persistence\\Hispania.Library.Persistence.Sqlite.Tests.csproj",
       "infrastructure\\metadata\\Hispania.Metadata.Tmdb\\Hispania.Metadata.Tmdb.csproj",
       "contracts\\metadata\\Hispania.Metadata.Contracts.csproj",
-      "tests\\metadata-tmdb\\Hispania.Metadata.Tmdb.Tests.csproj"
+      "tests\\metadata-tmdb\\Hispania.Metadata.Tmdb.Tests.csproj",
+      "tests\\compatibility\\Hispania.Compatibility.Tests.csproj",
+      "infrastructure\\hosting\\Hispania.Hosting.csproj",
+      "apps\\deployment\\Hispania.Deployment.csproj",
+      "tests\\deployment\\Hispania.Deployment.Tests.csproj"
     ]
   }
 }

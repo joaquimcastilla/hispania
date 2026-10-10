@@ -25,5 +25,8 @@
     <ProjectReference Include="..\..\apps\ffmpeg-worker\Hispania.FFmpeg.Worker.csproj" />
     <ProjectReference Include="..\fakes\Hispania.FFmpeg.Worker.Fake\Hispania.FFmpeg.Worker.Fake.csproj" />
     <ProjectReference Include="..\..\infrastructure\persistence\distributed-work\Hispania.DistributedWork.Persistence.Sqlite.csproj" />
+    <ProjectReference Include="..\..\application\platform\jobs\Hispania.Platform.Jobs.Application.csproj" />
+    <ProjectReference Include="..\..\infrastructure\platform\persistence-sqlite\Hispania.Platform.Persistence.Sqlite.csproj" />
+    <ProjectReference Include="..\..\infrastructure\platform\worker-agent-jobs\Hispania.Platform.WorkerAgentJobs.csproj" />
   </ItemGroup>
 </Project>

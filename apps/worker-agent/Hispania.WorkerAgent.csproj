@@ -5,6 +5,7 @@
     <RootNamespace>Hispania.WorkerAgent</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\infrastructure\hosting\Hispania.Hosting.csproj" />
     <ProjectReference Include="..\..\core\runtime\Hispania.Runtime.csproj" />
     <ProjectReference Include="..\..\contracts\extension-demo\Hispania.ExtensionDemo.Contracts.csproj" />
   </ItemGroup>

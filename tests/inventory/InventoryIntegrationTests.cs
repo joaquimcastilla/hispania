@@ -5,6 +5,8 @@ using Hispania.Platform.Contracts.Assets;
 using Hispania.Platform.Contracts.Events;
 using Hispania.Runtime;
 using Hispania.Platform.Persistence.Sqlite;
+using Hispania.Platform.Storage.Application;
+using Hispania.Platform.Storage.Filesystem;
 using Xunit;
 
 namespace Hispania.Inventory.Tests;
@@ -50,12 +52,12 @@ public sealed class InventoryIntegrationTests
         Assert.All(audit.Records, record => Assert.Equal("correlation-9", record.CorrelationId));
         Assert.Contains(audit.Records, record => record.ActorId == "operator-4" && record.ResourceType == "stock-movement");
 
-        var platformAssets = new PersistentPlatformAssetStore(new FileAssetContentProvider(Path.Combine(root, "asset-content")), new SqliteAssetMetadataRepository(Path.Combine(root, "assets.sqlite")), 1024 * 1024);
+        var platformAssets = new PersistentPlatformAssetStore(new StorageProviderRegistryV1("filesystem", [new FilesystemStorageProviderV1(Path.Combine(root, "asset-content"))]), new SqliteAssetMetadataRepository(Path.Combine(root, "assets.sqlite")), 1024 * 1024);
         await using var payload = new MemoryStream([0x25, 0x50, 0x44, 0x46]);
         var asset = await platformAssets.StoreAsync(AssetType.Document, "application/pdf", payload, new("erp.inventory", item.Id.Value.ToString("D")), new("owner"), new Dictionary<string, string> { ["label"] = "Datasheet" });
         await service.AssociateAssetAsync(item.Id, new AssetReference(asset.Id), context);
         var restartedService = new InventoryService(new InventorySqliteStore(path), events, audit);
-        var restartedAssets = new PersistentPlatformAssetStore(new FileAssetContentProvider(Path.Combine(root, "asset-content")), new SqliteAssetMetadataRepository(Path.Combine(root, "assets.sqlite")), 1024 * 1024);
+        var restartedAssets = new PersistentPlatformAssetStore(new StorageProviderRegistryV1("filesystem", [new FilesystemStorageProviderV1(Path.Combine(root, "asset-content"))]), new SqliteAssetMetadataRepository(Path.Combine(root, "assets.sqlite")), 1024 * 1024);
         var reloaded = await restartedService.GetItemAsync(item.Id);
         Assert.NotNull(reloaded);
         var assetReference = Assert.Single(reloaded!.Assets);

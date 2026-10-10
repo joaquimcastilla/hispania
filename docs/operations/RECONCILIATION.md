@@ -1,0 +1,9 @@
+# Asset and storage reconciliation
+
+The Assets owner compares `platform_assets` metadata with the configured Storage provider. Missing content and size mismatches become findings. The provider's owned flat object inventory is also scanned for handles without Asset metadata. This scan is bounded by the requested item limit and continuation token.
+
+New orphan content has a 24-hour grace period by default (`Platform:Maintenance:OrphanGraceHours`, range 1–720). A mature orphan is entered in the asset owner's logical quarantine table with reason and observation time. Logical quarantine leaves bytes in place and consumes storage. No scan deletes content or changes Asset metadata. Repeated scans remain safe. An administrator with `platform.maintenance.read` can inspect scan findings and unresolved quarantine through the maintenance API (`GET /api/platform/maintenance/reconciliation/platform.assets.storage/quarantine?limit=100`) or the Modern or Classic admin page. Resolution requires an explicit operator repair or deletion after checking concurrent Asset publication; a subsequent scan marks the quarantine resolved when the object is referenced. There is no automatic orphan deletion.
+
+Storage enumeration is confined to the configured provider root and rejects reparse points. Unknown filenames and external Library roots are outside its ownership. Films, series, music and other user-owned media are never cleaned by this mechanism. Inventory's opaque Asset references remain Inventory data; Platform does not add a cross-domain foreign key or modify Inventory rows.
+
+There is no automatic physical quarantine move, restore, or deletion action. Before any future explicit resolution, an operator must inspect the finding and verify whether metadata creation or storage write was interrupted. Filesystem and SQLite cannot be committed in one transaction, so a grace window is essential but cannot eliminate all races.

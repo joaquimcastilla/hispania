@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><IsPackable>false</IsPackable><NoWarn>$(NoWarn);CA1861</NoWarn></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../web-contribution-fixtures/WebPackageFixture.cs" Link="WebPackageFixture.cs" />
+    <ProjectReference Include="../../infrastructure/hosting/Hispania.Hosting.csproj" />
+    <ProjectReference Include="../../core/runtime/Hispania.Runtime.csproj" />
+    <ProjectReference Include="../../modules/extension-demo/Hispania.ExtensionDemo.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2"><PrivateAssets>all</PrivateAssets></PackageReference>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+    <PackageReference Include="Npgsql" Version="10.0.0" />
+  </ItemGroup>
+</Project>

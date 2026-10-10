@@ -1,0 +1,32 @@
+{
+  "schemaGeneration": 1,
+  "contributions": [
+    {
+      "id": "dashboard",
+      "route": "/admin",
+      "title": "Schema 1 historical example",
+      "permission": "extensions.test.package.web.view",
+      "navigation": {
+        "icon": "status",
+        "section": "PrimaryNavigation",
+        "order": 10
+      },
+      "components": [
+        {
+          "type": "text",
+          "text": "Plain text <script> is literal"
+        },
+        {
+          "type": "table",
+          "text": "Estado",
+          "operation": "platform.health"
+        },
+        {
+          "type": "button",
+          "text": "Comprobar estado",
+          "operation": "platform.health.refresh"
+        }
+      ]
+    }
+  ]
+}

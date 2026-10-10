@@ -1,9 +1,6 @@
 using System.Diagnostics;
-using System.Security.Cryptography;
-using System.Text;
 using Hispania.Inventory.Contracts;
 using Hispania.Platform.Contracts.Assets;
-using Hispania.Platform.Contracts.Audit;
 
 namespace Hispania.Server;
 
@@ -12,17 +9,17 @@ public static class InventoryEndpoints
     public static IEndpointRouteBuilder MapInventoryEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/inventory").WithTags("Inventory");
-        var commandsGroup = group.MapGroup("").AddEndpointFilter(RequireAdminTokenAsync);
-        group.MapGet("/items", async (IInventoryQueryV1 query, CancellationToken token) => Results.Ok(await query.GetItemsAsync(token)));
-        group.MapGet("/assets/{assetId:guid}", async (Guid assetId, HttpContext http, IConfiguration configuration, IPlatformAssetStore assets, CancellationToken token) =>
+        var readGroup = group.MapGroup("").RequirePlatformPermission(InventoryPermissionIds.Read, allowLegacyAdminBearer: false);
+        var commandsGroup = group.MapGroup("").RequirePlatformPermission(InventoryPermissionIds.Write);
+        readGroup.MapGet("/items", async (IInventoryQueryV1 query, CancellationToken token) => Results.Ok(await query.GetItemsAsync(token)));
+        readGroup.MapGet("/assets/{assetId:guid}", async (Guid assetId, IPlatformAssetStore assets, CancellationToken token) =>
         {
             var metadata = await assets.GetMetadataAsync(new(assetId), token);
-            if (metadata is not null && !metadata.AccessPolicy.PublicRead && !await PlatformEndpoints.IsAdminAsync(http, configuration, token)) return Results.Unauthorized();
             return metadata is null ? Results.NotFound() : Results.Ok(new { id = metadata.Id, type = metadata.Type.ToString(), metadata.MimeType, metadata.Size, metadata.Metadata });
         });
-        group.MapGet("/warehouses", async (IInventoryQueryV1 query, CancellationToken token) => Results.Ok(await query.GetWarehousesAsync(token)));
-        group.MapGet("/locations", async (IInventoryQueryV1 query, CancellationToken token) => Results.Ok(await query.GetLocationsAsync(cancellationToken: token)));
-        group.MapGet("/stock", async (IInventoryQueryV1 query, CancellationToken token) => Results.Ok(await query.GetStockAsync(cancellationToken: token)));
+        readGroup.MapGet("/warehouses", async (IInventoryQueryV1 query, CancellationToken token) => Results.Ok(await query.GetWarehousesAsync(token)));
+        readGroup.MapGet("/locations", async (IInventoryQueryV1 query, CancellationToken token) => Results.Ok(await query.GetLocationsAsync(cancellationToken: token)));
+        readGroup.MapGet("/stock", async (IInventoryQueryV1 query, CancellationToken token) => Results.Ok(await query.GetStockAsync(cancellationToken: token)));
         commandsGroup.MapPost("/items", async (CreateItemRequest request, IInventoryCommandV1 commands, HttpContext http, CancellationToken token) =>
         {
             var item = await commands.CreateItemAsync(request.Sku, request.Name, Context(http), token);
@@ -43,22 +40,15 @@ public static class InventoryEndpoints
         });
         commandsGroup.MapPost("/issue", async (StockRequest request, IInventoryCommandV1 commands, HttpContext http, CancellationToken token) => Results.Ok(await commands.IssueAsync(new(request.ItemId), new(request.LocationId), request.Quantity, Context(http), token)));
         commandsGroup.MapPost("/transfer", async (TransferRequest request, IInventoryCommandV1 commands, HttpContext http, CancellationToken token) => Results.Ok(await commands.TransferAsync(new(request.ItemId), new(request.SourceLocationId), new(request.DestinationLocationId), request.Quantity, Context(http), token)));
-        group.MapGet("/items/{itemId:guid}/movements", async (Guid itemId, IInventoryQueryV1 query, CancellationToken token) => Results.Ok(await query.GetMovementsAsync(new(itemId), token)));
+        readGroup.MapGet("/items/{itemId:guid}/movements", async (Guid itemId, IInventoryQueryV1 query, CancellationToken token) => Results.Ok(await query.GetMovementsAsync(new(itemId), token)));
         return endpoints;
     }
 
-    private static InventoryContext Context(HttpContext http) => new(http.User.Identity?.IsAuthenticated == true ? http.User.Identity.Name : null, http.Request.Headers["X-Correlation-ID"].FirstOrDefault() ?? Activity.Current?.TraceId.ToString());
-    private static async ValueTask<object?> RequireAdminTokenAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    private static InventoryContext Context(HttpContext http)
     {
-        var configuration = context.HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-        var expectedToken = configuration["Modules:AdminToken"];
-        if (string.IsNullOrWhiteSpace(expectedToken)) return Results.Problem("Inventory write access is not configured.", statusCode: StatusCodes.Status503ServiceUnavailable);
-        var authorization = context.HttpContext.Request.Headers.Authorization.ToString();
-        if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return Results.Unauthorized();
-        var expected = Encoding.UTF8.GetBytes(expectedToken);
-        var provided = Encoding.UTF8.GetBytes(authorization[7..].Trim());
-        if (expected.Length != provided.Length || !CryptographicOperations.FixedTimeEquals(expected, provided)) return Results.Unauthorized();
-        return await next(context);
+        var user = AuthorizationEndpointFilters.AuthenticatedUserId(http);
+        var actor = user?.Value.ToString("D") ?? (AuthorizationEndpointFilters.IsLegacyAdmin(http) ? "legacy-admin-bearer" : null);
+        return new InventoryContext(actor, http.Request.Headers["X-Correlation-ID"].FirstOrDefault() ?? Activity.Current?.TraceId.ToString());
     }
     public sealed record CreateItemRequest(string Sku, string Name);
     public sealed record CreateWarehouseRequest(string Code, string Name);

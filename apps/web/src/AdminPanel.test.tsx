@@ -19,7 +19,7 @@ describe("AdminPanel metadata scan report", () => {
     const updated = vi.fn();
     render(<AdminPanel movieCount={1} onMetadataUpdated={updated} />);
     fireEvent.click(screen.getByRole("button", { name: "Volver a escanear toda la biblioteca" }));
-    expect(fetch).toHaveBeenCalledWith("/api/v1/admin/metadata/scan", { method: "POST" });
+    expect(fetch).toHaveBeenCalledWith("/api/v1/admin/metadata/scan", expect.objectContaining({ method: "POST", headers: expect.any(Headers) }));
     expect(await screen.findByRole("region", { name: "Películas sin metadata" })).toBeInTheDocument();
     expect(screen.getByText("American Beauty (1999)")).toBeInTheDocument();
     expect(screen.getByText("Sin coincidencia en TMDB")).toBeInTheDocument();
@@ -42,6 +42,6 @@ describe("AdminPanel metadata scan report", () => {
     render(<AdminPanel movieCount={3} onMetadataUpdated={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Buscar metadata de películas nuevas" }));
     expect(await screen.findByRole("status")).toHaveTextContent("películas nuevas o sin identificación TMDB");
-    expect(fetch).toHaveBeenCalledWith("/api/v1/admin/metadata/scan-new", { method: "POST" });
+    expect(fetch).toHaveBeenCalledWith("/api/v1/admin/metadata/scan-new", expect.objectContaining({ method: "POST", headers: expect.any(Headers) }));
   });
 });

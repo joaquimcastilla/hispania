@@ -46,7 +46,14 @@ public sealed class FfprobeTests
   {
    using var process = Process.Start(new ProcessStartInfo(name) { UseShellExecute = false, RedirectStandardError = true, ArgumentList = { "-version" } });
    if (process is null) return false;
-   process.WaitForExit(5000);
+   // Version output may exceed the pipe buffer; drain it before waiting for exit.
+   process.BeginErrorReadLine();
+   if (!process.WaitForExit(5000))
+   {
+    process.Kill(entireProcessTree: true);
+    process.WaitForExit();
+    Assert.Fail($"Executable availability check timed out for {name}.");
+   }
    return process.ExitCode == 0;
   }
   catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or IOException) { return false; }

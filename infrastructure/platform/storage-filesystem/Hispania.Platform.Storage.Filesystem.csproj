@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>Hispania.Platform.Storage.Filesystem</AssemblyName><RootNamespace>Hispania.Platform.Storage.Filesystem</RootNamespace></PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\..\..\contracts\platform\Hispania.Platform.Contracts.csproj" /><ProjectReference Include="..\..\..\application\platform\storage\Hispania.Platform.Storage.Application.csproj" /></ItemGroup>
+</Project>

@@ -4,8 +4,10 @@ public static class MetadataEnrichmentControlEndpoints
 {
     public static IEndpointRouteBuilder MapMetadataEnrichmentControlEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/api/v1/admin/metadata/scan", ScanAsync);
-        endpoints.MapPost("/api/v1/admin/metadata/scan-new", ScanNewAsync);
+        endpoints.MapPost("/api/v1/admin/metadata/scan", ScanAsync)
+            .RequirePlatformPermission(Hispania.Library.Contracts.MediaPermissionIds.Admin, allowLegacyAdminBearer: false);
+        endpoints.MapPost("/api/v1/admin/metadata/scan-new", ScanNewAsync)
+            .RequirePlatformPermission(Hispania.Library.Contracts.MediaPermissionIds.Admin, allowLegacyAdminBearer: false);
         return endpoints;
     }
 

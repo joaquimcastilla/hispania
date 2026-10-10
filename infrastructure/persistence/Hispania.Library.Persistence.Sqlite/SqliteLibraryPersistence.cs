@@ -43,12 +43,27 @@ internal sealed class SqliteUniqueConstraintViolationClassifier : IUniqueConstra
 
 public sealed class SqliteMigrationRunner(IDbContextFactory<LibraryCatalogDbContext> contextFactory) : ILibraryPersistenceInitializer
 {
+    // Read-only backup inspection belongs to the Media persistence owner.
+    public static string InspectBackupHistory(SqliteConnection connection)
+    {
+        var lineage = new[] { "20260922000100_initial", "20260922000200_metadata_enrichment", "20260922000300_rich_metadata", "20260922000400_metadata_settings", "20260923000500_person_metadata" };
+        var legacy = new[] { "0001_initial", "0002_metadata_enrichment", "0003_rich_metadata", "0004_metadata_settings", "0005_person_metadata" };
+        using var command = connection.CreateCommand(); command.CommandText = "SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId";
+        using var reader = command.ExecuteReader(); var records = new List<string>();
+        while (reader.Read())
+        {
+            var id = reader.GetString(0); var index = records.Count;
+            if (index >= lineage.Length || (id != lineage[index] && id != legacy[index])) throw new InvalidDataException("Unsupported Media migration lineage.");
+            records.Add(id);
+        }
+        return records.Count == 0 ? "legacy:0" : string.Join('|', records);
+    }
+
     public Task InitializeAsync(EfLibraryCatalogStore store, CancellationToken cancellationToken = default) => MigrateAndLoadAsync(store, cancellationToken);
     public async Task MigrateAndLoadAsync(EfLibraryCatalogStore store, CancellationToken cancellationToken)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-        await NormalizeLegacyMigrationHistoryAsync(context, cancellationToken);
-        await context.Database.MigrateAsync(cancellationToken);
+        await Hispania.Persistence.Schema.EfSchemaGuard.UpgradeAsync(context, "Media.Persistence.SQLite", cancellationToken, new Dictionary<string, string>(StringComparer.Ordinal) { ["0001_initial"]="20260922000100_initial", ["0002_metadata_enrichment"]="20260922000200_metadata_enrichment", ["0003_rich_metadata"]="20260922000300_rich_metadata", ["0004_metadata_settings"]="20260922000400_metadata_settings", ["0005_person_metadata"]="20260923000500_person_metadata" }, () => NormalizeLegacyMigrationHistoryAsync(context, cancellationToken));
         await store.LoadSnapshotAsync(cancellationToken: cancellationToken);
     }
 

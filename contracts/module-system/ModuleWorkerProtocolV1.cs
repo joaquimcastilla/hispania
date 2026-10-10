@@ -17,6 +17,8 @@ public static class ModuleWorkerProtocolV1
         if (!string.Equals(hello.ModuleId, expectedModuleId, StringComparison.Ordinal) || !string.Equals(hello.ModuleVersion, expectedModuleVersion, StringComparison.Ordinal))
             return new(false, 0, "Module process identity does not match the authorized package.");
         byte[] suppliedToken;
+        if (hello.AuthenticationToken is null || hello.AuthenticationToken.Length > 256)
+            return new(false, 0, "Module process authentication token is malformed.");
         try { suppliedToken = Convert.FromBase64String(hello.AuthenticationToken); }
         catch (FormatException) { return new(false, 0, "Module process authentication token is malformed."); }
         var expectedTokenBytes = Convert.FromBase64String(expectedToken);
@@ -57,13 +59,31 @@ public static class ModuleWorkerProtocolV1
         await ReadExactlyAsync(source, payload, cancellationToken).ConfigureAwait(false);
         try
         {
-            return JsonSerializer.Deserialize<T>(payload)
-                ?? throw new InvalidDataException("Module protocol frame contained an empty message.");
+            using var document = JsonDocument.Parse(payload);
+            RejectDuplicateFields(document.RootElement);
+            var result = document.RootElement.Deserialize<T>() ?? throw new InvalidDataException("Module protocol frame contained an empty message.");
+            if (result is ModuleWorkerFrameV1 frame && (frame.Kind is not ("hello" or "negotiation" or "capabilities" or "request" or "response" or "cancel" or "health" or "stop") || frame.Payload.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined))
+                throw new InvalidDataException("Module protocol envelope is invalid.");
+            return result;
         }
         catch (JsonException exception)
         {
             throw new InvalidDataException("Module protocol frame contains invalid JSON.", exception);
         }
+    }
+
+    private static void RejectDuplicateFields(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var property in value.EnumerateObject())
+            {
+                if (!names.Add(property.Name)) throw new InvalidDataException("Module protocol contains duplicate fields.");
+                RejectDuplicateFields(property.Value);
+            }
+        }
+        else if (value.ValueKind == JsonValueKind.Array) foreach (var item in value.EnumerateArray()) RejectDuplicateFields(item);
     }
 
     private static async ValueTask ReadExactlyAsync(Stream source, Memory<byte> buffer, CancellationToken cancellationToken)

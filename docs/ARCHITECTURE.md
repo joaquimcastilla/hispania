@@ -1,14 +1,24 @@
 # Architecture
 
+## Versioning and compatibility foundation (Phase 14)
+
+The integrated documentation baseline is HISPANIA 0.7.0, recorded only in root `version.json`; it does not renumber SDKs, assemblies, manifests, protocols or schemas. [VERSIONING](VERSIONING.md) distinguishes each axis; [COMPATIBILITY-POLICY](COMPATIBILITY-POLICY.md) requires explicit source/binary/wire/data/behavioral promises. Current public surfaces are experimental or Stable Candidate, with zero Public Stable declarations. See the [catalog](compatibility/CONTRACT-CATALOG.md), [support matrix](SUPPORT-MATRIX.md), [1.0 scope](PLATFORM-1.0-SCOPE.md) and [ADR-0039](adr/ADR-0039-versioning-and-compatibility-model.md).
+
+“Kernel” describes an architectural role implemented by `core/runtime`; `core/kernel/Hispania.Kernel.csproj` itself is currently an empty placeholder. Its later removal is proposed, without adding functionality or changing the solution in Phase 14. Version metadata/catalog/API evidence belongs to Platform tooling and adds no production dependency on Media or Inventory.
+
 ## Platform and domain suites (Phase 12)
 
 `Hispania.Platform.Contracts` contains cross-domain mechanisms and public abstractions. It must not reference Media or Inventory. `Hispania.Runtime` implements generic runtime facilities; domain behavior remains in its owning suite. Media is currently expressed through `core/domain`, `contracts/{library,metadata,playback}`, and their application services and adapters. See [ADR-0030](adr/ADR-0030-platform-generalization-and-domain-suites.md) for dependency boundaries and validation.
 
-The first platform contracts cover versioned in-process events, audit records, and opaque asset references. The event bus dispatches sequentially, isolates individual handler failures, propagates caller cancellation, and exposes an injectable metrics hook. It is local and non-durable. Asset interfaces do not reveal physical paths; storage and authorization implementations are still host responsibilities.
+The first platform contracts cover versioned in-process events, audit records, opaque asset references, Identity, and Storage V1. Identity owns users, credentials, and sessions in a dedicated SQLite store; it uses PBKDF2 password hashes and hashed opaque session tokens. `LocalPlatformEventBus` remains volatile, sequential in-process dispatch; durable delivery is a separate at-least-once Platform contract and SQLite store. Platform Assets resolve opaque Storage handles through the explicitly composed provider registry; the filesystem provider owns path derivation and never returns paths. See [ADR-0036](adr/ADR-0036-platform-storage-provider-abstraction.md).
 
 Inventory is composed as a second suite: `contracts/inventory` -> `application/inventory` -> Inventory-owned `infrastructure/persistence/inventory-sqlite`. Its SQLite file/tables are separate from Library, and only Inventory tables have relational constraints. Inventory keeps opaque Platform `AssetId` references and publishes versioned events; the server composes queries and Assets for `/erp/inventory`. This is an ERP foundation and second-domain proof, not a complete ERP. `Hispania.Platform.slnf` builds Platform contracts, runtime, generic WorkerAgent, and Platform persistence without Media, Playback, FFmpeg, or Inventory implementation.
 
-The Inventory page is registered alongside Media through the Web Shell route/navigation registry and is reached at `/erp/inventory`. Inventory writes use the configured `Modules:AdminToken` bearer filter; reads are public. User sessions and domain permissions are not yet generalized. The server is the composition root for Inventory; dynamic module registration is future work.
+Phase 13.4 persists Inventory `inventory.stock-changed@1` for the stable Platform observer. SQLite commits events and initial subscriber deliveries together in a separate `events.sqlite`; retries, dead letters, leased Processing recovery and explicit replay are tracked per subscriber. The server's admin read/detail/replay endpoints require current Platform session RBAC (`platform.events.read` / `platform.events.manage`); legacy bearer is not enabled. See [ADR-0033](adr/ADR-0033-platform-durable-event-bus.md) for delivery and single-dispatcher limitations.
+
+Phase 13.5 adds a separate general durable Jobs mechanism: Event means something happened; Job means work should be performed. `Hispania.Platform.Contracts` defines versioned Job/handler contracts, `Hispania.Platform.Jobs.Application` validates and dispatches registered JobTypes, and Platform SQLite owns a distinct `jobs.sqlite` (`platform_jobs`, `platform_job_attempts`). The local dispatcher uses immediate acquisition/finalization transactions and renewable leases; handlers run outside SQLite transactions. Retries use bounded exponential backoff, final retryable errors/timeouts become DeadLettered, and stale Running attempts recover on a later acquisition. Delivery is at-least-once; the Job idempotency key (unique by JobType+key for the persisted row's lifetime) deduplicates creation only, not handler effects. Session-only RBAC protects `/api/platform/jobs`; the Web page is `/admin/jobs`. Phase 13.5 registers only trusted Platform handlers such as `platform.test.hash`; WorkerAgent does not reference Jobs implementation. See [ADR-0034](adr/ADR-0034-platform-background-jobs.md).
+
+The Inventory page is registered alongside Media through the Web Shell route/navigation registry and is reached at `/erp/inventory`. Inventory reads require a valid Session with `inventory.read`; mutations require `inventory.write`, with explicitly retained legacy admin bearer compatibility. Phase 13.3 applies domain permission checks at the HTTP composition root without coupling Inventory to the Authorization implementation. The server is the composition root for Inventory; dynamic module registration is future work.
 
 Media remains the suite owning Library, Metadata, Search/catalog, Playback, Streaming, and Transcoding capabilities. The current names are distributed across the existing project tree; this phase formalizes ownership before moving source folders.
 
@@ -329,7 +339,7 @@ The first in-process replacement is limited to the pure `hispania.playback.plann
 
 This hot-swap path is **registry substitution inside one process**. Both implementations and their assemblies remain loaded, and deployment files are untouched. Assembly unloading and physical binary replacement are not implemented. It remains distinct from the generic A/B routing foundation (ADR-0028), which is not yet integrated with Playback Planner or supervisor lifecycle. Database replacement, database migrations during traffic, and effectful capabilities remain ineligible. Module lifecycle and hot-swap metrics are in-process counters; transition events are available to host consumers.
 
-Historical validation note: the paragraph above was replaced by the final Phase 12 CI evidence. On current `main`, SHA `2e16b039d0fb8a3223366f7af478353b68886af1`, [Validation #36625775324](https://github.com/joaquimcastilla/hispania/actions/runs/36625775324) passed on Linux and Windows. PostgreSQL-live passed 1/1 on Linux; Platform-only, full builds/suites, Linux resource-control worker paths, and server restart/recovery checks passed in their configured jobs. See the README for the result summary and ADR-0030 for Phase 12 closure evidence. This does not mean every configured resource ceiling has been stress-tested to exhaustion.
+Historical validation note: the paragraph above was replaced by the final Phase 12 CI evidence. At the historical Phase 12 validation point on `main`, SHA `2e16b039d0fb8a3223366f7af478353b68886af1`, [Validation #36625775324](https://github.com/joaquimcastilla/hispania/actions/runs/36625775324) passed on Linux and Windows. PostgreSQL-live passed 1/1 on Linux; Platform-only, full builds/suites, Linux resource-control worker paths, and server restart/recovery checks passed in their configured jobs. See the README for the result summary and ADR-0030 for Phase 12 closure evidence. This does not mean every configured resource ceiling has been stress-tested to exhaustion.
 
 ## 15. Manifest discovery and installable extensions (Phase 7)
 
@@ -360,7 +370,104 @@ HISPANIA Platform
 Inventory stores opaque asset references only. `apps/server` composes Inventory, Platform Assets, and the optional Media video capability. Platform stores asset metadata in its own SQLite database and bytes under a separate content root; Audit has a separate append-only SQLite database. Media library data remains under its existing persistence provider. The solution filter builds Platform contracts/runtime/host, generic WorkerAgent and Platform persistence without Inventory or Media implementations.
 
 ```text
-Inventory item → AssetRef → Platform Assets → (if video/mp4 and public) Media asset stream capability
+Inventory item → AssetRef → Platform Assets → Storage handle → selected Storage provider
+Platform Assets → (if video/mp4 and public) Media asset stream capability
 ```
 
 Server and WorkerAgent are composition roots. They assemble public contracts with concrete adapters and providers; domain projects may reference Platform contracts but cannot reference peer-domain implementations. FFmpeg is discovered by WorkerAgent through the generic Runtime provider interface and configured provider assembly list.
+
+### Phase 13.2: Platform authorization and Web authentication
+
+Platform Authorization owns versioned role/access contracts, policy and SQLite persistence alongside Identity in `identity.sqlite`. Effective permissions are resolved from a user's roles on every protected request; missing grants deny, and disabled users are denied regardless of session validity. The reserved `platform.admin` permission grants `platform.*` only. Media and Inventory use the reusable Platform Authorization contracts/filter at the server composition root; neither domain references the authorization implementation, and Platform does not reference either domain. Bootstrap grants only the built-in Platform permissions. An administrator can grant concrete domain permission IDs through the role API; no wildcard expansion is used for domain access. See ADR-0032 for bootstrap and legacy compatibility details.
+
+The server's reusable permission endpoint filter validates the opaque session through Identity before checking the current permission grants. It distinguishes unauthenticated 401 from authenticated 403. The bootstrap endpoint is separately guarded by an operator-configured, one-time secret. The legacy admin bearer remains accepted only on endpoints using the compatibility filter, with a warning, until a later removal phase.
+
+The shared Modern/Classic Web Shell keeps its tab session in `sessionStorage`, reloads current user/effective permissions through `/api/identity/me`, and revokes on logout. Protected user/role routes gate navigation and direct page rendering while their server endpoints enforce permissions independently. `sessionStorage` is not protected from same-origin script execution; cookie-based auth would require an explicit CSRF/origin design.
+
+### Phase 13.3: Domain authorization integration
+
+Domains own these stable permission IDs; Platform stores grants and resolves them without depending on domain semantics:
+
+| Permission | Domain | Purpose |
+|---|---|---|
+| `inventory.read` | Inventory | Read inventory items, locations, warehouses, stock, movements and associated asset metadata |
+| `inventory.write` | Inventory | Create inventory records, associate assets and record stock changes |
+| `media.library.read` | Media | Read the media catalog, effective metadata, TMDB identification state and people |
+| `media.playback.use` | Media | Request playback capability and stream media |
+| `media.admin` | Media | Edit metadata, run TMDB identification operations and trigger metadata scans |
+
+Inventory reads require a session with `inventory.read`; mutations require `inventory.write`. The existing `Modules:AdminToken` remains an explicit compatibility exception for exactly these mutations: `POST /api/inventory/items`, `POST /api/inventory/warehouses`, `POST /api/inventory/warehouses/{warehouseId}/locations`, `POST /api/inventory/receive`, `POST /api/inventory/items/{itemId}/assets`, `DELETE /api/inventory/items/{itemId}/assets/{assetId}`, `POST /api/inventory/issue`, and `POST /api/inventory/transfer`. It does not authorize Inventory reads or Media endpoints. Media catalog, playback and administrative endpoints require session permissions and do not accept that legacy bearer. Permission grants are resolved on every request, so changes apply to an active session; disabled users receive 401. Inventory mutations retain their existing audit records and now set `Audit.Actor` to the Identity user ID for sessions or the nonsecret `legacy-admin-bearer` marker for the compatibility path. Successfully authenticated Media admin mutations write actor-aware audit attempts; normal Media reads are not recorded.
+
+The API keeps these read routes public by design: `GET /api/v1/artwork/{id}` serves published poster/backdrop assets consumed by native image elements, and `GET /api/assets/{id}` plus `/content` continue honoring `PublicRead` for public assets. The existing administrative bearer may still read private Platform assets only on those explicit Platform asset endpoints. Inventory APIs, Media catalog/metadata/people, playback, metadata administration and TMDB operations are protected. Web navigation and direct routes reflect effective permissions; the server remains authoritative. Session-authenticated playback fetches the stream with an Authorization header and creates a temporary browser object URL because native `<video src>` cannot attach the `Session` header.
+
+## Phase 13.6 — Remote Platform Jobs
+
+The Platform dispatcher may route explicitly registered Jobs locally or through the existing single-coordinator WorkerAgent transport. The composition adapter maps `platform.test.hash` to `platform.jobs.hash@1.0`; a bounded `platform.test.delay` test capability exercises cooperative cancellation/timeout. It reuses mTLS worker authorization, capability/version checks, heartbeats, capacity, leases, and generation fencing. `RemoteOnly` remains Pending until a compatible worker is available; `RemotePreferred` uses remote execution when available and may fall back locally; `LocalOnly` never leaves the coordinator. Jobs SQLite remains the source of truth and fences late attempt completion independently. WorkerAgent loads the trusted Platform capability provider through its existing configured provider list and gains no Jobs persistence or domain dependency. Execution remains at-least-once. See [ADR-0035](adr/ADR-0035-platform-remote-job-execution.md).
+
+## Phase 13.8: Observability Foundation
+
+Platform correlation, metrics, health and ActivitySource contracts live in `Hispania.Platform.Contracts`; their reusable implementations live in `Hispania.Platform.Observability.Application`. Neither references Media or Inventory. HTTP `X-Correlation-ID` establishes an AsyncLocal scope; durable Event/Job envelopes retain correlation/causation and W3C parent metadata, including remote WorkerAgent propagation. Microsoft.Extensions.Logging remains the logging API. Audit is the business/security record; logs diagnose, metrics aggregate and traces follow flows.
+
+The server composes critical store/provider health and recoverable backlog/worker conditions, with optional Media readiness supplied by composition. `/api/health` and `/api/health/ready` report readiness, `/api/health/live` liveness. Detailed health and `/api/platform/observability` require `platform.observability.read`, without legacy bearer grants. `/admin/observability` displays safe aggregate snapshots in both Web variants. Metrics are bounded runtime counters/gauges/timings without identifier labels, history or exporters. See [ADR-0037](adr/ADR-0037-platform-observability-foundation.md) for names, restart semantics, security and future exporters.
+
+
+## Phase 13.9: Platform Administration consolidation
+
+Modern and Classic share `AdminShell` and the static `adminRoutes` contribution registry exported by `webModules`. Each contribution owns a path, label, required permission and React component. The shell derives its navigation, active section and direct-route protection from the same registry; `App` delegates the `/admin` namespace instead of switching on individual pages. A future statically composed module can contribute another route without rewriting the shell. Dynamic frontend module loading is outside this phase. This extends the existing Web Shell composition approach and does not introduce a new module registration architecture.
+
+| Route | Permission | Surface |
+| --- | --- | --- |
+| `/admin` | `platform.observability.read` | Operational Overview |
+| `/admin/users` | `platform.users.read` | Users, enable/disable and assigned roles |
+| `/admin/roles` | `platform.roles.read` | Roles and permissions |
+| `/admin/events` | `platform.events.read` | Bounded deliveries, pending/retrying/dead-letter filters |
+| `/admin/jobs` | `platform.jobs.read` | Bounded jobs, schedules, executors/workers and attempts |
+| `/admin/observability` | `platform.observability.read` | Technical health, live/ready, backlog, workers and runtime metrics |
+| `/admin/assets` | existing `platform.assets.write` | Safe metadata lookup by ID and existing audited deletion |
+| `/admin/modules` | existing `platform.admin` | Runtime/extensions, versions and existing catalog lifecycle operations |
+
+`platform.admin` retains its existing Platform permission override and grants no Media/Inventory permission implicitly. An operator without administrative grants sees no Admin entry; direct routes are blocked. `/admin` sends a partial administrator without Observability access to the first permitted section (for example Jobs). Admin remains reachable from the desktop navigation, mobile drawer and a domain access-denied landing page. Read-only users see no mutation controls; Users/Roles use their existing write permissions, Events uses `platform.events.manage`, Jobs uses `platform.jobs.manage`. Backend endpoint filters remain the authority.
+
+The shared minimal `adminClient` uses `AuthContext.request`, preserving opaque `Authorization: Session` headers. HTTP 401 clears the active session/auth state and the shell shows login with the return path. 403, 404, 409 and server/network errors use bounded UI messages rather than server exception bodies. There is no additional per-page current-user/permission fetch, new session mechanism or polling. Refresh is manual. Readiness HTTP 503 is a valid Unhealthy health response and is displayed separately from liveness.
+
+The host composes `GET /api/platform/admin/overview` from existing public health/metrics, Identity query, Jobs/Events services, worker coordinator and module runtime. It requires `platform.observability.read`, matching the existing technical aggregate permission. Enabled-user counts additionally require `platform.users.read`; module counts additionally require `platform.admin`. Sessions reuse the health-refreshed bounded gauge. No new direct database queries or domain dependencies are introduced. This is one summary request; the detailed Observability page fetches its existing aggregate and the two public health status endpoints.
+
+Safe host projections expose `GET /api/platform/admin/assets/{id}` and `GET /api/platform/admin/modules`, protected with Session-only existing AssetsWrite/Admin permissions. Asset output contains only ID/type/MIME/size/provider/timestamps. The Assets contract has no global query; this phase provides ID lookup rather than adding persistence/listing responsibilities. Module output excludes manifest paths, package directories, publisher keys and health exception detail. The public runtime has no universal module generation identifier: the column is explicitly unavailable rather than reusing an unrelated health revision or worker execution generation. Incompatible/invalid packages are not activated; catalog policy remains authoritative. Version-specific update/uninstall use the existing catalog, while activate resumes the loaded version or selects the preferred discovered version. New Session adapters audit successful and failed lifecycle attempts with actor/correlation, including unload conflicts after partial draining. Legacy package/trust/worker/experiment administration endpoints and their auditing remain available unchanged.
+
+Job/event payloads and raw failure summaries are not rendered. Tables instead indicate a recorded error; delivery attempt views render only outcome/time/count fields. Assets do not expose content handles, ownership metadata or local paths. No storage/job/event/identity architecture, external observability backend, dynamic frontend loader or Phase 13.10 hardening is added.
+
+
+## Phase 13 hardening and closure
+
+See [ADR-0038](adr/ADR-0038-phase-13-platform-maturity-closure.md) and the [closure/security audit](PHASE-13-CLOSURE.md) for the final dependency graph, exact legacy bearer inventory, health/metrics semantics, process and concurrency gates, and limitations. Server composition supplies a sanitized HTTP error boundary; exception messages/stacks, provider paths and credentials are excluded from error responses and failure logs. Events and Jobs retain independent at-least-once stores. **Phase 13 — CLOSED — validated on Linux and Windows** Functional SHA `75e10edd560e396a6e509a386d5aae5dd7928827` passed [Validation #37230450104](https://github.com/joaquimcastilla/hispania/actions/runs/37230450104). The annotated `phase-13-complete` checkpoint and Release close the phase; merging to main is a separate task. Closure adds no domain features or Phase 14 work.
+
+## Phase 15 historical evidence
+
+Phase 15 adds test/tooling-owned [historical compatibility baselines](PHASE-15-COMPATIBILITY-BASELINES.md), using immutable artifacts from validated Phase 14 and current runtime consumers. Production dependencies/APIs remain unchanged; no database upgrade or deployment architecture is added. [ADR-0040](adr/ADR-0040-historical-compatibility-baselines.md) separates binary/source/API/wire/behavioral evidence and future breaking-change review.
+
+
+## Phase 16 — historical persisted data
+
+Owner-local SQLite schemas now track version 1 (`0001_baseline07_adoption`) and minimum supported known legacy shape 0. Media keeps its EF SQLite five-step and PostgreSQL one-step lineages; playback JSON remains schema 1. Unknown/future histories fail before writes. Upgrades are forward-only and per-store transactional; startup blocks readiness on failure. Old executables without guards are not safe rollback targets. Data schema versions remain independent of distribution/API/wire versions; no contract gains Public Stable status.
+
+The independent 15-artifact populated corpus and mandatory Linux PostgreSQL gate are documented in [Phase 16](PHASE-16-HISTORICAL-DATA-UPGRADES.md) and [ADR-0041](adr/ADR-0041-schema-evolution-and-historical-upgrades.md). Phase 15's 27 artifacts and hashes remain frozen. Local implementation is prepared for CI; Phase 16 closure awaits live PostgreSQL and both OS jobs. Backup/restore remains outside this phase.
+
+## Phase 17 — offline installation backup boundary
+
+Host composition owns canonical destination mapping and preservation of configured source paths and an exclusive installation lock. The backup path executes before runtime composition and uses SQLite backup APIs, owner-local Assets validation and logical PostgreSQL tooling; no domain is added to Platform dependencies. Full bundles are staged, verified and published by rename. Restore requires an absent local root and empty configured PostgreSQL database, with a persistent incomplete-restore marker and no global ACID claim. See [ADR-0042](adr/ADR-0042-backup-restore-and-disaster-recovery.md) and [Phase 17](PHASE-17-BACKUP-RESTORE.md) for support and pending gates.
+
+## Phase 18 production deployment
+
+Host-owned infrastructure/hosting separates strict generation-1 operational configuration, secret references and managed state. Server/Worker share SCM/systemd lifetimes; migrations remain owner-local and Platform gains no Media/Inventory dependency. Child paths derive from the executable root. See [Phase 18](PHASE-18-PRODUCTION-DEPLOYMENT.md) and [ADR-0043](adr/ADR-0043-configuration-secrets-and-production-deployment.md).
+
+
+## Phase 19 package lifecycle
+
+Format 2 adds authenticated package SemVer/dependencies while format 1 and immutable Phase 15 signatures remain supported. Local deterministic planning, a pinned graph, staged operations, current-policy rollback/recovery and Phase 17 graph verification remain experimental. Distribution 0.7.0, 24 axes and zero Public Stable are unchanged. See [Phase 19](PHASE-19-PACKAGE-LIFECYCLE.md) and [ADR-0044](adr/ADR-0044-package-dependencies-and-lifecycle.md); local acceptance and both-OS CI are separate evidence.
+
+
+## Phase 20 — Dynamic Web Modules (Experimental)
+
+[Phase 20](PHASE-20-DYNAMIC-WEB-MODULES.md) adds signed declarative Web Schema Generation 1 as independent compatibility axis 25. Package Format 2, distribution 0.7.0 and private npm 0.1.0 remain unchanged; zero contracts are Public Stable. Required UI uses existing host/CLR capability negotiation; optional future UI is blocked independently of a healthy backend. Modern and Classic share one existing routing/registry composition and fixed authorized Platform operations. No package JavaScript, raw HTML/CSS, remote URLs, Node runtime or hostile-code browser sandbox is introduced.
+
+The package catalog, journal, trust/authorization and dependency graph remain authoritative; immutable UI projections and parsed-descriptor caches are ephemeral. Actual browser, portable restore and verified predecessor distribution-upgrade tests accompany preserved Phase 14–19 gates. Windows local evidence and pending Linux/native/live-PostgreSQL CI are distinguished in the local acceptance report. See [ADR 0045](adr/ADR-0045-dynamic-web-contributions.md), [author guide](DYNAMIC-WEB-AUTHOR-GUIDE.md) and [operator guide](DYNAMIC-WEB-OPERATOR-GUIDE.md).

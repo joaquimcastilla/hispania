@@ -1,6 +1,8 @@
 using Hispania.Platform.Contracts.Assets;
 using Hispania.Platform.Contracts.Audit;
 using Hispania.Platform.Persistence.Sqlite;
+using Hispania.Platform.Storage.Application;
+using Hispania.Platform.Storage.Filesystem;
 using Xunit;
 using Microsoft.Data.Sqlite;
 
@@ -15,14 +17,14 @@ public sealed class PlatformPersistenceTests
         try
         {
             var metadataPath = Path.Combine(root, "assets.sqlite"); var contentPath = Path.Combine(root, "blobs"); var auditPath = Path.Combine(root, "audit.sqlite");
-            var firstAssets = new PersistentPlatformAssetStore(new FileAssetContentProvider(contentPath), new SqliteAssetMetadataRepository(metadataPath), 1024 * 1024);
+            var firstAssets = new PersistentPlatformAssetStore(new StorageProviderRegistryV1("filesystem", [new FilesystemStorageProviderV1(contentPath)]), new SqliteAssetMetadataRepository(metadataPath), 1024 * 1024);
             var expectedBytes = "persistent asset bytes"u8.ToArray();
             await using var source = new MemoryStream(expectedBytes);
             var asset = await firstAssets.StoreAsync(AssetType.Video, "video/mp4", source, new("erp.inventory", "item-1"), new("public-read", true), new Dictionary<string, string> { ["label"] = "demo", ["accessToken"] = "must-not-persist" });
             var firstAudit = new SqlitePlatformAuditStore(auditPath);
             await firstAudit.WriteAsync(new(DateTimeOffset.UtcNow, "admin", "trace-1", "inventory", "asset-associated", "item", "item-1", "success", new Dictionary<string, string> { ["asset"] = asset.Id.Value.ToString(), ["password"] = "must-not-persist" }));
 
-            var restartedAssets = new PersistentPlatformAssetStore(new FileAssetContentProvider(contentPath), new SqliteAssetMetadataRepository(metadataPath), 1024 * 1024);
+            var restartedAssets = new PersistentPlatformAssetStore(new StorageProviderRegistryV1("filesystem", [new FilesystemStorageProviderV1(contentPath)]), new SqliteAssetMetadataRepository(metadataPath), 1024 * 1024);
             var recovered = await restartedAssets.GetMetadataAsync(asset.Id);
             Assert.NotNull(recovered); Assert.Equal(asset.ContentHandle, recovered.ContentHandle); Assert.Equal(AssetStatus.Ready, recovered.Status);
             Assert.False(recovered.Metadata.ContainsKey("accessToken"));

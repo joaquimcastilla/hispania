@@ -194,7 +194,9 @@ internal static class ModuleHost
 
     private static void ValidatePackage(ModuleManifest manifest, string directory)
     {
-        if (manifest.Runtime != "dotnet-outofprocess" || manifest.PackageFormatVersion != 1 || manifest.Files is null || manifest.Provides is null || manifest.Requires is null || manifest.Dependencies is null || manifest.ContractTypes is null)
+        if (manifest.RequiredModuleHostProtocol is not null && manifest.RequiredModuleHostProtocol != ModuleWorkerProtocolV1.Version)
+            throw new InvalidDataException("Required ModuleHost protocol generation is unsupported.");
+        if (manifest.Runtime != "dotnet-outofprocess" || manifest.PackageFormatVersion is not (1 or 2) || manifest.Files is null || manifest.Provides is null || manifest.Requires is null || manifest.Dependencies is null || manifest.ContractTypes is null)
             throw new InvalidDataException("Package runtime or format is not supported by the generic host.");
         if (!Version.TryParse(manifest.Version, out _) || !Version.TryParse(manifest.MinimumHostVersion, out var minimum) || new Version(1, 0, 0) < minimum ||
             manifest.MaximumHostVersion is not null && (!Version.TryParse(manifest.MaximumHostVersion, out var maximum) || new Version(1, 0, 0) > maximum))

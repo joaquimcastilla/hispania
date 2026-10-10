@@ -1,0 +1,9 @@
+{
+  "SelectedProtocolVersion": 1,
+  "AuthorizedCapabilities": [
+    {
+      "ContractId": "test.baseline.echo",
+      "ContractVersion": "1.0"
+    }
+  ]
+}

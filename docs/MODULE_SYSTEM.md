@@ -1,16 +1,26 @@
 # Module System
 
+## Version semantics (Phase 14)
+
+Module implementation identity, exact capability contract identity, package format generation, manifest schema, host acceptance level and IPC wire generation are separate axes. V1 is a technical generation, not a stable 1.0 release. The legacy host value 1.0.0 is retained for manifest bounds; the distribution baseline 0.7.0 must not replace it mechanically. Passing host bounds does not establish binary/API compatibility. SDK/public contract stability and missing gates are recorded in [VERSIONING](VERSIONING.md), [COMPATIBILITY-POLICY](COMPATIBILITY-POLICY.md) and the [catalog](compatibility/CONTRACT-CATALOG.md). No Public Stable contract is declared by Phase 14.
+
 > **Current validation:** Phase 12 is integrated on `main`. GitHub Actions [Validation #36625775324](https://github.com/joaquimcastilla/hispania/actions/runs/36625775324) passed on Linux and Windows at `2e16b039d0fb8a3223366f7af478353b68886af1`. Historical phase notes below retain the test state at the time they were written; later Phase 11/12 coverage supersedes their pending-validation statements. See [ADR-0030](adr/ADR-0030-platform-generalization-and-domain-suites.md) for Phase 12 scope and results. Passing configured process-limit tests does not claim hostile-code sandboxing or prove every limit-exhaustion case.
 
 ## Platform contracts and events
 
+### Storage providers (Phase 13.7)
+
+`Hispania.Platform.Contracts` defines `IStorageProviderV1`, opaque `StorageObjectHandle` values, technical metadata, and `IStorageProviderResolverV1`. `StorageProviderRegistryV1` is explicitly assembled by the server; `Storage:DefaultProvider` selects new writes and each Asset records the owning provider. The current filesystem implementation is isolated in `Hispania.Platform.Storage.Filesystem`. Asset clients see Asset IDs/metadata, never filesystem paths. New handles use `storage://<provider-id>/<opaque-id>`. Existing SQLite Assets migrate additively with provider `filesystem` and legacy hex handles remain readable. Write and delete compensation limits, provider health, and path security are in [ADR-0036](adr/ADR-0036-platform-storage-provider-abstraction.md). This registry is an in-process selection mechanism, not dynamic plugin discovery; future object storage requires a provider implementation and separately planned content migration.
+
 Cross-domain module/runtime mechanisms belong in `Hispania.Platform.Contracts` or `Hispania.ModuleSystem.Contracts`; domain-specific contracts stay with their suite. The platform assembly has no Media project reference. `LocalPlatformEventBus` provides deterministic sequential in-process dispatch over versioned event contracts. Publishers receive per-handler failures, and remaining handlers still run. This transport is not durable and does not retry; a future transport can implement `IPlatformEventPublisher` without changing event consumers.
+
+The durable V1 contract is separate: `IDurablePlatformEventBusV1` stores explicit event type/version and bounded UTF-8 JSON with independent subscriber delivery rows. Stable subscriber IDs and registered codecs prevent CLR type names in persisted payloads from selecting runtime types. SQLite is Platform-owned and separate from domain databases. At-least-once delivery, bounded retries/dead-letter, lease recovery and replay are documented in [ADR-0033](adr/ADR-0033-platform-durable-event-bus.md). One local dispatcher per store is supported; no distributed coordination or global ordering guarantee is made.
 
 ### Domain suite ownership
 
 Media owns Library, Metadata, Search/catalog, Playback, Streaming, and Transcoding. Inventory owns its Item/Warehouse/Location/Stock/Movement records and its SQLite schema. Inventory code references Platform contracts and its own persistence; it does not reference Media projects or tables. The server is the composition root and may reference both suites' public APIs and adapters. `Hispania.Platform.slnf` builds the Platform projects, generic WorkerAgent, and Platform persistence without Media, Playback, FFmpeg, or Inventory implementation.
 
-Inventory is currently composed into the server directly through DI, not discovered as a dynamically loadable `IModule`. Its mutation routes require the existing admin bearer token; read routes remain public. User identity and domain permission contracts are not wired into the web shell yet. WorkerAgent hosts generic capabilities without an FFmpeg project reference; the Media FFmpeg provider is loaded only when configured by the operator.
+Inventory is composed into the server directly through DI, not discovered as a dynamically loadable `IModule`. Inventory API reads require `inventory.read`; mutations require `inventory.write`. The legacy `Modules:AdminToken` bearer is retained only for these mutation routes: `POST /api/inventory/items`, `POST /api/inventory/warehouses`, `POST /api/inventory/warehouses/{warehouseId}/locations`, `POST /api/inventory/receive`, `POST /api/inventory/items/{itemId}/assets`, `DELETE /api/inventory/items/{itemId}/assets/{assetId}`, `POST /api/inventory/issue`, and `POST /api/inventory/transfer`. It does not authorize Inventory reads or Media endpoints. Platform Identity owns persistent users, credentials, and sessions; Platform Authorization resolves current grants on each request and drives protected Web routes and navigation. Session HTTP auth uses the explicit `Session` scheme; the temporary admin bearer is a route-specific compatibility path. WorkerAgent hosts generic capabilities without an FFmpeg project reference; the Media FFmpeg provider is loaded only when configured by the operator.
 
 ## Goal
 
@@ -342,6 +352,10 @@ Exports distinguish assigned, executed, completed, errors, timeouts, cancellatio
 
 New capabilities must opt in only after review. Shadow mode requires a read-only public operation and restricted read-only dependencies that can be verified; a native module declaration alone cannot constrain hidden file, network, database, or process effects. Scanners, migrations, shared persistence, and metadata writers are not eligible. Do not interpret shadow differences as defects without functional comparison rules. See ADR-0028 for the boundary and limitations.
 
+## Platform Background Jobs (Phase 13.5)
+
+Platform Jobs are durable commands/work, separate from Events (facts). Contracts and handlers use stable registered JobType IDs and bounded JSON; Platform persistence stores Jobs and attempt history in its own `jobs.sqlite`. The server currently registers the local `platform.test.hash` handler. A SQLite acquisition transaction and renewable lease coordinate local execution; handler code runs outside the transaction. Jobs support absolute scheduling, backoff/retry, cancellation requests, per-Job timeout, attempt history, idempotent creation keys, and stale Running recovery with at-least-once semantics. The server exposes session-RBAC admin APIs at `/api/platform/jobs` and the Web page `/admin/jobs`. WorkerAgent does not reference the Jobs implementation; a future adapter may connect through contracts. Payloads are omitted from admin list/detail and audit. Retention is not automatic. See [ADR-0034](adr/ADR-0034-platform-background-jobs.md) for failure status semantics and operational limits.
+
 El runtime debe poder evolucionar hacia múltiples implementaciones activas:
 
 ```text
@@ -356,3 +370,67 @@ Esto no es requisito para MVP, pero no debemos cerrar esa puerta.
 ## Generic distributed worker providers
 
 WorkerAgent hosts generic transport, mTLS identity, leases, health, and capability dispatch. Optional capability providers implement `IDistributedWorkerCapabilityProviderV1` in Runtime and are loaded from operator-configured assembly paths. The FFmpeg provider is implemented by the Media transcoding adapter and is absent from WorkerAgent project references. Keep provider loading explicit and trusted: assemblies run with the worker process privileges. `apps/server` and WorkerAgent are composition roots; they may join generic contracts with selected implementation providers while domain projects remain restricted to their owned contracts.
+
+## Platform Authorization and Web Authentication (Phase 13.2)
+
+Platform defines versioned authorization contracts independently of Media and Inventory implementations. Roles and string permission identifiers are persisted with Identity in `identity.sqlite`; grants are resolved server-side for each protected request, so active sessions reflect role changes immediately. A missing grant denies access, and disabled users have no effective permissions. For contract ownership, bootstrap, legacy bearer coexistence, and the Web `sessionStorage` decision, see [ADR-0032](adr/ADR-0032-platform-authorization-and-web-auth.md).
+
+The ASP.NET endpoint filter centralizes `Session` validation and permission checks. Session absence/invalidity returns 401; an authenticated user without the required grant receives 403. A one-time operator-configured bootstrap secret provisions the first administrator, and the temporary legacy bearer is explicitly logged when used on compatibility-filtered routes. Phase 13.3 applies this filter to Media and Inventory at the server composition root; see the domain authorization boundary below.
+## Domain authorization boundary
+
+Phase 13.3 keeps authorization enforcement at the HTTP composition root. Inventory publishes `inventory.read` and `inventory.write`; Media publishes `media.library.read`, `media.playback.use` and `media.admin`. The server applies the reusable Platform permission filter to domain routes, while domain contracts/application projects do not reference the Authorization implementation. Platform Authorization remains independent of Media and Inventory. See [ARCHITECTURE.md](ARCHITECTURE.md#phase-133-domain-authorization-integration) and [ADR-0032](adr/ADR-0032-platform-authorization-and-web-auth.md) for the permission catalog and the explicit legacy/public-route exceptions.
+
+## Platform Jobs and remote capabilities (Phase 13.6)
+
+Jobs Contracts and Application do not reference WorkerAgent implementation. A host-side adapter maps explicitly registered JobTypes to versioned Runtime capabilities and submits bounded payloads to the existing WorkerAgent coordinator protocol. `LocalOnly`, `RemotePreferred`, and `RemoteOnly` affect executor selection, not Job status. Jobs SQLite owns durable attempt/result acceptance; coordinator generations fence remote leases and Jobs attempt-number compare-and-set rejects late results. Remote execution is at-least-once. WorkerAgent only runs operator-installed trusted providers and does not own durable Jobs. See [ADR-0035](adr/ADR-0035-platform-remote-job-execution.md).
+
+## Observability V1 (Phase 13.8)
+
+Modules may use Platform correlation/metrics/health contracts and the standard `Hispania.Platform` ActivitySource; Platform does not reference domain modules. Domain composition can register `IPlatformHealthCheckV1` implementations. Meter names are fixed by `PlatformMetricNamesV1` and expose no identifier labels. Microsoft.Extensions.Logging operation scopes carry safe correlation/component/operation fields; Audit remains a separate business/security contract.
+
+Distributed job envelopes add optional `CausationId`, `TraceParent` and `TraceState` beside their existing `CorrelationId`; the generic capability executor restores context before awaiting the handler. Only this metadata travels, never arbitrary HTTP headers. Durable Events and Jobs store optional trace parents using additive migrations. See [ADR-0037](adr/ADR-0037-platform-observability-foundation.md) for sampling, best-effort metrics, health semantics and restart limitations.
+
+
+## Platform Admin contributions (Phase 13.9)
+
+The shared Modern/Classic Web Shell exports a static `adminRoutes` registry through `webModules`. A contribution is `{ path, label, permission, component }`; composition can append a module-owned page without changing Admin navigation or route dispatch. The common shell renders only permitted contributions, checks direct access and hosts the existing Users/Roles/Events/Jobs/Observability pages plus Overview/Assets/Modules. Registration is static host composition, with no dynamic JavaScript discovery, runtime frontend plugin loader or implied permission grant. See [ARCHITECTURE.md](ARCHITECTURE.md#phase-139-platform-administration-consolidation) for the route/permission table and partial-admin behavior.
+
+The Modules page consumes a Session-only safe host projection over `IModuleRuntime` and `ModuleExtensionCatalog`. It shows module/version/state/health/execution model and an explicitly unavailable generation where the public runtime supplies none. It omits manifest paths, detailed exceptions and publisher key material. Lifecycle actions reuse catalog activation/deactivation/unload/update/uninstall; installed alternate versions are updated explicitly, while reactivation targets the stopped loaded version. Invalid version inputs are rejected and catalog compatibility, trust, draining and rollback policies remain authoritative. Each attempted lifecycle operation records actor/correlation and success/failure through Platform Audit. Existing legacy administration endpoints remain intact for package installation, trust management, workers and playback experiments; their sensitive responses are not embedded in the shared Admin UI.
+
+Overview is composed at the HTTP host through existing public contracts, with additional permission checks before Identity or module counts. Assets uses safe ID lookup because the current public asset store has no listing contract. Neither page introduces database access from Web or new responsibilities into the module/runtime/storage systems.
+
+
+## Phase 13 hardening and closure
+
+See [ADR-0038](adr/ADR-0038-phase-13-platform-maturity-closure.md) and the [closure/security audit](PHASE-13-CLOSURE.md) for the final dependency graph, exact legacy bearer inventory, health/metrics semantics, process and concurrency gates, and limitations. Server composition supplies a sanitized HTTP error boundary; exception messages/stacks, provider paths and credentials are excluded from error responses and failure logs. Events and Jobs retain independent at-least-once stores. **Phase 13 — CLOSED — validated on Linux and Windows** Functional SHA `75e10edd560e396a6e509a386d5aae5dd7928827` passed [Validation #37230450104](https://github.com/joaquimcastilla/hispania/actions/runs/37230450104). The annotated `phase-13-complete` checkpoint and Release close the phase; merging to main is a separate task. Closure adds no domain features or Phase 14 work.
+
+## Phase 15 historical evidence
+
+Phase 15 retains a historical greeting binary and signed format-1 package compiled against archived Phase 14 SDKs. Current compatibility tests verify explicit TEST ONLY publisher trust, install, validate, load, execute, stop and unload without rebuilding the package. Selected ModuleHost/Worker generation-1 fixtures add bounded parser/fencing evidence; Module SDK remains experimental. See [Phase 15](PHASE-15-COMPATIBILITY-BASELINES.md) and [ADR-0040](adr/ADR-0040-historical-compatibility-baselines.md).
+
+
+## Phase 16 — historical persisted data
+
+Owner-local SQLite schemas now track version 1 (`0001_baseline07_adoption`) and minimum supported known legacy shape 0. Media keeps its EF SQLite five-step and PostgreSQL one-step lineages; playback JSON remains schema 1. Unknown/future histories fail before writes. Upgrades are forward-only and per-store transactional; startup blocks readiness on failure. Old executables without guards are not safe rollback targets. Data schema versions remain independent of distribution/API/wire versions; no contract gains Public Stable status.
+
+The independent 15-artifact populated corpus and mandatory Linux PostgreSQL gate are documented in [Phase 16](PHASE-16-HISTORICAL-DATA-UPGRADES.md) and [ADR-0041](adr/ADR-0041-schema-evolution-and-historical-upgrades.md). Phase 15's 27 artifacts and hashes remain frozen. Local implementation is prepared for CI; Phase 16 closure awaits live PostgreSQL and both OS jobs. Backup/restore remains outside this phase.
+
+## Phase 17 — installed bytes and trust during disaster recovery
+
+Managed-root backup preserves installed extension files byte-for-byte, including original package digests/signatures and manifests. Public trusted publisher keys, trusted extension IDs and revocations are portable; private signing keys and worker private credentials are externally reprovisioned. Normal discovery/activation checks still apply after restore; process lifecycle state is not made durable. This is an experimental operational boundary, not a new module catalog. See [Phase 17](PHASE-17-BACKUP-RESTORE.md).
+
+## Phase 18 production deployment
+
+ModuleHost is a child from the verified artifact, not a separate service. Mutable extensions use the Phase 17 state root and existing signature/trust authorization. Worker capability providers use explicit artifact-relative paths and coordinator mTLS pins. Host secret providers do not add a public module SDK or dependency lifecycle. See [Phase 18](PHASE-18-PRODUCTION-DEPLOYMENT.md) and [ADR-0043](adr/ADR-0043-configuration-secrets-and-production-deployment.md).
+
+
+## Phase 19 package lifecycle
+
+Format 2 adds authenticated package SemVer/dependencies while format 1 and immutable Phase 15 signatures remain supported. Local deterministic planning, a pinned graph, staged operations, current-policy rollback/recovery and Phase 17 graph verification remain experimental. Distribution 0.7.0, 24 axes and zero Public Stable are unchanged. See [Phase 19](PHASE-19-PACKAGE-LIFECYCLE.md) and [ADR-0044](adr/ADR-0044-package-dependencies-and-lifecycle.md); local acceptance and both-OS CI are separate evidence.
+
+
+## Phase 20 — Dynamic Web Modules (Experimental)
+
+[Phase 20](PHASE-20-DYNAMIC-WEB-MODULES.md) adds signed declarative Web Schema Generation 1 as independent compatibility axis 25. Package Format 2, distribution 0.7.0 and private npm 0.1.0 remain unchanged; zero contracts are Public Stable. Required UI uses existing host/CLR capability negotiation; optional future UI is blocked independently of a healthy backend. Modern and Classic share one existing routing/registry composition and fixed authorized Platform operations. No package JavaScript, raw HTML/CSS, remote URLs, Node runtime or hostile-code browser sandbox is introduced.
+
+The package catalog, journal, trust/authorization and dependency graph remain authoritative; immutable UI projections and parsed-descriptor caches are ephemeral. Actual browser, portable restore and verified predecessor distribution-upgrade tests accompany preserved Phase 14–19 gates. Windows local evidence and pending Linux/native/live-PostgreSQL CI are distinguished in the local acceptance report. See [ADR 0045](adr/ADR-0045-dynamic-web-contributions.md), [author guide](DYNAMIC-WEB-AUTHOR-GUIDE.md) and [operator guide](DYNAMIC-WEB-OPERATOR-GUIDE.md).

@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace Hispania.Playback.Tests;
@@ -35,7 +36,9 @@ public sealed class ExtensionAdminHttpIntegrationTests
             await using var v1 = OpenPackage("greeting-1.0.0.hispania", "1.0.0", "Hispania.ExtensionDemo.IndependentGreetingModule");
             await using var v2 = OpenPackage("greeting-2.0.0.hispania", "2.0.0", "Hispania.ExtensionDemo.IndependentGreetingModuleV2");
 
+            var logs = new PlatformErrorBoundaryTests.CaptureLogger();
             var builder = WebApplication.CreateBuilder();
+            builder.Logging.ClearProviders(); builder.Logging.AddProvider(logs);
             builder.WebHost.UseTestServer();
             builder.Configuration["Modules:AdminToken"] = Token;
             builder.Services.AddModuleRuntime();
@@ -47,8 +50,21 @@ public sealed class ExtensionAdminHttpIntegrationTests
                 new Dictionary<string, Func<Hispania.ModuleSystem.Contracts.IModule>>(), [ModuleId]));
             await using var app = builder.Build();
             app.MapModuleAdminEndpoints();
+            app.MapPublicModuleHealth();
             await app.StartAsync();
             using var client = app.GetTestClient();
+
+            using (var invalid = new HttpRequestMessage(HttpMethod.Post, "/internal/admin/modules/extensions/packages") { Content = new ByteArrayContent([1, 2, 3]) })
+            {
+                invalid.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Token);
+                using var rejected = await client.SendAsync(invalid);
+                Assert.Equal(System.Net.HttpStatusCode.BadRequest, rejected.StatusCode);
+                Assert.Contains("Module administration request failed.", await rejected.Content.ReadAsStringAsync());
+                var audit = Assert.IsType<InMemoryPlatformAuditWriter>(app.Services.GetRequiredService<IPlatformAuditWriter>());
+                Assert.Equal("failed", Assert.Single(audit.Records).Result);
+                Assert.DoesNotContain(Token, string.Join('\n', logs.Messages));
+                Assert.DoesNotContain(root, string.Join('\n', logs.Messages));
+            }
 
             using (var deniedWorkers = await client.GetAsync("/internal/admin/modules/remote-workers"))
                 Assert.Equal(System.Net.HttpStatusCode.Unauthorized, deniedWorkers.StatusCode);
@@ -96,6 +112,19 @@ public sealed class ExtensionAdminHttpIntegrationTests
                 Assert.Equal(System.Net.HttpStatusCode.Created, installed.StatusCode);
             using (var activated = await AdminPostAsync($"/internal/admin/modules/extensions/{ModuleId}/activate"))
                 Assert.Equal(System.Net.HttpStatusCode.OK, activated.StatusCode);
+            var runtime = app.Services.GetRequiredService<IModuleRuntime>();
+            await runtime.MarkDegradedAsync(ModuleId, "password=closure-secret; /internal/root; Authorization: Bearer closure-secret");
+            using (var anonymousHealth = await client.GetAsync("/internal/modules/health")) Assert.Equal(System.Net.HttpStatusCode.Unauthorized, anonymousHealth.StatusCode);
+            using (var publicHealth = await AdminGetAsync("/internal/modules/health"))
+            {
+                Assert.Equal(System.Net.HttpStatusCode.OK, publicHealth.StatusCode);
+                var body = await publicHealth.Content.ReadAsStringAsync();
+                Assert.Contains(ModuleId, body);
+                Assert.DoesNotContain("detail", body, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("closure-secret", body);
+                Assert.DoesNotContain("/internal/root", body);
+            }
+            Assert.True(await runtime.CheckHealthAsync(ModuleId));
             using (var message = await AdminGetAsync($"/internal/admin/modules/extensions/{ModuleId}/greeting"))
             {
                 Assert.Equal(System.Net.HttpStatusCode.OK, message.StatusCode);

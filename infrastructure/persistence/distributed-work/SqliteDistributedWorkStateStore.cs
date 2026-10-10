@@ -18,10 +18,14 @@ public sealed class SqliteDistributedWorkStateStore : IDistributedWorkStateStore
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         coordinatorLock = new FileStream(fullPath + ".coordinator.lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         connectionString = new SqliteConnectionStringBuilder { DataSource = fullPath, Mode = SqliteOpenMode.ReadWriteCreate, Cache = SqliteCacheMode.Shared }.ToString();
-        using var connection = Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = "PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS distributed_coordinator_state (id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL);";
-        command.ExecuteNonQuery();
+        try
+        {
+            using var connection = new SqliteConnection(connectionString);
+            Hispania.Persistence.Schema.SqliteSchemaUpgrade.Open(connection, "Platform.Coordinator");
+            Hispania.Persistence.Schema.SqliteSchemaUpgrade.Initialize(connection, "Platform.Coordinator", "PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS distributed_coordinator_state (id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL);");
+        }
+        catch { coordinatorLock.Dispose(); throw; }
+
     }
 
     public DistributedCoordinatorStateV1? Load()

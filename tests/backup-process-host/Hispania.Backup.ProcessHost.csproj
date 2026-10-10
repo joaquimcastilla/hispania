@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../../infrastructure/platform/persistence-sqlite/Hispania.Platform.Persistence.Sqlite.csproj" />
+    <ProjectReference Include="../../core/runtime/Hispania.Runtime.csproj" />
+    <ProjectReference Include="../../contracts/module-system/Hispania.ModuleSystem.Contracts.csproj" />
+    <ProjectReference Include="../../infrastructure/persistence/Hispania.Library.Persistence.Sqlite/Hispania.Library.Persistence.Sqlite.csproj" />
+    <ProjectReference Include="../../infrastructure/persistence/Hispania.Library.Persistence.PostgreSql/Hispania.Library.Persistence.PostgreSql.csproj" />
+    <Compile Include="../../apps/server/BackupInstallation.cs" Link="BackupInstallation.cs" />
+  </ItemGroup>
+</Project>

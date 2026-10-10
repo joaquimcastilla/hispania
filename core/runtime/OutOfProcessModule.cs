@@ -85,8 +85,8 @@ internal sealed class OutOfProcessModule : IModule, IModuleHealthCheck, IModuleC
         var token = Convert.ToBase64String(tokenBytes);
         pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly, ModuleWorkerProtocolV1.DefaultMaximumFrameBytes, ModuleWorkerProtocolV1.DefaultMaximumFrameBytes);
-        hostErrors.Clear();
-        var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
+        lock (hostErrors) hostErrors.Clear();
+        var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };
         start.ArgumentList.Add(hostAssemblyPath);
         start.ArgumentList.Add("--package"); start.ArgumentList.Add(packageDirectory);
         start.ArgumentList.Add("--pipe"); start.ArgumentList.Add(pipeName);
@@ -97,8 +97,8 @@ internal sealed class OutOfProcessModule : IModule, IModuleHealthCheck, IModuleC
         process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the generic module host.");
         ProcessStarts.Add(1, MetricTags());
         processLimits = resourceLimits.ApplyTo(process);
-        process.ErrorDataReceived += (_, eventArgs) => { if (eventArgs.Data is not null) lock (hostErrors) hostErrors.AppendLine(eventArgs.Data); };
-        process.BeginErrorReadLine();
+        _ = BoundedProcessOutput.DrainAsync(process.StandardError, hostErrors);
+        _ = BoundedProcessOutput.DrainAsync(process.StandardOutput, new StringBuilder());
         var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(30));
         try
@@ -108,7 +108,7 @@ internal sealed class OutOfProcessModule : IModule, IModuleHealthCheck, IModuleC
             if (await Task.WhenAny(connection, exited).ConfigureAwait(false) == exited)
             {
                 await exited.ConfigureAwait(false);
-                throw new InvalidOperationException($"Module host exited during startup with code {process.ExitCode}. {hostErrors}");
+                throw new InvalidOperationException($"Module host exited during startup with code {process.ExitCode}.");
             }
             await connection.ConfigureAwait(false);
             var frame = await ModuleWorkerProtocolV1.ReadFrameAsync<ModuleWorkerFrameV1>(pipe, cancellationToken: deadline.Token).ConfigureAwait(false)
@@ -119,7 +119,7 @@ internal sealed class OutOfProcessModule : IModule, IModuleHealthCheck, IModuleC
             await ModuleWorkerProtocolV1.WriteFrameAsync(pipe, ModuleWorkerFrameV1.From("negotiation", negotiation), cancellationToken: deadline.Token).ConfigureAwait(false);
             if (!negotiation.Accepted) throw new UnauthorizedAccessException(negotiation.Error ?? "Module protocol negotiation failed.");
             var capabilitiesFrame = await ModuleWorkerProtocolV1.ReadFrameAsync<ModuleWorkerFrameV1>(pipe, cancellationToken: deadline.Token).ConfigureAwait(false)
-                ?? throw new EndOfStreamException($"Module host exited before capability discovery. {hostErrors}");
+                ?? throw new EndOfStreamException("Module host exited before capability discovery.");
             if (capabilitiesFrame.Kind != "capabilities") throw new InvalidDataException("Expected module capability inventory.");
             var inventory = capabilitiesFrame.Decode<ModuleWorkerCapabilitiesV1>();
             var expected = manifest.Provides.Order(StringComparer.Ordinal).ToArray();

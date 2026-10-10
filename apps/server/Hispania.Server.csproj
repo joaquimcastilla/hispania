@@ -5,14 +5,16 @@
     <RootNamespace>Hispania.Server</RootNamespace>
     <WebDistPath>$(MSBuildProjectDirectory)\..\web\dist\</WebDistPath>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(ProductionPublication)' == 'true'"><DefineConstants>$(DefineConstants);HISPANIA_PRODUCTION_DISTRIBUTION</DefineConstants></PropertyGroup>
   <ItemGroup Condition="Exists('$(WebDistPath)')">
     <Content Include="$(WebDistPath)**\*" Link="wwwroot\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\infrastructure\hosting\Hispania.Hosting.csproj" />
     <ProjectReference Include="..\module-host\Hispania.ModuleHost.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\contracts\architecture-test\Hispania.ArchitectureTest.Contracts.csproj" />
+    <ProjectReference Include="..\..\contracts\architecture-test\Hispania.ArchitectureTest.Contracts.csproj" Condition="'$(ProductionPublication)' != 'true'" />
     <ProjectReference Include="..\..\core\runtime\Hispania.Runtime.csproj" />
-    <ProjectReference Include="..\..\modules\architecture-test\Hispania.ArchitectureTest.Modules.csproj" />
+    <ProjectReference Include="..\..\modules\architecture-test\Hispania.ArchitectureTest.Modules.csproj" Condition="'$(ProductionPublication)' != 'true'" />
     <ProjectReference Include="..\..\contracts\extension-demo\Hispania.ExtensionDemo.Contracts.csproj" />
     <ProjectReference Include="..\..\application\library\Hispania.Library.Application.csproj" />
     <ProjectReference Include="..\..\application\playback\Hispania.Playback.Application.csproj" />
@@ -34,19 +36,28 @@
     <ProjectReference Include="..\..\infrastructure\persistence\inventory-sqlite\Hispania.Inventory.Persistence.Sqlite.csproj" />
     <ProjectReference Include="..\..\contracts\inventory\Hispania.Inventory.Contracts.csproj" />
     <ProjectReference Include="..\..\contracts\platform\Hispania.Platform.Contracts.csproj" />
+    <ProjectReference Include="..\..\application\platform\storage\Hispania.Platform.Storage.Application.csproj" />
+    <ProjectReference Include="..\..\infrastructure\platform\storage-filesystem\Hispania.Platform.Storage.Filesystem.csproj" />
+    <ProjectReference Include="..\..\application\platform\jobs\Hispania.Platform.Jobs.Application.csproj" />
+    <ProjectReference Include="..\..\application\platform\maintenance\Hispania.Platform.Maintenance.Application.csproj" />
+    <ProjectReference Include="..\..\infrastructure\platform\worker-agent-jobs\Hispania.Platform.WorkerAgentJobs.csproj" />
+    <ProjectReference Include="..\..\application\identity\Hispania.Identity.Application.csproj" />
+    <ProjectReference Include="..\..\application\authorization\Hispania.Authorization.Application.csproj" />
     <ProjectReference Include="..\..\infrastructure\platform\persistence-sqlite\Hispania.Platform.Persistence.Sqlite.csproj" />
+    <ProjectReference Include="..\..\application\platform\observability\Hispania.Platform.Observability.Application.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="../../version.json" Link="version.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\extensions\**\module.json" Link="extensions\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="demo-assets\**\*" Link="demo-assets\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
-  <Target Name="CopyGenericModuleHostAfterBuild" AfterTargets="Build">
+  <Target Name="CopyGenericModuleHostAfterBuild" AfterTargets="Build" Condition="'$(ProductionPublication)' != 'true'">
     <ItemGroup>
       <GenericModuleHostFiles Include="$(MSBuildProjectDirectory)\..\module-host\bin\$(Configuration)\net10.0\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(GenericModuleHostFiles)" DestinationFiles="@(GenericModuleHostFiles->'$(OutDir)module-host\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'@(GenericModuleHostFiles)' != ''" />
   </Target>
-  <Target Name="CopyGenericModuleHostAfterPublish" AfterTargets="Publish">
+  <Target Name="CopyGenericModuleHostAfterPublish" AfterTargets="Publish" Condition="'$(ProductionPublication)' != 'true'">
     <ItemGroup>
       <GenericModuleHostPublishFiles Include="$(MSBuildProjectDirectory)\..\module-host\bin\$(Configuration)\net10.0\**\*" />
     </ItemGroup>

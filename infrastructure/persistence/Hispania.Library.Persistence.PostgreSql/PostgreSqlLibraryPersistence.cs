@@ -40,10 +40,22 @@ internal sealed class PostgreSqlUniqueConstraintViolationClassifier : IUniqueCon
 
 public sealed class PostgreSqlMigrationRunner(IDbContextFactory<LibraryCatalogDbContext> contextFactory) : ILibraryPersistenceInitializer
 {
+    public static void ValidateBackupHistory(string history)
+    {
+        if (history != "20260926104649_InitialPostgreSql") throw new InvalidDataException("Unsupported PostgreSQL migration lineage.");
+    }
+    public static void ValidateBackupMetadata(string? metadata)
+    {
+        if (metadata is null) throw new InvalidDataException("Missing PostgreSQL schema metadata.");
+        var separator = metadata.IndexOf('|');
+        if (separator < 0 || !metadata[(separator + 1)..].StartsWith("pg_dump ", StringComparison.Ordinal)) throw new InvalidDataException("Unsupported PostgreSQL schema metadata.");
+        ValidateBackupHistory(metadata[..separator]);
+    }
+
     public async Task InitializeAsync(EfLibraryCatalogStore store, CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-        await context.Database.MigrateAsync(cancellationToken);
+        await Hispania.Persistence.Schema.EfSchemaGuard.UpgradeAsync(context, "Media.Persistence.PostgreSQL", cancellationToken);
         await store.LoadSnapshotAsync(cancellationToken: cancellationToken);
     }
 }

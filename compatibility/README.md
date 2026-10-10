@@ -1,0 +1,11 @@
+# Compatibility evidence
+
+Technical Compatibility Baseline **0.7** originates in validated Phase 14 SHA `78f291fdacf9442c6e2d8e23094dc0e309828693`; it is not a published release. See [Phase 15](../docs/PHASE-15-COMPATIBILITY-BASELINES.md) and [ADR-0040](../docs/adr/ADR-0040-historical-compatibility-baselines.md).
+
+The [machine manifest](baseline-0.7.json) records 27 historical artifacts and byte hashes; `manifests/0.7/frozen-index.json` pins initial membership and metadata. Owners and expectations are explicit per artifact. Never regenerate an old fixture to make current code pass. Append reviewed new artifacts without changing old rows or the initial index. A future break needs owner review, migration/coexistence and an explicit supported-window decision in [API CHANGELOG](api/CHANGELOG.md); the entry does not waive gates.
+
+`api/0.7` contains selected compiled signatures. `contracts/0.7` contains provenance DLLs, never runtime replacement DLLs. `clients/0.7` contains an independently compiled Identity/RBAC caller and frozen source; source and binary gates are separate. `modules/0.7`, `packages/0.7`, `manifests/0.7` preserve the archived greeting implementation and a TEST ONLY signed package/public key. `protocols/0.7` contains generation-1 module frames and worker JSON. `serialization/0.7` contains selected DTO/permission and small HTTP semantics. Existing `data` and `web` notes remain future evidence guidance, without historical database fixtures.
+
+Run `./tools/test-phase15-compatibility.ps1` for all 16 required tests. Run `python tools/compatibility-manifest.py` for read-only deterministic analysis. Capture tooling only writes NEW staging directories against archived contracts and is outside CI/solution. `-text` checkout attributes preserve historical bytes on both operating systems. Distribution remains 0.7.0, with zero Public Stable declarations.
+
+Validation now runs the Python analyzer twice and requires identical output, the exact Phase 15 manifest hash, and 10 isolated negative corpus cases on both Linux and Windows. `python tools/test-compatibility-manifest.py` copies evidence into a temporary test root; it never edits the versioned corpus. Invalid frame-length, API type/visibility/return changes and additive API reporting have explicit negative assertions.
