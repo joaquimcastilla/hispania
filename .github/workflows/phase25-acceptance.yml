@@ -19,9 +19,62 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-dotnet@v6
+      - name: Detect runner .NET installation
+        id: dotnet
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'Runner user: %s\nHOME: %s\n' "$(id -un)" "$HOME"
+          printf 'DOTNET_ROOT=%s\n' "${DOTNET_ROOT:-<unset>}"
+          printf 'DOTNET_INSTALL_DIR=%s\n' "${DOTNET_INSTALL_DIR:-<unset>}"
+          dotnet_path="$(command -v dotnet || true)"
+          if [[ -n "$dotnet_path" ]]; then
+            printf 'dotnet executable: %s\n' "$dotnet_path"
+            dotnet --info
+            printf '%s\n' 'Installed SDKs:'
+            dotnet --list-sdks
+            printf '%s\n' 'Installed runtimes:'
+            dotnet --list-runtimes
+            if dotnet --list-sdks | awk '$1 == "10.0.401" { found=1 } END { exit !found }' && \
+               dotnet --list-runtimes | awk '$1 == "Microsoft.AspNetCore.App" && $2 ~ /^10\./ { found=1 } END { exit !found }'; then
+              dotnet_root="$(dirname "$(readlink -f "$dotnet_path")")"
+              echo "DOTNET_ROOT=$dotnet_root" >> "$GITHUB_ENV"
+              echo "$dotnet_root" >> "$GITHUB_PATH"
+              echo 'use_existing=true' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          else
+            echo 'dotnet is not available on PATH.'
+          fi
+          echo 'use_existing=false' >> "$GITHUB_OUTPUT"
+      - name: Install pinned .NET SDK in runner temp
+        if: steps.dotnet.outputs.use_existing != 'true'
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.401
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/hispania-dotnet
+      - name: Configure private .NET environment
+        if: steps.dotnet.outputs.use_existing != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet_root='${{ runner.temp }}/hispania-dotnet'
+          test -x "$dotnet_root/dotnet"
+          echo "DOTNET_ROOT=$dotnet_root" >> "$GITHUB_ENV"
+          echo "$dotnet_root" >> "$GITHUB_PATH"
+      - name: Verify pinned .NET SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(dotnet --version)" = '10.0.401'
+          dotnet --info
+          dotnet --list-runtimes
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
       - name: Build Linux distribution package
         shell: pwsh
         run: ./tools/publish-production.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase25/linux-x64
@@ -48,9 +101,9 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Installed Linux Server --check failed.' }
             $config = Join-Path $home 'config/production.json'
             $settings = Get-Content -Raw $config | ConvertFrom-Json -AsHashtable
-            $settings['server'] = @{ urls = 'http://127.0.0.1:28765' }
-            $settings['web'] = @{ build = 'modern' }
-            $settings['logging'] = @{ logLevel = 'Warning' }
+            $settings['endpoint'] = 'http://127.0.0.1:28765'
+            $settings['webBuild'] = 'modern'
+            $settings['logLevel'] = 'Warning'
             $settings | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $config -Encoding utf8NoBOM
             $proc = Start-Process -FilePath 'dotnet' -ArgumentList @((Join-Path $home 'app/server/Hispania.Server.dll'), '--home', $home) -WorkingDirectory $env:RUNNER_TEMP -PassThru
             try {
