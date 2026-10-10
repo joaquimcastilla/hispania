@@ -19,6 +19,16 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Initialize Phase 25 diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .artifacts/phase25/diagnostics
+          {
+            printf 'runner=%s\nuser=%s\nhome=%s\n' "$RUNNER_NAME" "$(id -un)" "$HOME"
+            uname -a
+            printf 'DOTNET_ROOT=%s\nDOTNET_INSTALL_DIR=%s\n' "${DOTNET_ROOT:-<unset>}" "${DOTNET_INSTALL_DIR:-<unset>}"
+          } > .artifacts/phase25/diagnostics/runner-context.txt
       - name: Detect runner .NET installation
         id: dotnet
         shell: bash
@@ -75,6 +85,9 @@ jobs:
           node-version: 24.19.0
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+      - name: Install locked Web build dependencies
+        working-directory: apps/web
+        run: npm ci
       - name: Build Linux distribution package
         shell: pwsh
         run: ./tools/publish-production.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase25/linux-x64
@@ -119,6 +132,25 @@ jobs:
               $proc.WaitForExit()
             } finally { if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force } }
           } finally { if (Test-Path $root) { Remove-Item -LiteralPath $root -Recurse -Force } }
+      - name: Capture Linux build diagnostics
+        if: always()
+        shell: bash
+        run: |
+          diagnostics=.artifacts/phase25/diagnostics
+          mkdir -p "$diagnostics"
+          {
+            dotnet --info || true
+            dotnet --list-sdks || true
+            dotnet --list-runtimes || true
+            node --version || true
+            npm --version || true
+          } > "$diagnostics/tool-versions.txt" 2>&1
+          if [[ -d "$HOME/.npm/_logs" ]]; then
+            mapfile -t npm_logs < <(find "$HOME/.npm/_logs" -type f -name '*-debug-0.log' -printf '%T@ %p\n' | sort -nr | head -n 5 | cut -d' ' -f2-)
+            for log in "${npm_logs[@]}"; do
+              cp -- "$log" "$diagnostics/$(basename "$log")" || true
+            done
+          fi
       - name: Preserve Phase 25 Linux evidence
         if: always()
         uses: actions/upload-artifact@v6
