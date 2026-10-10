@@ -1,5 +1,21 @@
 # Roadmap
 
+## Current roadmap state — 2026-10-10
+
+The active HISPANIA roadmap comprising Phases 1–25 is complete. Phase acceptance was incremental; Phase 25 final acceptance is recorded in [release readiness](phase25-release-readiness.md). This milestone closes the current roadmap, not HISPANIA development. Release Candidate preparation is tracked separately and does not add a Phase 26.
+
+| Workstream | State |
+|---|---|
+| Phases 1–25 | Complete and accepted within their recorded scopes |
+| 0.7.0-rc.1 preparation | In review; packages and documentation must identify the final clean preparation commit |
+| Later improvements | Proposed only; not accepted roadmap commitments |
+
+Support limits and non-validated features remain in the [Support Matrix](SUPPORT-MATRIX.md), [Phase 25 record](phase25-release-readiness.md), Phase-specific documents and [Platform 1.0 scope](PLATFORM-1.0-SCOPE.md). Future directions are proposals, not implemented work.
+
+## Initial exploratory roadmap (historical)
+
+The roadmap below is the early exploratory plan retained for its design history. Its dates, phase numbering and incomplete statuses describe that earlier plan and are superseded by the current 25-phase roadmap status above. Preserve this section as historical context; use the current phase documents and progress record for implementation state.
+
 ## Estado verificado — 2026-09-23
 
 La solución compila y supera 412 pruebas .NET. El cliente web supera 29 pruebas y compila para producción. Stage B–E del editor están implementadas; sigue pendiente la comprobación manual con navegador y TMDB real. Existe un fallback experimental a FFmpeg para AVI/MP4 incompatibles; todavía no constituye Phase 7. La revisión de fronteras y riesgos está en `MODULARITY_AUDIT_2026-09-23.md`.

@@ -69,7 +69,7 @@ public sealed class VersioningFoundationTests
         var root = Root();
         using var version = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "version.json")));
         var value = version.RootElement.GetProperty("distributionVersion").GetString()!;
-        Assert.Matches(@"^0\.\d+\.\d+$", value);
+        Assert.Matches(@"^0\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$", value);
         Assert.Equal("pre-1.0", version.RootElement.GetProperty("stability").GetString());
         Assert.True(File.Exists(Path.Combine(root, version.RootElement.GetProperty("policy").GetString()!)));
         foreach (var doc in new[] { "VERSIONING.md", "COMPATIBILITY-POLICY.md", "VERSION-MAP.md", "PLATFORM-1.0-SCOPE.md" })

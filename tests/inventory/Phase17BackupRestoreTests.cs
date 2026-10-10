@@ -12,6 +12,17 @@ public sealed class Phase17BackupRestoreTests
 {
     private readonly Xunit.Abstractions.ITestOutputHelper output;
     public Phase17BackupRestoreTests(Xunit.Abstractions.ITestOutputHelper output) => this.output = output;
+
+    [Fact]
+    public void DistributionPrereleaseRemainsCompatibleWithTheSameDataVersionLine()
+    {
+        Assert.True(BackupInstallation.IsDistributionVersionCompatible("0.7.0", "0.7.0-rc.1"));
+        Assert.True(BackupInstallation.IsDistributionVersionCompatible("0.7.0-rc.1", "0.7.0"));
+        Assert.True(BackupInstallation.IsDistributionVersionCompatible("0.6.9", "0.7.0-rc.1"));
+        Assert.False(BackupInstallation.IsDistributionVersionCompatible("0.8.0", "0.7.0-rc.1"));
+        Assert.False(BackupInstallation.IsDistributionVersionCompatible("not-a-version", "0.7.0-rc.1"));
+    }
+
     [Fact]
     public async Task HistoricalPopulatedInstallationRestoresOnlyFromBundleWithSemanticEquivalence()
     {

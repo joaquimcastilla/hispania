@@ -4,9 +4,9 @@ This is a support target and evidence map, not a deployment certification. Valid
 
 | Surface | Current state | Evidence and limits | Target toward Platform 1.0 |
 | --- | --- | --- | --- |
-| Windows x64 | Validated | Phase 13 closure Linux/Windows run #37230450104 at functional SHA 75e10edd; full .NET and Web, process tests. No service installer/deployment certification | Required tested host/runtime and generic workers |
-| Linux x64 | Validated | Same closure run Ubuntu; cross-platform filter, PostgreSQL/FFmpeg/OOP; recorded two-host Windows↔Ubuntu x64 test in PROGRESS-LOG. Windows launcher excluded | Required tested host/runtime and generic workers |
-| Linux ARM64 | Theoretically supported | No ARM64 run or physical-host evidence; .NET portability insufficient | Experimental until runner/physical execution and dependency coverage; not a 1.0 blocker |
+| Windows x64 | Validated for recorded distribution/process scenarios | Phase 25 clean package repeatability and 12 published-artifact/process cases are recorded at `9c7872e0e3e848fd820c3b8cb6641e2e50475a8e`; Phase 13 closure provides earlier Linux/Windows suite evidence. Native SCM service installation/least-privilege operation is not certified | Tested host/runtime and generic workers; service deployment needs separate disposable-host evidence |
+| Linux x64 | Native package acceptance passed | Phase 25 run [#38064897483](https://github.com/joaquimcastilla/hispania/actions/runs/38064897483), exact clean SHA `8817b912b8f1748977f9145942d2dc30ad492b8e`, Ubuntu 24.04 x64; repeated contents, install, `--check`, outside-checkout start, HTTP 200, identity SQLite and cleanup. No systemd installation | Tested host/runtime and generic workers; system service deployment needs separate disposable-host evidence |
+| Linux ARM64 | Not validated | No ARM64 run or physical-host evidence; .NET portability alone is insufficient | No support claim until runner/physical execution and dependency coverage |
 | SQLite | Validated | Identity/Auth, Assets/Audit, Events/Jobs, coordinator restart/concurrency and Library regression | Required for Platform stores; populated upgrades/restore still gates |
 | PostgreSQL | Partially validated | Library provider live PostgreSQL 16 gate on Linux; Platform stores remain SQLite | Experimental Media provider; not universal Platform backend requirement |
 | Filesystem storage | Validated | Opaque/legacy handles, containment, compensation and missing-provider tests | Required existing provider; orphan maintenance/deployment limits explicit |
@@ -17,7 +17,7 @@ This is a support target and evidence map, not a deployment certification. Valid
 | Classic Web | Validated | Same shared screen tests and separate artifact build | Required parity for declared Platform screens |
 | Dynamic Web contributions | Experimental | Phase 20 signed declarative schema, shared Modern/Classic registry and fixed authorized operations; no executable package JavaScript or hostile-code browser sandbox | Remains experimental; scope defined in Phase 20 and Platform 1.0 plan |
 
-Recorded evidence is from Phase 13; Phase 14 local execution is separately reported in `PHASE-14-VALIDATION.md`. “Validated” does not imply stable APIs, long-term operation, old-binary compatibility, backup/restore or every security/deployment scenario. See [closure](PHASE-13-CLOSURE.md) and [scope](PLATFORM-1.0-SCOPE.md).
+Evidence is scoped to the named commit, target and scenario. The Phase 25 native Linux package acceptance supplements, but does not replace or expand, earlier phase-specific API, security, upgrade and domain evidence. “Validated” does not imply stable APIs, long-term operation, old-binary compatibility, backup/restore or every security/deployment scenario. See [Phase 25 evidence](phase25-release-readiness.md), [closure](PHASE-13-CLOSURE.md) and [Platform 1.0 scope](PLATFORM-1.0-SCOPE.md).
 
 ## Phase 17 — operational backup support under validation
 

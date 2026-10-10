@@ -117,9 +117,9 @@ internal sealed class BackupArchiveRetentionOwnerV1 : IRetentionOwnerV1, IDispos
             .ThenBy(item => item.Name, StringComparer.Ordinal).ToArray();
         var retain = Math.Max(1, policy.MaximumRetainedCount ?? 2);
         var protectedIds = ordered.Take(retain).Select(item => item.Manifest.BackupId).ToHashSet();
-        var currentVersion = Version.Parse(BackupInstallation.DistributionVersion());
-        var preUpgrade = ordered.FirstOrDefault(item => Version.TryParse(item.Manifest.DistributionVersion, out var version)
-            && version < currentVersion);
+        var currentVersion = BackupInstallation.DistributionVersion();
+        var preUpgrade = ordered.FirstOrDefault(item => BackupInstallation.IsDistributionVersionCompatible(item.Manifest.DistributionVersion, currentVersion)
+            && !BackupInstallation.IsDistributionVersionCompatible(currentVersion, item.Manifest.DistributionVersion));
         if (preUpgrade is not null) protectedIds.Add(preUpgrade.Manifest.BackupId);
         var age = policy.MinimumAge ?? TimeSpan.FromDays(30);
         var candidates = new List<ArchiveBundle>();

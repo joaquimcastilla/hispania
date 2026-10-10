@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   linux-package:
-    if: github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/main'
+    if: github.repository == 'joaquimcastilla/hispania' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release/0.7.0-rc.1-preparation')
     runs-on: [self-hosted, Linux, X64, hispania, hispania-linux]
     timeout-minutes: 45
     steps:

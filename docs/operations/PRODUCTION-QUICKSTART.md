@@ -1,9 +1,11 @@
 # Production operator quick start
 
-Receive a trusted win-x64 or linux-x64 artifact and its independently obtained
-manifest checksum. Install the x64 .NET 10 ASP.NET Core runtime and FFmpeg/FFprobe.
-Copy the artifact without source/Git/SDK/Node. Pick an absolute HOME; spaces and
-Unicode are supported. Artifact and HOME must be distinct, nonoverlapping paths.
+Use a trusted `win-x64` or `linux-x64` distribution with its independently obtained
+manifest SHA-256. Install the x64 .NET 10 ASP.NET Core runtime. Install FFmpeg and
+FFprobe for Media operations that use analysis or transcoding. The application
+package is framework-dependent. Copy the package without source/Git/SDK/Node.
+Choose an absolute installation home; spaces and Unicode are supported. Delivery
+and installation paths must be distinct and nonoverlapping.
 
 ```sh
 dotnet /delivery/deployment/Hispania.Deployment.dll verify /delivery
@@ -11,10 +13,31 @@ dotnet /delivery/deployment/Hispania.Deployment.dll install /delivery /srv/hispa
 dotnet /srv/hispania/app/server/Hispania.Server.dll --home /srv/hispania --check
 ```
 
-Edit `HOME/config/production.json`, provision private references (see the secret
-guide), and provision the first operator with the local `--bootstrap` command.
-Supply `bootstrapUsername`, `bootstrapSecret` and `bootstrapPasswordSecret` refs;
-remove them and delete transient provisioning secrets after successful consumption.
+Review and edit `/srv/hispania/config/production.json`. The default endpoint is
+`http://127.0.0.1:5080` and the default Web build is Modern. HTTP binding is
+restricted to loopback; configure HTTPS before remote access. Use the
+[configuration reference](CONFIGURATION-REFERENCE.md) and [secret provisioning
+guide](SECRET-PROVISIONING.md). Configure `bootstrapUsername`, `bootstrapSecret`
+and `bootstrapPasswordSecret` references, then provision the first operator
+locally:
+
+```sh
+dotnet /srv/hispania/app/server/Hispania.Server.dll --home /srv/hispania --bootstrap
+```
+
+After the bootstrap token is consumed, remove the bootstrap references and
+username from public configuration and remove transient secret material. Start
+the server in the foreground with:
+
+```sh
+dotnet /srv/hispania/app/server/Hispania.Server.dll --home /srv/hispania
+```
+
+Open `http://127.0.0.1:5080/` on the local host to reach the configured Web Shell;
+confirm `/livez` and `/readyz`. Use HTTPS and the configured endpoint for remote
+access. These commands install and run the Server directly. The native service
+templates below are available, but Phase 25 acceptance did not install systemd or
+Windows SCM services.
 
 Linux, as a privileged operator:
 
