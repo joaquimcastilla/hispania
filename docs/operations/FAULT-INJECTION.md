@@ -1,0 +1,7 @@
+# Controlled Fault Injection
+
+Fault IDs are stable manifest values. The local harness limits actions to the campaign-owned Server process, loopback test connections, synthetic in-memory operations, campaign-local Storage, and the synthetic worker state machine. Before terminating a process, it verifies the ownership marker and the live process object/PID; it never identifies a target by process name. It does not change host firewall, network interfaces, system services, or unrelated processes.
+
+The current controller supports ordered/forced restart of the campaign Server, synthetic worker unavailability/termination with generation fencing, operation timeout/cancellation, response delay, loopback connection rejection, interrupted synthetic storage writes, bounded capacity refusal, durable Job lease recovery, and ownership/resume evidence. Ordered shutdown is available only when the campaign supplies its ephemeral loopback token; the Server has no shutdown route by default. Fault records capture planned/executed timestamps, target, before/after state, outcome and recovery duration.
+
+After each restart or injection, verify readiness and the applicable durable state/invariant. At-least-once event delivery can include retries; no exactly-once claim is made. A cancelled write is expected to leave no partial file. A timed-out or unconfirmed operation is not evidence of data loss under a durability contract.

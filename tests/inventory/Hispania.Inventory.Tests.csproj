@@ -13,4 +13,5 @@
   <ItemGroup><ProjectReference Include="../../infrastructure/persistence/Hispania.Library.Persistence.PostgreSql/Hispania.Library.Persistence.PostgreSql.csproj" /></ItemGroup>
   <ItemGroup><ProjectReference Include="../backup-process-host/Hispania.Backup.ProcessHost.csproj" ReferenceOutputAssembly="false" /></ItemGroup>
   <ItemGroup><ProjectReference Include="../../infrastructure/persistence/distributed-work/Hispania.DistributedWork.Persistence.Sqlite.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../tools/phase24/Hispania.ResilienceHarness.csproj" /></ItemGroup>
 </Project>
