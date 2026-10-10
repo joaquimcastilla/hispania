@@ -179,3 +179,4 @@ Possible future directions include ERP core (organizations, product catalog, BOM
 - `apps/web`: Modern and Classic Web Shell builds.
 - `tests`: unit, integration, persistence, architecture and process-restart coverage.
 - [Architecture](docs/ARCHITECTURE.md) · [Module System](docs/MODULE_SYSTEM.md) · [ADR-0030](docs/adr/ADR-0030-platform-generalization-and-domain-suites.md) · [Progress log](PROGRESS-LOG.md) · [Contributing](docs/CONTRIBUTING.md)
+- [Phase 25 release readiness and acceptance matrix](docs/phase25-release-readiness.md)
