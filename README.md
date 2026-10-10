@@ -6,7 +6,7 @@ HISPANIA is a modular monolith by default. A single Server process composes the 
 
 ## Release candidate status
 
-The current candidate is **0.7.0-rc.1**, a pre-1.0 release candidate prepared for review. The 25-phase roadmap is complete and Phase 25 acceptance passed incrementally. Native `linux-x64` package acceptance passed on the exact accepted `main` SHA; Windows x64 distribution and process evidence is retained from the earlier acceptance work. See the [Phase 25 evidence and release readiness record](docs/phase25-release-readiness.md).
+The current candidate is **0.7.0-rc.1**, a pre-1.0 release candidate prepared for review. The 25-phase roadmap is complete and Phase 25 acceptance passed incrementally. Native `linux-x64` package acceptance passed on the exact accepted `main` SHA; the preparation branch runs the same bounded native check for its candidate commit. Follow the [Phase 25 workflow history](https://github.com/joaquimcastilla/hispania/actions/workflows/phase25-acceptance.yml) for exact source SHAs and artifacts, and see the [Phase 25 evidence and release readiness record](docs/phase25-release-readiness.md).
 
 | Target | Candidate status | Boundary |
 |---|---|---|

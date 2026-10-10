@@ -71,7 +71,7 @@ Read [Security Operations](security/SECURITY-OPERATIONS.md), [Security Configura
 
 ## Validation evidence
 
-Phase 25 final Linux acceptance passed on `main` SHA `8817b912b8f1748977f9145942d2dc30ad492b8e`, using the native Ubuntu 24.04 x64 runner. The workflow built a clean `linux-x64` package, verified manifest provenance, repeated publication and compared package contents, installed the package in an isolated temporary home, ran `--check`, started outside the checkout, returned HTTP 200, created `identity.sqlite` and cleaned up. See [workflow 38064897483 and artifact 11674122162](phase25-release-readiness.md).
+Phase 25 final Linux acceptance passed on `main` SHA `8817b912b8f1748977f9145942d2dc30ad492b8e`, using the native Ubuntu 24.04 x64 runner. The workflow built a clean `linux-x64` package, verified manifest provenance, repeated publication and compared package contents, installed the package in an isolated temporary home, ran `--check`, started outside the checkout, returned HTTP 200, created `identity.sqlite` and cleaned up. See [base workflow 38064897483 and artifact 11674122162](phase25-release-readiness.md). The final preparation-branch run is listed in the [Phase 25 workflow history](https://github.com/joaquimcastilla/hispania/actions/workflows/phase25-acceptance.yml).
 
 Windows x64 and prior phase test evidence are reused within their recorded scope. The RC1 package artifacts must identify the final clean preparation commit; Phase 25 manifests and checksums from earlier SHAs are not RC1 checksums. Repeated content comparison demonstrates package-directory repeatability on one build host. It does not, on its own, establish ZIP byte reproducibility or cross-platform build reproducibility.
 
