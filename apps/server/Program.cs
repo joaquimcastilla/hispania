@@ -382,6 +382,21 @@ builder.Services.AddSingleton<IArchitectureDemonstrationService>(serviceProvider
 
 #endif
 var app = builder.Build();
+var phase24ShutdownToken = builder.Configuration["Hispania:Phase24:ShutdownToken"];
+if (!string.IsNullOrWhiteSpace(phase24ShutdownToken))
+{
+    // Test-only local shutdown hook: absent by default and enabled only with a campaign-generated token.
+    app.MapPost("/internal/phase24/shutdown", (HttpContext context, IHostApplicationLifetime lifetime) =>
+    {
+        var remote = context.Connection.RemoteIpAddress;
+        var supplied = System.Text.Encoding.UTF8.GetBytes(context.Request.Headers["X-Hispania-Phase24-Token"].ToString());
+        var expected = System.Text.Encoding.UTF8.GetBytes(phase24ShutdownToken);
+        if (remote is null || !System.Net.IPAddress.IsLoopback(remote) || !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(supplied, expected))
+            return Results.Forbid();
+        lifetime.StopApplication();
+        return Results.Ok(new { status = "stopping" });
+    }).WithMetadata(new SecurityEndpointInventory.ExplicitPolicy("phase24-campaign-loopback-token"));
+}
 if (production?.BootstrapOnly == true)
 {
     await using var scope = app.Services.CreateAsyncScope();

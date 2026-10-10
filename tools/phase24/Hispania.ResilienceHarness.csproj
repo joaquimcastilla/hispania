@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Hispania.ResilienceHarness</AssemblyName>
+    <RootNamespace>Hispania.ResilienceHarness</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../../application/platform/jobs/Hispania.Platform.Jobs.Application.csproj" />
+    <ProjectReference Include="../../application/platform/storage/Hispania.Platform.Storage.Application.csproj" />
+    <ProjectReference Include="../../infrastructure/platform/persistence-sqlite/Hispania.Platform.Persistence.Sqlite.csproj" />
+    <ProjectReference Include="../../infrastructure/platform/storage-filesystem/Hispania.Platform.Storage.Filesystem.csproj" />
+    <ProjectReference Include="../../core/runtime/Hispania.Runtime.csproj" />
+  </ItemGroup>
+</Project>

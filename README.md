@@ -78,7 +78,7 @@ Inventory is the first non-Media domain. It includes Item, Warehouse, Location, 
 
 ## Web Shell
 
-The Web Shell has declarative route and navigation registration for Media and Inventory, with Modern and Classic builds. The server composes the domains. Frontend module loading is not dynamic yet. Identity sessions and RBAC protect domain and Admin routes, including direct URLs and isolated grants. Session expiry removes administrative data. A bounded legacy admin bearer remains on explicitly documented compatibility routes; it is not accepted by Jobs, Events, Observability, or the consolidated Admin projections. See the [Phase 13 security and closure audit](docs/PHASE-13-CLOSURE.md).
+The Web Shell has Modern and Classic builds with declarative route and navigation registration for Media and Inventory. Experimental Web contributions can add package-verified declarative pages and fixed authorized operations; packages do not supply executable JavaScript or raw HTML. The server composes the domains. Identity sessions and RBAC protect domain and Admin routes, including direct URLs and isolated grants. Session expiry removes administrative data. A bounded legacy admin bearer remains on explicitly documented compatibility routes; it is not accepted by Jobs, Events, Observability, or the consolidated Admin projections. See the [Phase 13 security and closure audit](docs/PHASE-13-CLOSURE.md) and [Web contribution guide](docs/DYNAMIC-WEB-AUTHOR-GUIDE.md).
 
 ## Persistence and ownership
 
@@ -179,3 +179,5 @@ Possible future directions include ERP core (organizations, product catalog, BOM
 - `apps/web`: Modern and Classic Web Shell builds.
 - `tests`: unit, integration, persistence, architecture and process-restart coverage.
 - [Architecture](docs/ARCHITECTURE.md) · [Module System](docs/MODULE_SYSTEM.md) · [ADR-0030](docs/adr/ADR-0030-platform-generalization-and-domain-suites.md) · [Progress log](PROGRESS-LOG.md) · [Contributing](docs/CONTRIBUTING.md)
+- [Phase 25 release readiness and acceptance matrix](docs/phase25-release-readiness.md)
+- [Draft 0.7.0 release notes](docs/PHASE-0.7.0-RELEASE-NOTES-DRAFT.md)

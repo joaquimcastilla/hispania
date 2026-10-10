@@ -41,6 +41,13 @@ try {
     $sourceSha = (& git rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Source SHA unavailable.' }
     $sourceDirty = @(& git status --porcelain --untracked-files=normal).Count -ne 0
+    $buildUtc = if ($sourceDirty) {
+        [DateTimeOffset]::UtcNow
+    } else {
+        $sourceCommitEpoch = (& git show -s --format=%ct $sourceSha).Trim()
+        if ($LASTEXITCODE -ne 0 -or $sourceCommitEpoch -notmatch '^\d+$') { throw 'Clean-source commit timestamp unavailable.' }
+        [DateTimeOffset]::FromUnixTimeSeconds([long]$sourceCommitEpoch)
+    }
     $files = [ordered]@{}
     foreach ($file in (Get-ChildItem -LiteralPath $outputRoot -File -Recurse -Force | Sort-Object FullName)) {
         $relative = [IO.Path]::GetRelativePath($outputRoot,$file.FullName).Replace('\','/')
@@ -49,7 +56,7 @@ try {
     $manifest = [ordered]@{
         manifestGeneration=1; distributionVersion=(Get-Content -Raw version.json | ConvertFrom-Json).distributionVersion
         gitSha=$sourceSha; sourceDirty=$sourceDirty; targetRid=$Rid; buildConfiguration='Release'; dotnetSdkVersion=(& dotnet --version).Trim()
-        runtimePrerequisite='ASP.NET Core Runtime 10.0 (x64)'; buildUtc=[DateTimeOffset]::UtcNow.ToString('O'); files=$files
+        runtimePrerequisite='ASP.NET Core Runtime 10.0 (x64)'; buildUtc=$buildUtc.ToUniversalTime().ToString('O'); files=$files
     }
     $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outputRoot 'artifact-manifest.json') -Encoding utf8NoBOM
     # The dirty flag is evidence alongside the artifact, never silently claimed as exact-commit output.

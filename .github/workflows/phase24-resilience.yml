@@ -1,0 +1,82 @@
+name: Phase 24 Operational Resilience
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Bounded local campaign profile
+        required: true
+        type: choice
+        options: [Smoke, Short]
+        default: Smoke
+      seed:
+        description: Reproducible campaign seed
+        required: true
+        type: string
+        default: '24001'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase24-resilience-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    if: github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/feature/phase-24-operational-resilience'
+    runs-on: [self-hosted, hispania-linux-ci]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Run Phase 24 unit tests
+        shell: pwsh
+        run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj --filter FullyQualifiedName~Phase24ResilienceTests --logger "trx;LogFileName=phase24-unit.trx"
+      - name: Run bounded Phase 24 campaign
+        shell: pwsh
+        env:
+          PHASE24_PROFILE: ${{ inputs.profile }}
+          PHASE24_SEED: ${{ inputs.seed }}
+        run: ./tools/test-phase24-operational-resilience.ps1 -Profile $env:PHASE24_PROFILE -Seed ([int]$env:PHASE24_SEED) -OutputDirectory .artifacts/phase24-ci
+      - name: Preserve Phase 24 evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase24-linux-${{ inputs.profile }}
+          include-hidden-files: true
+          path: |
+            .artifacts/phase24-ci
+            tests/inventory/TestResults/phase24-unit.trx
+
+  windows:
+    if: github.repository == 'joaquimcastilla/hispania' && github.ref == 'refs/heads/feature/phase-24-operational-resilience'
+    runs-on: [self-hosted, hispania-win-ci]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Run Phase 24 unit tests
+        shell: pwsh
+        run: dotnet test tests/inventory/Hispania.Inventory.Tests.csproj --filter FullyQualifiedName~Phase24ResilienceTests --logger "trx;LogFileName=phase24-unit.trx"
+      - name: Run bounded Phase 24 campaign
+        shell: pwsh
+        env:
+          PHASE24_PROFILE: ${{ inputs.profile }}
+          PHASE24_SEED: ${{ inputs.seed }}
+        run: ./tools/test-phase24-operational-resilience.ps1 -Profile $env:PHASE24_PROFILE -Seed ([int]$env:PHASE24_SEED) -OutputDirectory .artifacts/phase24-ci
+      - name: Preserve Phase 24 evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase24-windows-${{ inputs.profile }}
+          include-hidden-files: true
+          path: |
+            .artifacts/phase24-ci
+            tests/inventory/TestResults/phase24-unit.trx
