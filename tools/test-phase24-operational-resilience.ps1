@@ -8,6 +8,7 @@ param(
     [int]$MaxMemoryMb,
     [int]$MaxCpuPercent,
     [int]$MaxConcurrency,
+    [ValidateRange(100, 60000)][int]$WorkloadIntervalMilliseconds = 1000,
     [switch]$ConfirmExtended
 )
 $ErrorActionPreference = 'Stop'
@@ -35,6 +36,7 @@ try {
     if ($MaxMemoryMb -gt 0) { $arguments += @('--max-memory-mb', $MaxMemoryMb.ToString([Globalization.CultureInfo]::InvariantCulture)) }
     if ($MaxCpuPercent -gt 0) { $arguments += @('--max-cpu-percent', $MaxCpuPercent.ToString([Globalization.CultureInfo]::InvariantCulture)) }
     if ($MaxConcurrency -gt 0) { $arguments += @('--max-concurrency', $MaxConcurrency.ToString([Globalization.CultureInfo]::InvariantCulture)) }
+    $arguments += @('--workload-interval-milliseconds', $WorkloadIntervalMilliseconds.ToString([Globalization.CultureInfo]::InvariantCulture))
     if ($ConfirmExtended) { $arguments += '--confirm-extended' }
     dotnet run --no-build --project $project -- @arguments
     if ($LASTEXITCODE -ne 0) { throw "Phase 24 campaign failed with exit code $LASTEXITCODE." }

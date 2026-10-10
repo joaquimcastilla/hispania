@@ -2,9 +2,9 @@
 
 ## Entry point
 
-Run `pwsh -NoProfile -File tools/test-phase24-operational-resilience.ps1 -Profile Smoke -Seed 24001 -OutputDirectory .artifacts/phase24`. PowerShell 7 and the .NET 10 SDK are required. Smoke is bounded at 60 seconds plus a 45-second startup/cleanup timeout. Short, Soak, and Extended profiles exist for later controlled campaigns; this implementation task does not run them. Extended requires `-ConfirmExtended`.
+Run `pwsh -NoProfile -File tools/test-phase24-operational-resilience.ps1 -Profile Smoke -Seed 24001 -OutputDirectory .artifacts/phase24`. PowerShell 7 and the .NET 10 SDK are required. Smoke is 60 seconds, Short is 900 seconds, and Soak is 7200 seconds. Extended is 8 hours and requires `-ConfirmExtended`.
 
-Optional bounds: `-MaxMemoryMb`, `-MaxCpuPercent`, and `-MaxConcurrency`. A campaign manifest has `schemaVersion: 1`, a validated campaign ID, maximum duration, seed, unique workload/fault IDs, and explicit resource limits. Unknown workload/fault IDs, duplicate IDs, missing or out-of-range limits, excessive duration, and ambiguous output locations fail closed.
+Optional bounds: `-MaxMemoryMb`, `-MaxCpuPercent`, `-MaxConcurrency`, and `-WorkloadIntervalMilliseconds` (100–60000; default 1000). A campaign manifest has `schemaVersion: 1`, a validated campaign ID, duration, seed, unique workload/fault IDs, explicit resource limits, and a bounded repeat interval. Unknown workload/fault IDs, duplicate IDs, missing or out-of-range limits, excessive duration, and ambiguous output locations fail closed.
 
 ## Isolation and artifacts
 
@@ -14,6 +14,6 @@ Artifacts: `campaign-manifest.json`, `campaign-summary.json`, `campaign-report.m
 
 ## Workload and interpretation
 
-Health sends concurrent requests to the actual campaign Server's `/healthz` and `/readyz`; it records count, error, timeout, latency percentiles and throughput. Jobs use the existing SQLite job store and hash handler, exercise idempotent creation, completion, and reopen persistence. Events use the durable event bus, reopen persistence, and delivered status/ID verification. Storage uses deterministic synthetic bytes and verifies SHA-256, metadata and deletion. Worker coverage uses the existing single-coordinator state machine to exercise registration, lease expiry, reassignment and stale-generation rejection.
+All enabled workloads repeat for the entire configured window. Health sends concurrent requests to the campaign Server's `/healthz` and `/readyz`. Jobs repeatedly create, idempotently confirm, complete and reopen synthetic SQLite jobs. Events repeatedly publish, reopen, deliver and verify synthetic events. Jobs and event rows are pruned after their checks pass to bound temporary database size. Storage repeatedly writes, verifies and deletes deterministic synthetic bytes. Worker coverage repeats the in-process coordinator state machine for registration, lease expiry, reassignment and stale-generation rejection; this does not use a remote WorkerAgent. The report includes aggregate counts and per-interval request/error/timeout counts, latency percentiles, CPU, working set, disk, and invariant checks. Latency percentiles use a fixed-size histogram to bound memory.
 
-Smoke produces an early operational signal, not long-term leak evidence. It cannot prove that every operation is covered or that a production SLA is met. Campaign success says nothing about PostgreSQL until an authenticated PostgreSQL campaign has actually run.
+The report identifies the exact Git SHA, profile, seed, platform, configured and sustained durations, workload coverage, and cleanup. Smoke produces an early operational signal, not long-term leak evidence. Server managed heap remains INCONCLUSIVE: the harness samples Server process working set and CPU through the operating system, while `GC.GetTotalMemory` applies only to the harness. It cannot prove that a production SLA is met. Campaign success says nothing about PostgreSQL until an authenticated PostgreSQL campaign has actually run.

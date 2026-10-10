@@ -6,7 +6,7 @@ if (!CampaignProfiles.All.TryGetValue(values.Profile, out var profile)) throw ne
 if (profile.Name == "Extended" && !values.ExplicitExtended) throw new InvalidOperationException("Extended campaigns require -ConfirmExtended.");
 var campaign = values.Campaign ?? $"phase24-{profile.Name.ToLowerInvariant()}-{DateTimeOffset.UtcNow:yyyyMMddTHHmmssZ}";
 var manifest = values.ManifestPath is null
-    ? ResilienceValidation.Create(campaign, profile, values.Seed, new(values.MaxMemoryMb ?? profile.MaxMemoryMb, values.MaxCpuPercent ?? profile.MaxCpuPercent, values.MaxConcurrency ?? profile.MaxConcurrency))
+    ? ResilienceValidation.Create(campaign, profile, values.Seed, new(values.MaxMemoryMb ?? profile.MaxMemoryMb, values.MaxCpuPercent ?? profile.MaxCpuPercent, values.MaxConcurrency ?? profile.MaxConcurrency), values.WorkloadIntervalMilliseconds)
     : ResilienceValidation.Validate(JsonSerializer.Deserialize<ResilienceManifest>(await File.ReadAllTextAsync(Path.GetFullPath(values.ManifestPath)), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? throw new InvalidDataException("Manifest JSON is empty."));
 if (manifest.DurationSeconds >= CampaignProfiles.All["Extended"].DurationSeconds && !values.ExplicitExtended) throw new InvalidOperationException("Campaign manifests at Extended duration require -ConfirmExtended.");
 campaign = manifest.Campaign;
@@ -37,9 +37,9 @@ static string FindRepositoryRoot(string start)
     throw new DirectoryNotFoundException("Cannot locate the HISPANIA repository root from the harness runtime.");
 }
 
-static (string Profile, int Seed, string? OutputDirectory, string? Campaign, string? ManifestPath, int? MaxMemoryMb, int? MaxCpuPercent, int? MaxConcurrency, bool ExplicitExtended) ParseArgs(string[] args)
+static (string Profile, int Seed, string? OutputDirectory, string? Campaign, string? ManifestPath, int? MaxMemoryMb, int? MaxCpuPercent, int? MaxConcurrency, int WorkloadIntervalMilliseconds, bool ExplicitExtended) ParseArgs(string[] args)
 {
-    var profile = "Smoke"; var seed = 24001; string? output = null; string? campaign = null; string? manifest = null; int? memory = null; int? cpu = null; int? concurrency = null; var confirm = false;
+    var profile = "Smoke"; var seed = 24001; string? output = null; string? campaign = null; string? manifest = null; int? memory = null; int? cpu = null; int? concurrency = null; var workloadInterval = 1000; var confirm = false;
     for (var i = 0; i < args.Length; i++)
     {
         var arg = args[i];
@@ -54,9 +54,10 @@ static (string Profile, int Seed, string? OutputDirectory, string? Campaign, str
             case "--max-memory-mb": memory = int.Parse(Value(), System.Globalization.CultureInfo.InvariantCulture); break;
             case "--max-cpu-percent": cpu = int.Parse(Value(), System.Globalization.CultureInfo.InvariantCulture); break;
             case "--max-concurrency": concurrency = int.Parse(Value(), System.Globalization.CultureInfo.InvariantCulture); break;
+            case "--workload-interval-milliseconds": workloadInterval = int.Parse(Value(), System.Globalization.CultureInfo.InvariantCulture); break;
             case "--confirm-extended": confirm = true; break;
             default: throw new ArgumentException($"Unknown harness argument: {arg}");
         }
     }
-    return (profile, seed, output, campaign, manifest, memory, cpu, concurrency, confirm);
+    return (profile, seed, output, campaign, manifest, memory, cpu, concurrency, workloadInterval, confirm);
 }

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "profiles": [
     { "name": "Smoke", "durationSeconds": 60, "maxMemoryMb": 1024, "maxCpuPercent": 80, "maxConcurrency": 8, "purpose": "local development" },
-    { "name": "Short", "durationSeconds": 600, "maxMemoryMb": 2048, "maxCpuPercent": 80, "maxConcurrency": 16, "purpose": "manual CI acceptance" },
+    { "name": "Short", "durationSeconds": 900, "maxMemoryMb": 2048, "maxCpuPercent": 80, "maxConcurrency": 16, "purpose": "manual CI acceptance" },
     { "name": "Soak", "durationSeconds": 7200, "maxMemoryMb": 4096, "maxCpuPercent": 80, "maxConcurrency": 32, "purpose": "controlled prolonged campaign; never automatic" },
     { "name": "Extended", "durationSeconds": 28800, "maxMemoryMb": 4096, "maxCpuPercent": 80, "maxConcurrency": 32, "purpose": "manual campaign; explicit activation required" }
   ],

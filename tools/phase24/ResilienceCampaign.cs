@@ -18,7 +18,7 @@ using Microsoft.Data.Sqlite;
 namespace Hispania.ResilienceHarness;
 
 public sealed record ResilienceManifest(int SchemaVersion, string Campaign, int DurationSeconds, int Seed,
-    string[] Workloads, string[] Faults, ResilienceLimits Limits);
+    string[] Workloads, string[] Faults, ResilienceLimits Limits, int WorkloadIntervalMilliseconds = 1000);
 public sealed record ResilienceLimits(int MaxMemoryMb, int MaxCpuPercent, int MaxConcurrency);
 public sealed record CampaignProfile(string Name, int DurationSeconds, int MaxMemoryMb, int MaxCpuPercent, int MaxConcurrency);
 public sealed record MetricSample(DateTimeOffset AtUtc, string Name, double? Value, string Kind, string? Unit, string? UnavailableReason = null);
@@ -30,7 +30,7 @@ public static class CampaignProfiles
     public static readonly IReadOnlyDictionary<string, CampaignProfile> All = new Dictionary<string, CampaignProfile>(StringComparer.OrdinalIgnoreCase)
     {
         ["Smoke"] = new("Smoke", 60, 1024, 80, 8),
-        ["Short"] = new("Short", 600, 2048, 80, 16),
+        ["Short"] = new("Short", 900, 2048, 80, 16),
         ["Soak"] = new("Soak", 7200, 4096, 80, 32),
         ["Extended"] = new("Extended", 28800, 4096, 80, 32)
     };
@@ -39,9 +39,9 @@ public static class CampaignProfiles
 public static class ResilienceValidation
 {
     public const int MaxDurationSeconds = 86400;
-    public static ResilienceManifest Create(string campaign, CampaignProfile profile, int seed, ResilienceLimits? limits = null) =>
+    public static ResilienceManifest Create(string campaign, CampaignProfile profile, int seed, ResilienceLimits? limits = null, int workloadIntervalMilliseconds = 1000) =>
         Validate(new(1, campaign, profile.DurationSeconds, seed,
-            ["health", "jobs", "events", "storage", "worker"], [], limits ?? new(profile.MaxMemoryMb, profile.MaxCpuPercent, profile.MaxConcurrency)));
+            ["health", "jobs", "events", "storage", "worker"], [], limits ?? new(profile.MaxMemoryMb, profile.MaxCpuPercent, profile.MaxConcurrency), workloadIntervalMilliseconds));
 
     public static ResilienceManifest Validate(ResilienceManifest manifest)
     {
@@ -58,6 +58,7 @@ public static class ResilienceValidation
             throw new InvalidDataException("Fault list contains a duplicate or unknown stable fault ID.");
         if (manifest.Limits.MaxMemoryMb is < 64 or > 65536 || manifest.Limits.MaxCpuPercent is < 1 or > 100 || manifest.Limits.MaxConcurrency is < 1 or > 256)
             throw new InvalidDataException("Campaign memory, CPU and concurrency limits must be explicitly defined and within supported bounds.");
+        if (manifest.WorkloadIntervalMilliseconds is < 100 or > 60000) throw new InvalidDataException("WorkloadIntervalMilliseconds must be within 100..60000.");
         return manifest;
     }
 }
@@ -170,6 +171,88 @@ public static class Statistics
     }
 }
 
+/// <summary>Fixed-size millisecond histogram; retains approximate percentiles without campaign-duration memory growth.</summary>
+public sealed class BoundedLatencyStatistics
+{
+    private const int BucketCount = 10002;
+    private readonly long[] buckets = new long[BucketCount];
+    private long count;
+    private readonly object gate = new();
+
+    public void Add(double milliseconds)
+    {
+        var bucket = (int)Math.Clamp(Math.Ceiling(milliseconds), 0, BucketCount - 2);
+        lock (gate) { buckets[bucket]++; count++; }
+    }
+
+    public double? Percentile(double percentile)
+    {
+        lock (gate)
+        {
+            if (count == 0) return null;
+            if (percentile is < 0 or > 100) throw new ArgumentOutOfRangeException(nameof(percentile));
+            var rank = Math.Max(1, (long)Math.Ceiling(count * percentile / 100d));
+            long cumulative = 0;
+            for (var i = 0; i < buckets.Length; i++)
+            {
+                cumulative += buckets[i];
+                if (cumulative >= rank) return i == BucketCount - 1 ? BucketCount - 2 : i;
+            }
+            return BucketCount - 2;
+        }
+    }
+
+    public void Reset() { lock (gate) { Array.Clear(buckets); count = 0; } }
+}
+
+public static class SustainedWorkloadLoop
+{
+    public static async Task RunUntilAsync(DateTimeOffset stopAt, int intervalMilliseconds,
+        Func<CancellationToken, Task> operation, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        if (intervalMilliseconds is < 100 or > 60000) throw new ArgumentOutOfRangeException(nameof(intervalMilliseconds));
+        while (DateTimeOffset.UtcNow < stopAt)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await operation(cancellationToken);
+            var remaining = (stopAt - DateTimeOffset.UtcNow).TotalMilliseconds;
+            if (remaining <= 0) break;
+            await Task.Delay(TimeSpan.FromMilliseconds(Math.Min(intervalMilliseconds, remaining)), cancellationToken);
+        }
+    }
+}
+
+public sealed class WorkloadOperationMetrics
+{
+    private readonly object gate = new();
+    private readonly Dictionary<string, long> operations = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> errors = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> timeouts = new(StringComparer.Ordinal);
+    public void Record(string workload, bool error = false, bool timeout = false)
+    {
+        lock (gate)
+        {
+            operations[workload] = operations.GetValueOrDefault(workload) + 1;
+            if (error) errors[workload] = errors.GetValueOrDefault(workload) + 1;
+            if (timeout) timeouts[workload] = timeouts.GetValueOrDefault(workload) + 1;
+        }
+    }
+    public (Dictionary<string, long> Operations, Dictionary<string, long> Errors, Dictionary<string, long> Timeouts) Snapshot()
+    {
+        lock (gate) return (new(operations, StringComparer.Ordinal), new(errors, StringComparer.Ordinal), new(timeouts, StringComparer.Ordinal));
+    }
+}
+
+public static class CampaignCoverage
+{
+    public static readonly string[] Limitations = [
+        "Jobs, events and storage use synthetic campaign-owned data.",
+        "Worker coverage uses the in-process synthetic coordinator and does not exercise a remote WorkerAgent.",
+        "Server managed heap and GC are unavailable without runtime diagnostics attachment; process working set is not managed heap."
+    ];
+}
+
 public sealed class FaultController
 {
     public static readonly IReadOnlySet<string> Catalog = new HashSet<string>(StringComparer.Ordinal)
@@ -195,13 +278,16 @@ public sealed class CampaignRunner
     private readonly List<MetricSample> metrics = [];
     private readonly List<FaultRecord> faults = [];
     private readonly List<object> invariants = [];
-    private readonly List<double> healthLatencies = [];
+    private readonly BoundedLatencyStatistics healthLatencies = new();
     private readonly Queue<string> serverBootstrap = new();
+    private readonly List<string> serverBootstrapHead = [];
     private Process? server;
     private int healthErrors;
     private int healthTimeouts;
     private bool cleanupPassed;
+    private bool enduranceCompleted;
     private double healthDurationSeconds;
+    private double sustainedDurationSeconds;
     private int cpuOverLimitWindows;
     private bool workerFencingVerified;
     private readonly string serverShutdownToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
@@ -211,6 +297,13 @@ public sealed class CampaignRunner
     private long eventsPublished;
     private long eventsDelivered;
     private long storageVerified;
+    private long workerChecks;
+    private readonly WorkloadOperationMetrics workloadMetrics = new();
+    private readonly List<object> intervals = [];
+    private long intervalRequests;
+    private long intervalErrors;
+    private long intervalTimeouts;
+    private readonly BoundedLatencyStatistics intervalLatencies = new();
 
     public CampaignRunner(ResilienceManifest manifest, CampaignOwnership owner, string repositoryRoot)
     { this.manifest = ResilienceValidation.Validate(manifest); this.owner = owner; this.repositoryRoot = Path.GetFullPath(repositoryRoot); }
@@ -222,19 +315,16 @@ public sealed class CampaignRunner
         try
         {
             await StartServerAsync(cancellationToken);
-            if (manifest.Workloads.Contains("health", StringComparer.Ordinal)) await RunHealthAsync(cancellationToken);
-            if (manifest.Workloads.Contains("jobs", StringComparer.Ordinal)) await RunJobsAsync(storeRoot, cancellationToken);
-            if (manifest.Workloads.Contains("events", StringComparer.Ordinal)) await RunEventsAsync(storeRoot, cancellationToken);
-            if (manifest.Workloads.Contains("storage", StringComparer.Ordinal)) await RunStorageAsync(storeRoot, cancellationToken);
-            if (manifest.Workloads.Contains("worker", StringComparer.Ordinal)) RunWorkerStateMachine();
-            await RunWindowAsync(start, cancellationToken);
+            var windowStart = DateTimeOffset.UtcNow;
+            await RunSustainedWorkloadsAsync(windowStart, storeRoot, cancellationToken);
+            enduranceCompleted = true;
             var coreWorkloadsPass = manifest.Workloads.Contains("health", StringComparer.Ordinal) ? healthRequests > 0 && healthErrors == 0 && healthTimeouts == 0 : true;
             coreWorkloadsPass &= manifest.Workloads.Contains("jobs", StringComparer.Ordinal) ? jobsEnqueued > 0 && jobsCompleted == jobsEnqueued : true;
             coreWorkloadsPass &= manifest.Workloads.Contains("events", StringComparer.Ordinal) ? eventsPublished > 0 && eventsDelivered == eventsPublished : true;
             coreWorkloadsPass &= manifest.Workloads.Contains("storage", StringComparer.Ordinal) ? storageVerified > 0 : true;
             coreWorkloadsPass &= manifest.Workloads.Contains("worker", StringComparer.Ordinal) ? workerFencingVerified : true;
             coreWorkloadsPass &= !manifest.Workloads.Any(w => w is "media" or "inventory");
-            status = coreWorkloadsPass ? "PASS" : "FAIL";
+            status = coreWorkloadsPass && enduranceCompleted ? "PASS" : "FAIL";
             invariants.Add(new { id = "confirmed-operations-preserved", result = jobsCompleted == jobsEnqueued && eventsDelivered == eventsPublished ? "PASS" : "FAIL", jobsEnqueued, jobsCompleted, eventsPublished, eventsDelivered });
             if (manifest.Workloads.Contains("worker", StringComparer.Ordinal)) invariants.Add(new { id = "fencing-rejects-stale-generation", result = "PASS", evidence = "stale worker result rejected by existing coordinator" });
             invariants.Add(new { id = "campaign-process-started-and-owned", result = server is not null && owner.OwnsDirectory() ? "PASS" : "FAIL", processId = server?.Id });
@@ -261,12 +351,13 @@ public sealed class CampaignRunner
             schemaVersion = 1, campaignId = manifest.Campaign, gitSha = GitSha(), platform = Environment.OSVersion.Platform.ToString(),
             architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(), runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
             profile = CampaignProfiles.All.Values.FirstOrDefault(p => p.DurationSeconds == manifest.DurationSeconds)?.Name ?? "custom", seed = manifest.Seed,
-            startedAtUtc = start, completedAtUtc = end, actualDurationSeconds = (end - start).TotalSeconds, configuredDurationSeconds = manifest.DurationSeconds,
-            workloads = manifest.Workloads,
+            startedAtUtc = start, completedAtUtc = end, actualDurationSeconds = (end - start).TotalSeconds, sustainedDurationSeconds, configuredDurationSeconds = manifest.DurationSeconds,
+            workloads = manifest.Workloads, workloadIntervalMilliseconds = manifest.WorkloadIntervalMilliseconds,
             workloadsExecuted = manifest.Workloads.Where(w => w is "health" or "jobs" or "events" or "storage" or "worker").ToArray(),
             workloadsSkipped = manifest.Workloads.Where(w => w is "media" or "inventory").ToArray(),
-            faults, status, errorSummary, metricLimitations = new[] { "Managed heap and GC values describe the harness process; server-process managed heap is unavailable without runtime diagnostics attachment." },
-            metrics = new { requests = healthRequests, errors = healthErrors, timeouts = healthTimeouts, latencyP50Ms = PercentileOrNull(healthLatencies, 50), latencyP95Ms = PercentileOrNull(healthLatencies, 95), latencyP99Ms = PercentileOrNull(healthLatencies, 99), throughputPerSecond = healthDurationSeconds > 0 ? healthRequests / healthDurationSeconds : 0, healthDurationSeconds, jobsEnqueued, jobsCompleted, eventsPublished, eventsDelivered, storageVerified },
+            faults, status, errorSummary, metricLimitations = CampaignCoverage.Limitations,
+            metrics = new { requests = workloadMetrics.Snapshot().Operations.Values.Sum(), healthRequests, errors = workloadMetrics.Snapshot().Errors.Values.Sum(), timeouts = workloadMetrics.Snapshot().Timeouts.Values.Sum(), latencyP50Ms = healthLatencies.Percentile(50), latencyP95Ms = healthLatencies.Percentile(95), latencyP99Ms = healthLatencies.Percentile(99), throughputPerSecond = sustainedDurationSeconds > 0 ? workloadMetrics.Snapshot().Operations.Values.Sum() / sustainedDurationSeconds : 0, healthDurationSeconds, workloadOperations = workloadMetrics.Snapshot().Operations, workloadErrors = workloadMetrics.Snapshot().Errors, workloadTimeouts = workloadMetrics.Snapshot().Timeouts, jobsEnqueued, jobsCompleted, eventsPublished, eventsDelivered, storageVerified, workerChecks },
+            intervalMetrics = intervals,
             memoryTrend = Statistics.Trend(metrics.Where(m => m.Name == "process.working_set_bytes" && m.Value.HasValue).Select(m => m.Value!.Value).ToArray(), manifest.DurationSeconds < 7200),
             thresholds = manifest.Limits, cleanup = cleanupPassed ? "passed" : "failed", invariants
         };
@@ -279,7 +370,7 @@ public sealed class CampaignRunner
         var resultCode = status == "PASS" && errorSummary is null ? 0 : 1;
         WriteJson(Path.Combine(owner.DirectoryPath, "campaign-exit.json"), new { exitCode = resultCode, status });
         WriteJson(Path.Combine(owner.DirectoryPath, "cleanup.json"), new { status = cleanupPassed ? "passed" : "failed", ownerMarkerVerified = owner.OwnsDirectory(), runtimeStoresRemoved = cleanupPassed, serverProcessStopped = server is null });
-        WriteJson(Path.Combine(owner.DirectoryPath, "server-bootstrap.json"), serverBootstrap.ToArray());
+        WriteJson(Path.Combine(owner.DirectoryPath, "server-bootstrap.json"), serverBootstrapHead.Concat(serverBootstrap).ToArray());
         WriteChecksums();
         return resultCode;
     }
@@ -334,75 +425,144 @@ public sealed class CampaignRunner
 
     private async Task RunHealthAsync(CancellationToken cancellationToken)
     {
-        var healthTimer = Stopwatch.StartNew();
+        // Retained as a single health operation for fault adapters; sustained execution is managed by RunSustainedWorkloadsAsync.
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-        var tasks = Enumerable.Range(0, manifest.Limits.MaxConcurrency).Select(async worker =>
-        {
-            var random = new Random(unchecked(manifest.Seed + worker));
-            for (var i = 0; i < 24; i++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (server is null || server.HasExited) { Interlocked.Increment(ref healthErrors); break; }
-                var before = Stopwatch.GetTimestamp(); Interlocked.Increment(ref healthRequests);
-                try
-                {
-                    await Task.Delay(random.Next(0, 8), cancellationToken);
-                    using var response = await client.GetAsync(serverUrl + (i % 2 == 0 ? "/healthz" : "/readyz"), cancellationToken);
-                    if (!response.IsSuccessStatusCode) Interlocked.Increment(ref healthErrors);
-                    lock (healthLatencies) healthLatencies.Add(Stopwatch.GetElapsedTime(before).TotalMilliseconds);
-                }
-                catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested) { Interlocked.Increment(ref healthTimeouts); }
-                catch (HttpRequestException) { Interlocked.Increment(ref healthErrors); }
-            }
-        });
-        await Task.WhenAll(tasks);
-        healthDurationSeconds = healthTimer.Elapsed.TotalSeconds;
+        await SendHealthRequestAsync(client, 0, cancellationToken);
     }
 
-    private async Task RunJobsAsync(string storeRoot, CancellationToken ct)
+    private async Task RunSustainedWorkloadsAsync(DateTimeOffset windowStart, string storeRoot, CancellationToken ct)
+    {
+        var stopAt = windowStart.AddSeconds(manifest.DurationSeconds);
+        using var workloadStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var workloadToken = workloadStop.Token;
+        var tasks = new List<Task>();
+        if (manifest.Workloads.Contains("health", StringComparer.Ordinal))
+            for (var worker = 0; worker < manifest.Limits.MaxConcurrency; worker++) tasks.Add(HealthLoopAsync(worker, stopAt, workloadToken));
+        if (manifest.Workloads.Contains("jobs", StringComparer.Ordinal)) tasks.Add(WorkloadLoopAsync("jobs", stopAt, token => RunJobOperationAsync(storeRoot, token), workloadToken));
+        if (manifest.Workloads.Contains("events", StringComparer.Ordinal)) tasks.Add(WorkloadLoopAsync("events", stopAt, token => RunEventOperationAsync(storeRoot, token), workloadToken));
+        if (manifest.Workloads.Contains("storage", StringComparer.Ordinal)) tasks.Add(WorkloadLoopAsync("storage", stopAt, token => RunStorageOperationAsync(storeRoot, token), workloadToken));
+        if (manifest.Workloads.Contains("worker", StringComparer.Ordinal)) tasks.Add(WorkloadLoopAsync("worker", stopAt, token => { RunWorkerStateMachine(); Interlocked.Increment(ref workerChecks); return Task.CompletedTask; }, workloadToken));
+        var sampler = RunWindowAsync(windowStart, stopAt, workloadToken);
+        tasks.Add(sampler);
+        try { await Task.WhenAll(tasks); }
+        catch { await workloadStop.CancelAsync(); try { await Task.WhenAll(tasks); } catch (OperationCanceledException) { } throw; }
+        sustainedDurationSeconds = Math.Max(0, (DateTimeOffset.UtcNow - windowStart).TotalSeconds);
+        healthDurationSeconds = sustainedDurationSeconds;
+    }
+
+    private async Task HealthLoopAsync(int worker, DateTimeOffset stopAt, CancellationToken ct)
+    {
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        var requestIndex = 0;
+        await SustainedWorkloadLoop.RunUntilAsync(stopAt, manifest.WorkloadIntervalMilliseconds, async token =>
+        {
+            var before = Stopwatch.GetTimestamp();
+            await SendHealthRequestAsync(client, requestIndex++ + worker, token);
+            intervalLatencies.Add(Stopwatch.GetElapsedTime(before).TotalMilliseconds);
+        }, ct);
+    }
+
+    private async Task SendHealthRequestAsync(HttpClient client, int requestIndex, CancellationToken ct)
+    {
+        if (server is null || server.HasExited) { RecordOperation("health", error: true); Interlocked.Increment(ref healthErrors); return; }
+        var before = Stopwatch.GetTimestamp(); Interlocked.Increment(ref healthRequests); Interlocked.Increment(ref intervalRequests);
+        try
+        {
+            using var response = await client.GetAsync(serverUrl + (requestIndex % 2 == 0 ? "/healthz" : "/readyz"), ct);
+            var elapsed = Stopwatch.GetElapsedTime(before).TotalMilliseconds; healthLatencies.Add(elapsed);
+            if (!response.IsSuccessStatusCode) { Interlocked.Increment(ref healthErrors); RecordOperation("health", error: true); }
+            else RecordOperation("health");
+        }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested) { Interlocked.Increment(ref healthTimeouts); RecordOperation("health", timeout: true); }
+        catch (HttpRequestException) { Interlocked.Increment(ref healthErrors); RecordOperation("health", error: true); }
+    }
+
+    private async Task WorkloadLoopAsync(string name, DateTimeOffset stopAt, Func<CancellationToken, Task> operation, CancellationToken ct)
+    {
+        await SustainedWorkloadLoop.RunUntilAsync(stopAt, manifest.WorkloadIntervalMilliseconds, async token =>
+        {
+            var before = Stopwatch.GetTimestamp();
+            try { await operation(token); var elapsed = Stopwatch.GetElapsedTime(before).TotalMilliseconds; healthLatencies.Add(elapsed); intervalLatencies.Add(elapsed); RecordOperation(name); }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (TimeoutException) { RecordOperation(name, timeout: true); }
+            catch { RecordOperation(name, error: true); throw; }
+        }, ct);
+    }
+
+    private void RecordOperation(string workload, bool error = false, bool timeout = false)
+    {
+        workloadMetrics.Record(workload, error, timeout);
+        if (error) Interlocked.Increment(ref intervalErrors);
+        if (timeout) Interlocked.Increment(ref intervalTimeouts);
+    }
+
+    private async Task RunJobOperationAsync(string storeRoot, CancellationToken ct)
     {
         var store = new SqlitePlatformJobStore(Path.Combine(storeRoot, "jobs.sqlite"));
         var service = new PlatformJobService(store, new PlatformJobHandlerRegistryV1().Register(new PlatformTestHashHandlerV1()), new PlatformJobOptionsV1());
-        var request = new CreatePlatformJobV1(PlatformTestHashHandlerV1.TypeId, JsonSerializer.Serialize(new PlatformTestHashPayloadV1($"phase24:{manifest.Seed}", "sha256")), IdempotencyKey: $"phase24:{manifest.Campaign}:{manifest.Seed}");
+        var operationId = Guid.NewGuid().ToString("N");
+        var request = new CreatePlatformJobV1(PlatformTestHashHandlerV1.TypeId, JsonSerializer.Serialize(new PlatformTestHashPayloadV1($"phase24:{manifest.Seed}:{operationId}", "sha256")), IdempotencyKey: $"phase24:{manifest.Campaign}:{operationId}");
         var first = await service.CreateAsync(request, ct); var repeated = await service.CreateAsync(request, ct);
         if (repeated.Job.JobId != first.Job.JobId || !repeated.Duplicate) throw new InvalidDataException("Job idempotency invariant failed.");
-        jobsEnqueued = 1;
+        Interlocked.Increment(ref jobsEnqueued);
         var lease = await store.AcquireNextAsync(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(10), ct) ?? throw new InvalidDataException("Synthetic job was not claimable.");
-        var result = await new PlatformTestHashHandlerV1().ExecuteAsync(new($"phase24:{manifest.Seed}", "sha256"), ct);
+        var result = await new PlatformTestHashHandlerV1().ExecuteAsync(new($"phase24:{manifest.Seed}:{operationId}", "sha256"), ct);
         if (!await store.CompleteAsync(lease.JobId, lease.AttemptCount, JsonSerializer.Serialize(result), ct)) throw new InvalidDataException("Synthetic job completion was rejected.");
         var reopened = new SqlitePlatformJobStore(Path.Combine(storeRoot, "jobs.sqlite"));
         if ((await reopened.GetAsync(lease.JobId, ct))?.Status != PlatformJobStatusV1.Succeeded) throw new InvalidDataException("Durable job did not survive store reopen.");
-        jobsCompleted = 1;
+        Interlocked.Increment(ref jobsCompleted);
+        await PruneJobsAsync(Path.Combine(storeRoot, "jobs.sqlite"), ct);
     }
 
-    private async Task RunEventsAsync(string storeRoot, CancellationToken ct)
+    private async Task RunEventOperationAsync(string storeRoot, CancellationToken ct)
     {
-        using var bus = new SqliteDurablePlatformEventBus(Path.Combine(storeRoot, "events.sqlite"), new(MaximumAttempts: 2, RetryDelay: TimeSpan.Zero));
-        bus.DeliveryHandler = (_, _, _) => ValueTask.CompletedTask;
-        var evt = new SyntheticCampaignEvent($"phase24:{manifest.Seed}");
-        var id = await bus.PublishAsync(evt, "phase24-harness", ["phase24-consumer"], cancellationToken: ct);
-        eventsPublished = 1;
-        var reopened = new SqliteDurablePlatformEventBus(Path.Combine(storeRoot, "events.sqlite"), new(MaximumAttempts: 2, RetryDelay: TimeSpan.Zero)) { DeliveryHandler = (_, _, _) => ValueTask.CompletedTask };
+        var path = Path.Combine(storeRoot, "events.sqlite");
+        Guid id;
+        using (var bus = new SqliteDurablePlatformEventBus(path, new(MaximumAttempts: 2, RetryDelay: TimeSpan.Zero)))
+        {
+            bus.DeliveryHandler = (_, _, _) => ValueTask.CompletedTask;
+            var evt = new SyntheticCampaignEvent($"phase24:{manifest.Seed}:{Guid.NewGuid():N}");
+            id = await bus.PublishAsync(evt, "phase24-harness", ["phase24-consumer"], cancellationToken: ct);
+        }
+        Interlocked.Increment(ref eventsPublished);
+        using var reopened = new SqliteDurablePlatformEventBus(path, new(MaximumAttempts: 2, RetryDelay: TimeSpan.Zero)) { DeliveryHandler = (_, _, _) => ValueTask.CompletedTask };
         if ((await reopened.GetEventAsync(id, ct)) is null) throw new InvalidDataException("Published event was not durable after reopen.");
         await reopened.DispatchOnceAsync(ct);
         var delivered = await reopened.ListDeliveriesAsync(DurableDeliveryStatus.Delivered, cancellationToken: ct);
-        if (delivered.Count != 1 || delivered[0].EventId != id) throw new InvalidDataException("Event delivery identifier or status invariant failed.");
-        eventsDelivered = 1;
+        if (delivered.All(item => item.EventId != id)) throw new InvalidDataException("Event delivery identifier or status invariant failed.");
+        Interlocked.Increment(ref eventsDelivered);
+        await PruneEventsAsync(path, id, ct);
     }
 
-    private async Task RunStorageAsync(string storeRoot, CancellationToken ct)
+    private async Task RunStorageOperationAsync(string storeRoot, CancellationToken ct)
     {
         var root = Path.Combine(storeRoot, "assets"); var storage = new FilesystemStorageProviderV1(root);
         var bytes = Encoding.UTF8.GetBytes($"synthetic-asset:{manifest.Seed}"); var expected = SHA256.HashData(bytes);
-        for (var i = 0; i < 4; i++)
-        {
-            await using var input = new MemoryStream(bytes, writable: false); var (handle, metadata) = await storage.WriteAsync(input, 1024, ct);
-            await using var output = await storage.OpenReadAsync(handle, ct) ?? throw new InvalidDataException("Synthetic asset read failed.");
-            var actual = await SHA256.HashDataAsync(output, ct);
-            if (!CryptographicOperations.FixedTimeEquals(expected, actual) || metadata.Size != bytes.Length) throw new InvalidDataException("Synthetic asset checksum or metadata mismatch.");
-            if (!await storage.DeleteAsync(handle, ct) || await storage.ExistsAsync(handle, ct)) throw new InvalidDataException("Synthetic asset delete invariant failed.");
-            storageVerified++;
-        }
+        await using var input = new MemoryStream(bytes, writable: false); var (handle, metadata) = await storage.WriteAsync(input, 1024, ct);
+        await using var output = await storage.OpenReadAsync(handle, ct) ?? throw new InvalidDataException("Synthetic asset read failed.");
+        var actual = await SHA256.HashDataAsync(output, ct);
+        if (!CryptographicOperations.FixedTimeEquals(expected, actual) || metadata.Size != bytes.Length) throw new InvalidDataException("Synthetic asset checksum or metadata mismatch.");
+        if (!await storage.DeleteAsync(handle, ct) || await storage.ExistsAsync(handle, ct)) throw new InvalidDataException("Synthetic asset delete invariant failed.");
+        Interlocked.Increment(ref storageVerified);
+    }
+
+    private static async Task PruneJobsAsync(string path, CancellationToken ct)
+    {
+        await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString());
+        await connection.OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM platform_job_attempts; DELETE FROM platform_jobs; DELETE FROM platform_job_idempotency_tombstones;";
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task PruneEventsAsync(string path, Guid eventId, CancellationToken ct)
+    {
+        await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString());
+        await connection.OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM DeliveryAttempts WHERE DeliveryId IN (SELECT DeliveryId FROM Deliveries WHERE EventId=$event); DELETE FROM Deliveries WHERE EventId=$event; DELETE FROM Events WHERE EventId=$event;";
+        command.Parameters.AddWithValue("$event", eventId.ToString("D"));
+        await command.ExecuteNonQueryAsync(ct);
     }
 
     private void RunWorkerStateMachine()
@@ -477,9 +637,8 @@ public sealed class CampaignRunner
         if (!passed) throw new InvalidDataException($"Fault {fault} did not meet its expected outcome.");
     }
 
-    private async Task RunWindowAsync(DateTimeOffset start, CancellationToken ct)
+    private async Task RunWindowAsync(DateTimeOffset start, DateTimeOffset stopAt, CancellationToken ct)
     {
-        var stopAt = start.AddSeconds(manifest.DurationSeconds);
         var previousAt = DateTimeOffset.UtcNow;
         var previousCpu = server?.TotalProcessorTime ?? TimeSpan.Zero;
         while (DateTimeOffset.UtcNow < stopAt)
@@ -500,9 +659,14 @@ public sealed class CampaignRunner
             var diskBytes = MeasureCampaignDirectoryBytes();
             metrics.Add(new(at, "campaign.disk_bytes", diskBytes, "derived", "bytes"));
             metrics.Add(new(at, "jobs.queue_depth", Math.Max(0, jobsEnqueued - jobsCompleted), "real", "jobs"));
-            await Task.Delay(TimeSpan.FromSeconds(Math.Min(2, Math.Max(0.1, (stopAt - DateTimeOffset.UtcNow).TotalSeconds))), ct);
+            var operationMetrics = workloadMetrics.Snapshot();
+            intervals.Add(new { atUtc = at, elapsedSeconds = (at - start).TotalSeconds, requests = Interlocked.Exchange(ref intervalRequests, 0), errors = Interlocked.Exchange(ref intervalErrors, 0), timeouts = Interlocked.Exchange(ref intervalTimeouts, 0), latencyP50Ms = intervalLatencies.Percentile(50), latencyP95Ms = intervalLatencies.Percentile(95), latencyP99Ms = intervalLatencies.Percentile(99), workloadOperations = operationMetrics.Operations, workloadErrors = operationMetrics.Errors, workloadTimeouts = operationMetrics.Timeouts, processWorkingSetBytes = server.WorkingSet64, processCpuPercent = cpuPercent, diskBytes, invariants = new { serverAlive = server is { HasExited: false }, jobsConfirmed = jobsCompleted <= jobsEnqueued, eventsConfirmed = eventsDelivered <= eventsPublished } });
+            intervalLatencies.Reset();
+            if (server is null || server.HasExited || jobsCompleted > jobsEnqueued || eventsDelivered > eventsPublished) throw new InvalidDataException("Campaign invariant failed during the sustained workload window.");
+            await Task.Delay(TimeSpan.FromMilliseconds(Math.Min(manifest.WorkloadIntervalMilliseconds, Math.Max(100, (stopAt - DateTimeOffset.UtcNow).TotalMilliseconds))), ct);
         }
     }
+
 
     private static IEnumerable<MetricSample> ReadProcessMetrics(Process process, DateTimeOffset at)
     {
@@ -593,7 +757,9 @@ public sealed class CampaignRunner
         if (string.IsNullOrWhiteSpace(line)) return;
         lock (serverBootstrap)
         {
-            serverBootstrap.Enqueue(SafeDiagnostic(line));
+            var safe = SafeDiagnostic(line);
+            if (serverBootstrapHead.Count < 12) serverBootstrapHead.Add(safe);
+            else serverBootstrap.Enqueue(safe);
             while (serverBootstrap.Count > 40) serverBootstrap.Dequeue();
         }
     }
