@@ -1,4 +1,4 @@
-name: Authorized Development Smoke
+name: Authorized Development Resilience Campaign
 
 on:
   workflow_dispatch:
@@ -13,12 +13,19 @@ on:
         description: Full commit SHA to test; it must be reachable from the selected branch
         required: true
         type: string
+      profile:
+        description: Soak runs Short first on each platform, then Soak after that platform's Short succeeds
+        required: true
+        type: choice
+        options:
+          - Short
+          - Soak
 
 permissions:
   contents: read
 
 concurrency:
-  group: authorized-dev-smoke-${{ inputs.branch }}
+  group: authorized-dev-resilience-${{ inputs.branch }}
   cancel-in-progress: false
 
 jobs:
@@ -57,11 +64,11 @@ jobs:
           }
           echo "sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
 
-  linux-smoke:
+  short-linux:
     needs: validate-target
-    if: needs.validate-target.result == 'success'
+    if: needs.validate-target.result == 'success' && (inputs.profile == 'Short' || inputs.profile == 'Soak')
     runs-on: [self-hosted, Linux, X64, hispania, hispania-linux]
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
         with:
@@ -74,15 +81,15 @@ jobs:
           DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
         with:
           dotnet-version: 10.0.x
-      - name: Run Phase 24 Smoke campaign
+      - name: Run Phase 24 Short campaign
         shell: pwsh
         working-directory: ${{ github.workspace }}/.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}
-        run: ./tools/test-phase24-operational-resilience.ps1 -Profile Smoke -Seed 24001 -OutputDirectory .artifacts/phase24-ci
+        run: ./tools/test-phase24-operational-resilience.ps1 -Profile Short -Seed 24002 -OutputDirectory .artifacts/phase24-ci
       - name: Preserve campaign evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: phase24-smoke-linux-${{ github.run_id }}
+          name: phase24-short-linux-${{ github.run_id }}
           path: ${{ github.workspace }}/.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}/.artifacts/phase24-ci
           if-no-files-found: warn
           retention-days: 7
@@ -96,11 +103,11 @@ jobs:
           if (-not $target.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing cleanup outside the isolated checkout directory.' }
           if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
 
-  windows-smoke:
+  short-windows:
     needs: validate-target
-    if: needs.validate-target.result == 'success'
+    if: needs.validate-target.result == 'success' && (inputs.profile == 'Short' || inputs.profile == 'Soak')
     runs-on: [self-hosted, Windows, X64, hispania, hispania-windows]
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
         with:
@@ -113,15 +120,93 @@ jobs:
           DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
         with:
           dotnet-version: 10.0.x
-      - name: Run Phase 24 Smoke campaign
+      - name: Run Phase 24 Short campaign
         shell: pwsh
         working-directory: ${{ github.workspace }}/.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}
-        run: ./tools/test-phase24-operational-resilience.ps1 -Profile Smoke -Seed 24001 -OutputDirectory .artifacts/phase24-ci
+        run: ./tools/test-phase24-operational-resilience.ps1 -Profile Short -Seed 24002 -OutputDirectory .artifacts/phase24-ci
       - name: Preserve campaign evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: phase24-smoke-windows-${{ github.run_id }}
+          name: phase24-short-windows-${{ github.run_id }}
+          path: ${{ github.workspace }}/.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}/.artifacts/phase24-ci
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Remove isolated checkout and local evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $workspace = [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
+          $target = [IO.Path]::GetFullPath((Join-Path $workspace '.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}'))
+          $prefix = [IO.Path]::GetFullPath((Join-Path $workspace '.phase24-runner')) + [IO.Path]::DirectorySeparatorChar
+          if (-not $target.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing cleanup outside the isolated checkout directory.' }
+          if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+
+  soak-linux:
+    needs: [validate-target, short-linux]
+    if: needs.validate-target.result == 'success' && needs.short-linux.result == 'success' && inputs.profile == 'Soak'
+    runs-on: [self-hosted, Linux, X64, hispania, hispania-linux]
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate-target.outputs.sha }}
+          path: .phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
+        with:
+          dotnet-version: 10.0.x
+      - name: Run Phase 24 Soak campaign
+        shell: pwsh
+        working-directory: ${{ github.workspace }}/.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}
+        run: ./tools/test-phase24-operational-resilience.ps1 -Profile Soak -Seed 24003 -OutputDirectory .artifacts/phase24-ci
+      - name: Preserve campaign evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase24-soak-linux-${{ github.run_id }}
+          path: ${{ github.workspace }}/.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}/.artifacts/phase24-ci
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Remove isolated checkout and local evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $workspace = [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
+          $target = [IO.Path]::GetFullPath((Join-Path $workspace '.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}'))
+          $prefix = [IO.Path]::GetFullPath((Join-Path $workspace '.phase24-runner')) + [IO.Path]::DirectorySeparatorChar
+          if (-not $target.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing cleanup outside the isolated checkout directory.' }
+          if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+
+  soak-windows:
+    needs: [validate-target, short-windows]
+    if: needs.validate-target.result == 'success' && needs.short-windows.result == 'success' && inputs.profile == 'Soak'
+    runs-on: [self-hosted, Windows, X64, hispania, hispania-windows]
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate-target.outputs.sha }}
+          path: .phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
+        with:
+          dotnet-version: 10.0.x
+      - name: Run Phase 24 Soak campaign
+        shell: pwsh
+        working-directory: ${{ github.workspace }}/.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}
+        run: ./tools/test-phase24-operational-resilience.ps1 -Profile Soak -Seed 24003 -OutputDirectory .artifacts/phase24-ci
+      - name: Preserve campaign evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase24-soak-windows-${{ github.run_id }}
           path: ${{ github.workspace }}/.phase24-runner/${{ github.run_id }}-${{ github.run_attempt }}/.artifacts/phase24-ci
           if-no-files-found: warn
           retention-days: 7
