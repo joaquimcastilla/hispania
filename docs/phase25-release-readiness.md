@@ -66,13 +66,13 @@ The exact clean Phase 25 commit is `9c7872e0e3e848fd820c3b8cb6641e2e50475a8e`. O
 
 The clean Windows artifact passed all 12 artifact/process cases against the final publisher code (TRX `phase25-final-process.trx`). The Linux artifact was cross-published and checksum-verified on Windows; it was not executed on Linux.
 
-The TRX files are under ignored `tests/deployment-process/TestResults/` and `tests/inventory/TestResults/`; final packages and campaign evidence are under ignored `.artifacts/phase25-final/` and `.artifacts/phase25/`. The initial exploratory process-test invocation omitted required artifact/predecessor environment variables and failed at fixture setup; the configured rerun above passed all 12 selected cases. No Linux execution, authenticated PostgreSQL, or native Windows service-manager install was performed locally. Phase 25's workflow prepares the Linux run and clean-source artifacts but has not been dispatched.
+The TRX files are under ignored `tests/deployment-process/TestResults/` and `tests/inventory/TestResults/`; final packages and campaign evidence are under ignored `.artifacts/phase25-final/` and `.artifacts/phase25/`. The initial exploratory process-test invocation omitted required artifact/predecessor environment variables and failed at fixture setup; the configured rerun above passed all 12 selected cases. No Linux execution, authenticated PostgreSQL, or native Windows service-manager install was performed locally. A dispatch attempt for Phase 25 was rejected with GitHub HTTP 404 because this workflow is not yet on the default branch. It can be dispatched after the reviewed workflow change lands there; no merge was performed or requested here.
 
 The historical Phase 17 predecessor's archived Web development dependencies report one high-severity npm advisory; this is retained as historical compatibility input. The current Phase 25 Web dependency audit is separate and reported zero vulnerabilities. The candidate release summary is in [Draft 0.7.0 release notes](PHASE-0.7.0-RELEASE-NOTES-DRAFT.md).
 
 ## Final acceptance procedure
 
-After this branch is pushed through the normal reviewed path, run **Phase 25 Release Acceptance** with `workflow_dispatch` on this exact branch and retain both jobs' uploaded artifact bundles. The workflow:
+After the Phase 25 workflow is available on the default branch through the reviewed integration path, run **Phase 25 Release Acceptance** with `workflow_dispatch` on this exact branch and retain both jobs' uploaded artifact bundles. GitHub currently rejects dispatching this branch-only workflow, so the OS acceptance has not started. The workflow:
 
 1. Requires the existing self-hosted labels `hispania-linux` and `hispania-windows`; it does not select GitHub-hosted runners.
 2. Builds Modern/Classic Web, publishes and verifies each RID-specific artifact twice, then requires byte-identical output before supplying the artifact to the clean-host process tests.
