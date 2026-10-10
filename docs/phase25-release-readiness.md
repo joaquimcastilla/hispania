@@ -14,7 +14,7 @@ Distribution identity remains **0.7.0 pre-1.0**. No architecture other than x64 
 | Phase 24 `feature/phase-24-operational-resilience` | `f2c5798b2c3c973deacf2cad2e7cc6d89720c247` | Builds on Phase 23; official Short/Soak evidence is linked at [Actions run 38028676728](https://github.com/joaquimcastilla/hispania/actions/runs/38028676728) |
 | Local `main` at inspection | `134076f5ba2894aba216e775c4588cc3c547ee31` | Ancestor of Phase 24; Phase 24 contains 86 commits beyond this point and is not merged into `main` |
 | Remote `origin/main` at inspection | `1fb323da92e6f5c6e389f36a042282430fd011c5` | Nine commits beyond the common base; contains the authorized development resilience launcher absent from Phase 23/24 |
-| Phase 25 | `feature/phase-25-final-integration-release-readiness` | Based on the clean Phase 24 commit; draft PR is the third review item in the stack |
+| Phase 25 | `feature/phase-25-final-integration-release-readiness` | Based on the clean Phase 24 commit; [draft PR #11](https://github.com/joaquimcastilla/hispania/pull/11) is the third review item in the stack |
 
 Phase 23's accepted history is included in Phase 24 by ancestry. Phase 24's existing worktree had edits to `PROGRESS-LOG.md` and `docs/phase24-operational-resilience.md`, plus untracked `docs/PHASE-24-EVIDENCE.md`; these were preserved in that worktree and are not silently included in this branch. That evidence reports four PASS campaigns (Windows/Linux × Short/Soak), with no skipped workloads. It also records the campaign boundary: synthetic data and coordinator, Server RSS but no managed heap/GC, and no declared campaign fault injection. Those limits remain in force.
 
