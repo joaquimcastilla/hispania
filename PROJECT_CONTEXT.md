@@ -121,3 +121,7 @@ Phases 1–25 of the active roadmap are complete and accepted incrementally. RC1
 - `docs/operations/` — operator runbooks.
 - `docs/phase25-release-readiness.md` — Phase 25 acceptance evidence and RC package provenance.
 - `PROGRESS-LOG.md` — append-only historical progress and validation record.
+
+## Step 2.1-I consolidation state
+
+The Step 2.1 branch now has local commit `5e14922808cf5ba9bcf87de786b8745547c2c9ba` for the consolidated product changes and a follow-on local CI/documentation commit in progress. It remains unpublished. The exact branch allowlist in Validation, Production Deployment and Phase 25 Acceptance allows manual validation after authorized publication; it does not trigger for pull requests, and it grants `contents: read`. Current ARM64 workflows still use `main` plus fixed pre-provisioned hashes, so they cannot consume this branch. See `docs/HISPANIA-0.7.0-STEP-2-1.md` and `PROGRESS-LOG.md` for package hashes, test outcomes, remaining gates and the local SQLite test side effect requiring inspection.

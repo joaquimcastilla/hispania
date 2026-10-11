@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   validate:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && (github.ref == 'refs/heads/feature/phase-21-security-operations-hardening' || github.ref == 'refs/heads/feature/phase-22-retention-reconciliation-capacity' || github.ref == 'refs/heads/feature/phase-23-e2e-compatibility-upgrades')
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && (github.ref == 'refs/heads/feature/phase-21-security-operations-hardening' || github.ref == 'refs/heads/feature/phase-22-retention-reconciliation-capacity' || github.ref == 'refs/heads/feature/phase-23-e2e-compatibility-upgrades' || github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness')
     runs-on: [self-hosted, hispania, hispania-linux]
     steps:
       - uses: actions/checkout@v7
@@ -214,7 +214,7 @@ jobs:
         run: ./tools/test-security-canaries.ps1 -EvidenceDirectory .artifacts
 
   validate-windows-launcher:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && (github.ref == 'refs/heads/feature/phase-21-security-operations-hardening' || github.ref == 'refs/heads/feature/phase-22-retention-reconciliation-capacity' || github.ref == 'refs/heads/feature/phase-23-e2e-compatibility-upgrades')
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && (github.ref == 'refs/heads/feature/phase-21-security-operations-hardening' || github.ref == 'refs/heads/feature/phase-22-retention-reconciliation-capacity' || github.ref == 'refs/heads/feature/phase-23-e2e-compatibility-upgrades' || github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness')
     runs-on: [self-hosted, hispania, hispania-windows]
     steps:
       - uses: actions/checkout@v7

@@ -1,0 +1,10 @@
+self-hosted-runner:
+  labels:
+    - hispania
+    - hispania-linux
+    - hispania-windows
+    - hispania-linux-ci
+    - hispania-win-ci
+    - hispania-arm64
+    - hispania-arm64-integration
+config-variables: null
