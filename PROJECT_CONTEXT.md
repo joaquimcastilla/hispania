@@ -125,3 +125,7 @@ Phases 1–25 of the active roadmap are complete and accepted incrementally. RC1
 ## Step 2.1-I consolidation state
 
 The Step 2.1 branch now has local commit `5e14922808cf5ba9bcf87de786b8745547c2c9ba` for the consolidated product changes and a follow-on local CI/documentation commit in progress. It remains unpublished. The exact branch allowlist in Validation, Production Deployment and Phase 25 Acceptance allows manual validation after authorized publication; it does not trigger for pull requests, and it grants `contents: read`. Current ARM64 workflows still use `main` plus fixed pre-provisioned hashes, so they cannot consume this branch. See `docs/HISPANIA-0.7.0-STEP-2-1.md` and `PROGRESS-LOG.md` for package hashes, test outcomes, remaining gates and the local SQLite test side effect requiring inspection.
+
+## Step 2.1-I consolidated state
+
+The code is consolidated in local commit `5e14922808cf5ba9bcf87de786b8745547c2c9ba`; the CI allowlist and documentation update are in local commit `bcfb76c5ef244d89f23b22c2df43018b41d3077f`. The worktree is clean and the branch remains unpublished. Validation, Production Deployment and Phase 25 workflows accept manual dispatch on this exact branch after it is pushed; they grant read-only contents permissions and retain repo/ref guards, plus actor guards where present. The existing ARM64 workflows still target `main` and fixed provisioned artifact hashes. Step 2.1 remains PARTIAL. See the Step 2.1-I report for package digests, test results and the local SQLite side effect that requires inspection.
