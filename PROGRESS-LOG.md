@@ -1,5 +1,12 @@
 # PROGRESS-LOG.md
 
+### 2026-10-11 — HISPANIA 0.7.0 Step 1/10 — PARTIAL
+- Goal: consolidate the RC1 modularity/worker audit, review PR #16, and define compatible platform boundaries for future stabilization.
+- Changed: added `docs/HISPANIA-0.7.0-STEP-1.md` and the ten-step proposal `docs/HISPANIA-0.7.0-ROADMAP.md`; clarified ADR-0029, ADR-0030, ADR-0035 and ADR-0039; linked the canonical records from README and Project Context. No runtime contracts or distribution versions changed.
+- Evidence: RC1 `main`/tag SHA `9b5abefe4c6b631360d505587748aedcb6c522d0`; PR #16 open, one commit, base at RC1, GitHub reports mergeable, and no check runs are attached. PR self-hosted CI remains outstanding. Existing `Hispania.Platform.slnf`, worker/job/lease contracts, security boundaries, and Server composition references were inspected.
+- Result: architecture direction consolidated; PARTIAL because PR checks and integration decision are outstanding, and generic direct-data contracts/ARM64 validation are future work. No merge, push, tag, release or Step 2 work performed.
+- Next: record PR validation/integration outcome under owner authorization; Step 2 should establish a domain-independent composition path and measure native Linux ARM64 before support claims.
+
 ### Historical implementation snapshot — Phase 12 Inventory proof (superseded by the closure evidence below)
 - Created public versioned Inventory query/command contracts, Inventory application policy, and an Inventory-only SQLite adapter using a separately configured `inventory.sqlite` file. Owned tables cover Items, Warehouses, Locations, Stock, Movement history, and opaque Asset links; foreign keys stay inside Inventory.
 - Added receipt, issue, and transfer with transactional stock checks, plus item/warehouse/location creation and asset link management. The server seeds `BP48` / Battery Pack 48V with 12 units and image/datasheet/video Asset metadata on an empty Inventory database.

@@ -1,5 +1,9 @@
 # Roadmap
 
+## 0.7.0 stabilization workstream
+
+The completed 25-phase roadmap remains historical release evidence. The separate proposed ten-step stabilization workstream starts with the PR #16 and architecture audit; only Step 1/10 is documented in [the audit record](HISPANIA-0.7.0-STEP-1.md). Steps 2–10 are planned, not implemented or authorized by this entry. See the [step index](HISPANIA-0.7.0-ROADMAP.md).
+
 ## Current roadmap state — 2026-10-10
 
 The active HISPANIA roadmap comprising Phases 1–25 is complete. Phase acceptance was incremental; Phase 25 final acceptance is recorded in [release readiness](phase25-release-readiness.md). This milestone closes the current roadmap, not HISPANIA development. Release Candidate preparation is tracked separately and does not add a Phase 26.

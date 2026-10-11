@@ -18,6 +18,10 @@ Keep lightweight compiled reflection API snapshots for selected candidates and C
 
 ## Consequences
 
+### 0.7.0 stabilization application
+
+Apply this model to cross-node evolution: do not repurpose V1 worker/job fields or assume old agents understand new required semantics. Use optional/defaulted additions only where old readers remain safe; otherwise negotiate a protocol generation or introduce a separately versioned contract. Capability IDs and versions stay independent of distribution SemVer. Unknown required capabilities fail closed, and compatibility claims require old/new consumer evidence. The proposed generic workload and direct-data concepts are documented, not implemented, in [Step 1/10 audit](../HISPANIA-0.7.0-STEP-1.md).
+
 Existing wire, schemas, APIs, signed fixtures and package acceptance stay unchanged. The root distribution source is usable by future release tooling without affecting package identity. Documentation makes maturity and compatibility limits explicit; gates catch classification gaps, duplicate IDs, source mismatches and candidate baseline changes, but do not prove historical binary/wire/data compatibility. Baselines are evidence for change review, not automatic stability. No Phase 15 implementation, push, PR, merge, tag or release is part of this phase.
 
 See VERSIONING.md, COMPATIBILITY-POLICY.md, SUPPORT-MATRIX.md, PLATFORM-1.0-SCOPE.md, VERSION-MAP.md and compatibility/CONTRACT-CATALOG.md for operative definitions.

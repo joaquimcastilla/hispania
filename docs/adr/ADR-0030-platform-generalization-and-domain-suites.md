@@ -46,6 +46,10 @@ The first Web Shell slice remains inside `apps/web/src/App.tsx`: the app shell/l
 
 `Hispania.Platform.slnf` builds Platform contracts, kernel/runtime, module host, generic worker-agent, and Platform persistence without Media or Inventory implementations. Worker capabilities are loaded through the Runtime provider boundary.
 
+## 0.7.0 stabilization clarification (2026-10-11)
+
+The Platform/Core boundary remains independent of Media and Inventory implementations; composition roots may reference concrete suites. This does not make the current Server a domain-free distribution: `apps/server` directly composes Media and Inventory. Keep Control Plane coordination, Execution Plane handlers, and Data Plane bytes as separate responsibilities. Existing worker transfer is scoped to the implemented Media path; generic Platform Jobs V1 does not establish a universal direct-data protocol. Prefer direct transfer under explicit authorization in future contracts, with relay only as a bounded, observable and policy-authorized exception. This clarification does not add runtime behavior or claim ARM64 support. See [Step 1/10 audit](../HISPANIA-0.7.0-STEP-1.md).
+
 ## Consequences and limits
 
 - Platform contracts compile without Media references, guarded by a runtime test.

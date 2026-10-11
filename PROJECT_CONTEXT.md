@@ -4,6 +4,8 @@ This is the current implementation context for developers and coding agents. Rea
 
 ## Product and release state
 
+The 0.7.0 stabilization work is tracked separately from the completed 25-phase roadmap. Its ten-step outline is in `docs/HISPANIA-0.7.0-ROADMAP.md`; only Step 1 is in scope in the current audit. See `docs/HISPANIA-0.7.0-STEP-1.md` for the PR #16 review, existing worker/job contracts, control/execution/data boundaries, and outstanding CI/ARM64 evidence. The direct-data plane is a target direction, not a current generic Platform capability.
+
 HISPANIA is a self-hosted, modular application platform. Its shared Platform mechanisms support independently owned domain suites. The default deployment is one Server process; optional WorkerAgents execute explicitly authorized capabilities on separate processes or hosts.
 
 - Distribution candidate: `0.7.0-rc.1` (pre-1.0); authoritative value is root `version.json`.

@@ -8,6 +8,10 @@ HISPANIA needs to place eligible capability operations on explicitly authorized 
 
 ## Decision
 
+### 0.7.0 architectural boundary clarification (2026-10-11)
+
+The coordinator owns control-plane decisions and execution leases; a worker performs the selected handler. Bulk bytes should flow directly between authorized source, worker and destination where connectivity and policy allow. A relay is an explicit bounded fallback for unavailable routes, client/protocol constraints or a required security boundary; it is observable and never silently broadens access. This is a future generic contract direction, not a change to the current Media transfer implementation. Current worker inventory remains advisory, capability authorization remains separate, and single-coordinator fencing semantics remain unchanged. See [Step 1/10 audit](../HISPANIA-0.7.0-STEP-1.md).
+
 - Contracts identify work by stable job ID, exact capability contract ID/version, correlation ID, and opaque JSON payload. Capability-specific payload meaning stays with the public capability contract.
 - Worker inventory reports OS, architecture, CPU, advisory memory, concurrency, accelerator labels, and exact capability versions. Inventory never authorizes a node.
 - A single coordinator owns node authorization, job state, lease generation, and result publication. Worker enrollment is explicit. Capabilities are separately allowlisted for each node.

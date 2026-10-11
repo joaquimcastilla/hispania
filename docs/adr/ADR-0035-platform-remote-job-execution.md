@@ -2,6 +2,10 @@
 
 Status: Accepted (Phase 13.6 V1).
 
+## 0.7.0 contract clarification (2026-10-11)
+
+Remote Jobs remain control/execution contracts with bounded JSON payloads and result metadata in V1. They do not imply generic source/destination transfer. Future large-data work should use separately versioned opaque source/destination descriptors and scoped, expiring transfer authorization; source and destination owners retain byte ownership, and coordinator relay is an explicit policy fallback. This adds no runtime flow and preserves the at-least-once, single-coordinator and cooperative-cancellation limits below. See [Step 1/10 audit](../HISPANIA-0.7.0-STEP-1.md).
+
 ## Decision and ownership
 
 Platform Jobs remains the durable source of truth for Job state, retry policy, attempts, cancellation intent, and accepted results. Each Job keeps its ordinary Pending/Running/terminal state regardless of executor. V1 adds `LocalOnly`, `RemotePreferred`, and `RemoteOnly` policy plus remote execution metadata on Job/Attempt; it does not introduce remote-only Job states.

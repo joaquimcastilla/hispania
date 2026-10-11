@@ -65,6 +65,7 @@ Configure `/srv/hispania/config/production.json`, provision the first operator t
 - [Upgrade](docs/operations/UPGRADE.md) · [Upgrade and rollback](docs/operations/UPGRADE-ROLLBACK.md) · [Backup and restore](docs/PHASE-17-BACKUP-RESTORE.md)
 - [Security model](docs/SECURITY_MODEL.md) · [Security policy](SECURITY.md)
 - [Architecture](docs/ARCHITECTURE.md) · [Module development](docs/MODULE_SYSTEM.md)
+- [0.7.0 stabilization roadmap](docs/HISPANIA-0.7.0-ROADMAP.md) · [Step 1 audit and contracts](docs/HISPANIA-0.7.0-STEP-1.md)
 - [Support matrix](docs/SUPPORT-MATRIX.md) · [Compatibility policy](docs/COMPATIBILITY-POLICY.md)
 - [Release notes: 0.7.0 RC1](docs/RELEASE-NOTES-0.7.0-rc.1.md)
 - [Progress log](PROGRESS-LOG.md) · [Roadmap](docs/ROADMAP.md)
