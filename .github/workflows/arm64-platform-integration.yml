@@ -1,0 +1,37 @@
+name: ARM64 Platform integration (Pi 4B)
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: hispania-arm64-platform-integration
+  cancel-in-progress: false
+
+jobs:
+  hispania-arm64-integration:
+    if: github.actor == 'joaquimcastilla' && github.ref == 'refs/heads/main'
+    runs-on:
+      - self-hosted
+      - Linux
+      - ARM64
+      - hispania-arm64-integration
+    timeout-minutes: 20
+    steps:
+      - name: Verify runner identity and fixed inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = refs/heads/main
+          test "$(id -un)" = hispania-integration-runner
+          test "$(uname -m)" = aarch64
+          dotnet --list-runtimes | grep -q '^Microsoft.AspNetCore.App 10\.'
+          test -r /opt/hispania-ci-integration/artifacts/hispania-platform-pi4-arm64-working-tree-20261011.tar.gz
+          test "$(sha256sum /opt/hispania-ci-integration/artifacts/hispania-platform-pi4-arm64-working-tree-20261011.tar.gz | cut -d' ' -f1)" = b484edf386c203539708004cba8ad424db7dd52aee8da29bbbe70817c3f077b4
+          test -r /opt/hispania-ci-integration/scripts/arm64-platform-integration.sh
+          test "$(sha256sum /opt/hispania-ci-integration/scripts/arm64-platform-integration.sh | cut -d' ' -f1)" = 18c2e24e6c0a8ef50b55e541f527c117e2ad13b90b138b2887795918628f8abf
+
+      - name: Run isolated ARM64 Platform integration smoke
+        shell: bash
+        run: bash /opt/hispania-ci-integration/scripts/arm64-platform-integration.sh
