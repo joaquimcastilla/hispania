@@ -1,6 +1,8 @@
 # HISPANIA
 
-**HISPANIA is a self-hosted, modular application platform for media and business workloads.** Its shared runtime supplies identity, authorization, extensions, storage, events, jobs, administration and distributed workers. Media and Inventory are domain suites built on those platform contracts.
+**Home International Server Platform for Applications, Networking, Integration & Automation**
+
+HISPANIA is a self-hosted, modular and extensible server platform for running, administering and integrating applications, services, automation and distributed processing through shared infrastructure. Media and Inventory are the implemented domain suites. ERP, industrial or home automation, network services and AI are examples of domains the architecture could host; they are not claims that those products are included today.
 
 HISPANIA is a modular monolith by default. A single Server process composes the enabled domains; separate WorkerAgent processes are optional. Operators keep control of their installation, data and trust policy.
 
@@ -14,7 +16,7 @@ The current candidate is **0.7.0-rc.1**, a pre-1.0 release candidate prepared fo
 | Linux x64 (`linux-x64`) | Native package accepted | Accepted on Ubuntu 24.04 x64; Phase 25 did not install a systemd service. |
 | ARM64, Raspberry Pi, macOS, other targets | Not validated | No support claim is made. |
 
-RC1 is a public pre-release, not a stable release. Public contracts remain pre-1.0; no subsystem or contract has been promoted to stable.
+RC1 is a public pre-release, not a stable release. Public contracts remain pre-1.0; no subsystem or contract has been promoted to stable. The modularity audit is recorded separately; this release remains `0.7.0-rc.1` until a stable release is actually published.
 
 ## Architecture
 
@@ -28,9 +30,11 @@ Server host (composition root)
 └── Optional WorkerAgents: authorized capabilities over mTLS
 ```
 
-Versioned contracts define subsystem boundaries. Platform contracts do not depend on Media or Inventory. The Server composes cross-domain behavior. `.hispania` packages are verified against host policy and may contain trusted native modules. Experimental Web contributions are declarative and use fixed authorized operations.
+Versioned contracts define subsystem boundaries. Platform contracts and runtime do not depend on Media or Inventory, and the Platform solution filter builds without those implementations. The distributed Server product is still a composition root that references and packages the current Media and Inventory suites; Inventory itself is not an independently installable package module. `.hispania` packages support trusted native extensions and package lifecycle operations; see the module audit for evidence and limits. Experimental Web contributions are declarative and use fixed authorized operations.
 
 WorkerAgents run approved capabilities on separate processes or hosts. The coordinator uses a single SQLite instance. mTLS authenticates workers; leases and generations fence stale results. These controls do not provide multi-master high availability or a hostile-code sandbox. In-process modules inherit Server privileges, and out-of-process resource limits are not a security boundary for hostile code.
+
+Conceptually, one HISPANIA Core could host Media, ERP, Automation or AI applications and authorized workers. Only the Platform runtime, Media, bounded Inventory, selected trusted extensions and worker mechanisms described in this repository are implemented. ERP, industrial automation and AI applications are examples of possible future modules, not included products. Separate domain-only installation bundles are not established by the current distribution.
 
 ## Included capabilities
 
@@ -64,7 +68,8 @@ Configure `/srv/hispania/config/production.json`, provision the first operator t
 - [Configuration reference](docs/operations/CONFIGURATION-REFERENCE.md)
 - [Upgrade](docs/operations/UPGRADE.md) · [Upgrade and rollback](docs/operations/UPGRADE-ROLLBACK.md) · [Backup and restore](docs/PHASE-17-BACKUP-RESTORE.md)
 - [Security model](docs/SECURITY_MODEL.md) · [Security policy](SECURITY.md)
-- [Architecture](docs/ARCHITECTURE.md) · [Module development](docs/MODULE_SYSTEM.md)
+- [Architecture](docs/ARCHITECTURE.md) · [Module system](docs/MODULE_SYSTEM.md) · [External module development guide](docs/MODULE-DEVELOPMENT.md)
+- [Modularity audit for 0.7.0](docs/MODULARITY-AUDIT-0.7.0.md)
 - [Support matrix](docs/SUPPORT-MATRIX.md) · [Compatibility policy](docs/COMPATIBILITY-POLICY.md)
 - [Release notes: 0.7.0 RC1](docs/RELEASE-NOTES-0.7.0-rc.1.md)
 - [Progress log](PROGRESS-LOG.md) · [Roadmap](docs/ROADMAP.md)

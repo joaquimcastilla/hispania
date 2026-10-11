@@ -1,5 +1,9 @@
 # Architecture
 
+## Current modularity audit (0.7.0)
+
+The Platform contracts/runtime are buildable independently from Media and Inventory using `Hispania.Platform.slnf`; `apps/server/Hispania.Server.csproj` is nevertheless a composition root with direct references to Media and Inventory projects. Inventory owns its data and does not depend on Media, but it is not an installable `IModule`. The current Server distribution is therefore a modular monolith, not a domain-free core distribution. Trusted `.hispania` extensions have install/activation/update/rollback and package dependency lifecycle; in-process code retains Server privileges. See [the final modularity audit](MODULARITY-AUDIT-0.7.0.md) for evidence and the stable-release gate.
+
 ## Versioning and compatibility foundation (Phase 14)
 
 The current integrated distribution candidate is HISPANIA 0.7.0-rc.1, recorded only in root `version.json`; it does not renumber SDKs, assemblies, manifests, protocols or schemas. The RC is prepared for review and is not a published or stable release. [VERSIONING](VERSIONING.md) distinguishes each axis; [COMPATIBILITY-POLICY](COMPATIBILITY-POLICY.md) requires explicit source/binary/wire/data/behavioral promises. Current public surfaces are experimental or Stable Candidate, with zero Public Stable declarations. See the [catalog](compatibility/CONTRACT-CATALOG.md), [support matrix](SUPPORT-MATRIX.md), [1.0 scope](PLATFORM-1.0-SCOPE.md) and [ADR-0039](adr/ADR-0039-versioning-and-compatibility-model.md).

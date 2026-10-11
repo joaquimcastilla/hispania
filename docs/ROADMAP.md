@@ -1,6 +1,6 @@
 # Roadmap
 
-## Current roadmap state — 2026-10-10
+## Current roadmap state — 2026-10-11
 
 The active HISPANIA roadmap comprising Phases 1–25 is complete. Phase acceptance was incremental; Phase 25 final acceptance is recorded in [release readiness](phase25-release-readiness.md). This milestone closes the current roadmap, not HISPANIA development. Release Candidate preparation is tracked separately and does not add a Phase 26.
 
@@ -8,6 +8,8 @@ The active HISPANIA roadmap comprising Phases 1–25 is complete. Phase acceptan
 |---|---|
 | Phases 1–25 | Complete and accepted within their recorded scopes |
 | 0.7.0-rc.1 | Public pre-release; package provenance is recorded in each distribution manifest |
+| 0.7.0 stable | Not published; final modularity audit is PARTIAL and its acceptance gate is not passed |
+| Modularity audit | PARTIAL; signed extension probe passes in an isolated TestServer; stable gate is blocked by the absence of a domain-only Server distribution and self-hosted CI evidence on the audit SHA |
 | Later improvements | Proposed only; not accepted roadmap commitments |
 
 Support limits and non-validated features remain in the [Support Matrix](SUPPORT-MATRIX.md), [Phase 25 record](phase25-release-readiness.md), Phase-specific documents and [Platform 1.0 scope](PLATFORM-1.0-SCOPE.md). Future directions are proposals, not implemented work.
