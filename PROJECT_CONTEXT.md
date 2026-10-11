@@ -1,6 +1,6 @@
 # HISPANIA — Project Context
 
-This is the current implementation context for developers and coding agents. Read it with the architecture, compatibility policy, security model and relevant operational runbook before making changes. `PROGRESS-LOG.md` is the historical record; this file describes the accepted repository state at the 0.7.0 RC1 preparation baseline.
+This is the current implementation context for developers and coding agents. Read it with the architecture, compatibility policy, security model and relevant operational runbook before making changes. `PROGRESS-LOG.md` is the historical record; this file describes the accepted repository state at the 0.7.0 RC1 baseline, with the later modularity audit linked below.
 
 ## Product and release state
 
@@ -8,14 +8,14 @@ HISPANIA is a self-hosted, modular application platform. Its shared Platform mec
 
 - Distribution candidate: `0.7.0-rc.1` (pre-1.0); authoritative value is root `version.json`.
 - The current 25-phase roadmap is complete. Historical phases were accepted incrementally; Phase 25's final Linux acceptance passed on `main` at `8817b912b8f1748977f9145942d2dc30ad492b8e` (GitHub Actions run `38064897483`).
-- RC1 is being prepared on `release/0.7.0-rc.1-preparation`. A successful package build for this preparation must use its final clean commit; prior manifests and checksums are evidence only for their recorded commits.
+- Public RC1 tag `v0.7.0-rc.1` and release were created from `9b5abefe4c6b631360d505587748aedcb6c522d0`. The final modularity audit is on `audit/modularity-0.7.0`; it does not change or replace RC1.
 - Verified distribution targets: Windows x64 and Linux x64. Linux's final Phase 25 package was built and run natively on Ubuntu 24.04 x64. ARM64, Raspberry Pi, macOS and other targets are not validated.
-- No tag or GitHub Release exists for RC1. Do not tag, publish or describe it as stable without explicit user authorization.
+- RC1 remains a public pre-release. The modularity audit is not a stable-release authorization unless every required acceptance criterion passes; see `docs/MODULARITY-AUDIT-0.7.0.md`.
 - No Public Stable contracts. Compatibility classes and technical versions are independent of distribution SemVer.
 
 ## Goals and deliberate non-goals
 
-The project aims to provide an extensible, operator-controlled host for media and general business domains. Keep the kernel and Platform independent of domain implementations. Prefer versioned contracts and owner-controlled persistence over cross-domain implementation references.
+HISPANIA means “Home International Server Platform for Applications, Networking, Integration & Automation”. The project aims to provide an extensible, operator-controlled host for multiple application domains. Keep the kernel and Platform independent of domain implementations. Prefer versioned contracts and owner-controlled persistence over cross-domain implementation references. The current Server distribution composes Media and Inventory; Inventory is not a dynamic extension and domain-only distribution bundles are not available.
 
 The platform is a modular monolith, not a microservice system. Inventory is a limited domain proof, not a complete ERP. The runtime does not provide an adversarial code sandbox. Do not claim exactly-once execution, cross-store atomic rollback, distributed high availability or power-loss guarantees without new, scoped evidence.
 
@@ -50,6 +50,8 @@ Media includes local library/catalog and scan, metadata providers and enrichment
 Inventory owns Item, Warehouse, Location, Stock and StockMovement behavior and a dedicated SQLite store. It may hold opaque Asset references. It does not depend on Media.
 
 The Web Shell ships Modern and Classic bundles. Both use the same registered screens/routes and server authorization. Dynamic package Web contributions are signed/declarative schema content with fixed authorized operations; packages do not provide executable JavaScript, raw HTML or arbitrary URLs.
+
+The current evidence and limits for dependency independence, extension lifecycle and the external module probe are recorded in `docs/MODULARITY-AUDIT-0.7.0.md`. Do not treat contracts, package APIs or possible ERP/automation/AI modules as proof those domain products are shipped.
 
 ## Modules, extensions and trust
 
@@ -111,6 +113,8 @@ Phases 1–25 of the active roadmap are complete and accepted incrementally. RC1
 ## Canonical references
 
 - `README.md` — public project overview and entry points.
+- `docs/MODULARITY-AUDIT-0.7.0.md` — current modularity audit and release gate.
+- `docs/MODULE-DEVELOPMENT.md` — independent extension author workflow and limits.
 - `docs/ARCHITECTURE.md`, `docs/MODULE_SYSTEM.md` — system and extension boundaries.
 - `docs/COMPATIBILITY-POLICY.md`, `docs/VERSIONING.md`, `docs/SUPPORT-MATRIX.md` — version and support claims.
 - `docs/SECURITY_MODEL.md`, `SECURITY.md`, `docs/security/` — security boundaries and reporting.

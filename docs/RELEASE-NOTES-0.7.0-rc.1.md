@@ -2,6 +2,8 @@
 
 This is the public pre-1.0 review build `0.7.0-rc.1`, not a stable release. Its tag is `v0.7.0-rc.1`.
 
+The subsequent [modularity audit](MODULARITY-AUDIT-0.7.0.md) is an audit follow-up, not a change to this release or an announcement of stable 0.7.0.
+
 ## Summary
 
 HISPANIA 0.7.0 RC1 packages the integrated result of the completed 25-phase roadmap as a self-hosted modular application platform. It combines a shared Platform runtime with Media and Inventory domains, a Modern and Classic Web Shell, an offline deployment tool and optional distributed WorkerAgents.

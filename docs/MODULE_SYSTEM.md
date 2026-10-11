@@ -1,5 +1,7 @@
 # Module System
 
+**Current 0.7.0 status:** this document contains historical design and phase notes as well as current behavior. Later package lifecycle implementation supersedes older statements where they conflict. The authoritative scoped results are in [MODULARITY-AUDIT-0.7.0](MODULARITY-AUDIT-0.7.0.md); the practical author steps are in [MODULE-DEVELOPMENT](MODULE-DEVELOPMENT.md).
+
 ## Version semantics (Phase 14)
 
 Module implementation identity, exact capability contract identity, package format generation, manifest schema, host acceptance level and IPC wire generation are separate axes. V1 is a technical generation, not a stable 1.0 release. The legacy host value 1.0.0 is retained for manifest bounds; the distribution baseline 0.7.0 must not replace it mechanically. Passing host bounds does not establish binary/API compatibility. SDK/public contract stability and missing gates are recorded in [VERSIONING](VERSIONING.md), [COMPATIBILITY-POLICY](COMPATIBILITY-POLICY.md) and the [catalog](compatibility/CONTRACT-CATALOG.md). No Public Stable contract is declared by Phase 14.
@@ -45,9 +47,9 @@ Candidatos:
 - hardware acceleration;
 - high-performance scanning.
 
-### Sandboxed Plugin
+### Sandboxed Plugin (future)
 
-Código de terceros ejecutado mediante WebAssembly/WASI.
+Código de terceros ejecutado mediante WebAssembly/WASI. This is a design target only; the current release does not ship a Wasm/WASI plugin sandbox.
 
 Debe solicitar capacidades explícitas.
 
@@ -220,7 +222,7 @@ Outputs are `apps/web/dist/modern` and `apps/web/dist/classic`; each has its own
 
 These are separately built presentations over the same React screens, with separate entrypoints and theme systems. They are not two separately developed applications yet; navigation, playback UI and API client are still shared.
 
-There is no general cross-process protocol for all modules, manifest discovery from disk, dependency resolution across optional modules, unload, hot reload, resource quota or third-party extension sandbox. Only the transcoding worker has a versioned process protocol. Native modules are trusted code with process-wide filesystem/network/process privileges. For untrusted extensions the planned WASM boundary remains future work.
+There is no universal cross-process protocol for every capability, automatic optional-module composition, hostile-code sandbox, or resource quota covering every module. Installable `.hispania` modules can be discovered, validated, loaded/unloaded and switched as described below; ModuleHost protocol V1 is available for its supported JSON contract shape. Native modules have the Server process's filesystem/network/process privileges. The planned Wasm boundary for untrusted extensions remains future work.
 
 ## Installable trusted .NET extensions (Phase 7)
 

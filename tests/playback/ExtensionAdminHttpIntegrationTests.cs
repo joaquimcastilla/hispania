@@ -41,13 +41,21 @@ public sealed class ExtensionAdminHttpIntegrationTests
             builder.Logging.ClearProviders(); builder.Logging.AddProvider(logs);
             builder.WebHost.UseTestServer();
             builder.Configuration["Modules:AdminToken"] = Token;
+            var externalProbe = IsExternalSignedProbeConfigured();
             builder.Services.AddModuleRuntime();
             builder.Services.AddSingleton<IPlatformAuditWriter, InMemoryPlatformAuditWriter>();
             builder.Services.AddSingleton<DistributedWorkCoordinator>();
             builder.Services.AddSingleton<IDistributedWorkCoordinatorV1>(services => services.GetRequiredService<DistributedWorkCoordinator>());
+            var trustedPublisherKeys = externalProbe
+                ? new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["audit.ephemeral.publisher"] = File.ReadAllText(Environment.GetEnvironmentVariable("HISPANIA_MODULARITY_PROBE_PUBLIC_KEY")!)
+                }
+                : new Dictionary<string, string>(StringComparer.Ordinal);
             builder.Services.AddSingleton(serviceProvider => new ModuleExtensionCatalog(root, new Version(1, 0, 0),
                 serviceProvider.GetRequiredService<IModuleRuntime>(), serviceProvider.GetRequiredService<IModuleRegistry>(),
-                new Dictionary<string, Func<Hispania.ModuleSystem.Contracts.IModule>>(), [ModuleId]));
+                new Dictionary<string, Func<Hispania.ModuleSystem.Contracts.IModule>>(), [ModuleId],
+                trustedPublisherKeys: trustedPublisherKeys, requirePublisherSignature: externalProbe));
             await using var app = builder.Build();
             app.MapModuleAdminEndpoints();
             app.MapPublicModuleHealth();
@@ -86,6 +94,16 @@ public sealed class ExtensionAdminHttpIntegrationTests
                 using var request = new HttpRequestMessage(HttpMethod.Get, path);
                 request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Token);
                 return await client.SendAsync(request);
+            }
+
+            if (externalProbe)
+            {
+                using (var unsigned = await AdminPostAsync("/internal/admin/modules/extensions/packages", CreatePackageFixture("1.0.0", "Hispania.ExtensionDemo.IndependentGreetingModule").ToArray()))
+                    Assert.Equal(System.Net.HttpStatusCode.Created, unsigned.StatusCode); // Installation is inert; trust is checked at activation.
+                using (var unsignedActivation = await AdminPostAsync($"/internal/admin/modules/extensions/{ModuleId}/activate"))
+                    Assert.Equal(System.Net.HttpStatusCode.Conflict, unsignedActivation.StatusCode);
+                using (var removeUnsigned = await AdminPostAsync($"/internal/admin/modules/extensions/{ModuleId}/uninstall/1.0.0"))
+                    Assert.Equal(System.Net.HttpStatusCode.OK, removeUnsigned.StatusCode);
             }
 
             using (var authorizedWorker = await client.PostAsync("/internal/admin/modules/remote-workers/worker-http/authorize",
@@ -151,6 +169,17 @@ public sealed class ExtensionAdminHttpIntegrationTests
                 Assert.Equal(System.Net.HttpStatusCode.OK, updated.StatusCode);
             using (var newMessage = await AdminGetAsync($"/internal/admin/modules/extensions/{ModuleId}/greeting"))
                 Assert.Contains("Hello from greeting extension version 2.", await newMessage.Content.ReadAsStringAsync());
+            if (externalProbe)
+            {
+                using (var rolledBack = await AdminPostAsync($"/internal/admin/modules/extensions/{ModuleId}/update/1.0.0"))
+                    Assert.Equal(System.Net.HttpStatusCode.OK, rolledBack.StatusCode);
+                using (var oldMessage = await AdminGetAsync($"/internal/admin/modules/extensions/{ModuleId}/greeting"))
+                    Assert.Contains("Hello from an independently implemented extension.", await oldMessage.Content.ReadAsStringAsync());
+                using (var restoredV2 = await AdminPostAsync($"/internal/admin/modules/extensions/{ModuleId}/update/2.0.0"))
+                    Assert.Equal(System.Net.HttpStatusCode.OK, restoredV2.StatusCode);
+                using (var restoredMessage = await AdminGetAsync($"/internal/admin/modules/extensions/{ModuleId}/greeting"))
+                    Assert.Contains("Hello from greeting extension version 2.", await restoredMessage.Content.ReadAsStringAsync());
+            }
             using (var deactivated = await AdminPostAsync($"/internal/admin/modules/extensions/{ModuleId}/deactivate"))
                 Assert.Equal(System.Net.HttpStatusCode.OK, deactivated.StatusCode);
             using (var blocked = await AdminGetAsync($"/internal/admin/modules/extensions/{ModuleId}/greeting"))
@@ -164,6 +193,16 @@ public sealed class ExtensionAdminHttpIntegrationTests
                 Assert.Equal(System.Net.HttpStatusCode.OK, unloaded.StatusCode);
                 Assert.Contains("true", await unloaded.Content.ReadAsStringAsync());
             }
+            if (externalProbe)
+            {
+                using (var removedV2 = await AdminPostAsync($"/internal/admin/modules/extensions/{ModuleId}/uninstall/2.0.0"))
+                    Assert.Equal(System.Net.HttpStatusCode.OK, removedV2.StatusCode);
+                using (var removedV1 = await AdminPostAsync($"/internal/admin/modules/extensions/{ModuleId}/uninstall/1.0.0"))
+                    Assert.Equal(System.Net.HttpStatusCode.OK, removedV1.StatusCode);
+                using var noExtensions = await AdminGetAsync("/internal/admin/modules/extensions");
+                Assert.Equal(System.Net.HttpStatusCode.OK, noExtensions.StatusCode);
+                Assert.DoesNotContain(ModuleId, await noExtensions.Content.ReadAsStringAsync());
+            }
         }
         finally
         {
@@ -174,10 +213,25 @@ public sealed class ExtensionAdminHttpIntegrationTests
 
     private static MemoryStream OpenPackage(string packageName, string version, string typeName)
     {
+        var externalPathVariable = version == "1.0.0" ? "HISPANIA_MODULARITY_PROBE_V1_PACKAGE" : "HISPANIA_MODULARITY_PROBE_V2_PACKAGE";
+        var externalPath = Environment.GetEnvironmentVariable(externalPathVariable);
+        if (!string.IsNullOrWhiteSpace(externalPath)) return new MemoryStream(File.ReadAllBytes(externalPath), writable: false);
         // Generate from the current independently built module. Cached phase-7 archives may predate
         // compatible additions to the public demo contract and would make this test depend on local artifacts.
         _ = packageName;
         return CreatePackageFixture(version, typeName);
+    }
+
+    private static bool IsExternalSignedProbeConfigured()
+    {
+        var configured = new[]
+        {
+            Environment.GetEnvironmentVariable("HISPANIA_MODULARITY_PROBE_V1_PACKAGE"),
+            Environment.GetEnvironmentVariable("HISPANIA_MODULARITY_PROBE_V2_PACKAGE"),
+            Environment.GetEnvironmentVariable("HISPANIA_MODULARITY_PROBE_PUBLIC_KEY")
+        }.Count(value => !string.IsNullOrWhiteSpace(value));
+        if (configured is 1 or 2) throw new InvalidOperationException("The external signed module probe requires both packages and its publisher public key.");
+        return configured == 3;
     }
 
     private static MemoryStream CreatePackageFixture(string version, string typeName)
