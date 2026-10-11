@@ -67,6 +67,27 @@ public interface IPlatformJobHandlerV1<TPayload> where TPayload : notnull
     ValueTask<PlatformJobResultMetadataV1?> ExecuteAsync(TPayload payload, CancellationToken cancellationToken);
 }
 
+/// <summary>Version 1 module boundary for a declared Platform Job contribution. Payloads remain opaque JSON at the IPC boundary.</summary>
+public interface IPlatformJobContributionV1
+{
+    Task<PlatformJobResultMetadataV1?> ExecuteAsync(PlatformJobContributionRequestV1 request, CancellationToken cancellationToken);
+}
+
+public sealed record PlatformJobContributionRequestV1(string JobType, string PayloadJson);
+public sealed class PlatformJobHandlerUnavailableException(string message) : Exception(message);
+
+/// <summary>Lifecycle-aware extension to the existing allowlisted local handler registry.</summary>
+public interface IPlatformJobContributionRegistryV1
+{
+    void ValidateModuleBatch(string moduleId, long generation, IReadOnlyCollection<string> jobTypes);
+    void RegisterModuleBatch(string moduleId, long generation, IReadOnlyCollection<string> jobTypes,
+        Func<string, string, CancellationToken, ValueTask<PlatformJobResultMetadataV1?>> execute,
+        Func<bool> isAuthorized);
+    void RemoveModuleBatch(string moduleId, long generation);
+    void BeginModuleDrain(string moduleId, long generation);
+    void ResumeModuleBatch(string moduleId, long generation);
+}
+
 public interface IPlatformJobHandlerRegistryV1
 {
     bool Contains(string jobType);
@@ -86,14 +107,17 @@ public interface IPlatformRemoteJobExecutorV1
 }
 
 /// <summary>Explicit allowlisted registry; durable data never chooses a CLR type.</summary>
-public sealed class PlatformJobHandlerRegistryV1 : IPlatformJobHandlerRegistryV1
+public sealed class PlatformJobHandlerRegistryV1 : IPlatformJobHandlerRegistryV1, IPlatformJobContributionRegistryV1
 {
     private readonly Dictionary<string, (Type PayloadType, Func<string, CancellationToken, ValueTask<PlatformJobResultMetadataV1?>> Execute)> handlers = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ModuleContribution> contributions = new(StringComparer.Ordinal);
+    private readonly object gate = new();
     public PlatformJobHandlerRegistryV1 Register<TPayload>(IPlatformJobHandlerV1<TPayload> handler) where TPayload : notnull
     {
         ArgumentNullException.ThrowIfNull(handler);
-        if (!IsValidJobType(handler.JobType) || !handlers.TryAdd(handler.JobType, (typeof(TPayload), ExecuteTyped)))
-            throw new InvalidOperationException("Job type is invalid or already registered.");
+        lock (gate)
+            if (!IsValidJobType(handler.JobType) || contributions.ContainsKey(handler.JobType) || !handlers.TryAdd(handler.JobType, (typeof(TPayload), ExecuteTyped)))
+                throw new InvalidOperationException("Job type is invalid or already registered.");
         return this;
 
         async ValueTask<PlatformJobResultMetadataV1?> ExecuteTyped(string json, CancellationToken token)
@@ -102,9 +126,101 @@ public sealed class PlatformJobHandlerRegistryV1 : IPlatformJobHandlerRegistryV1
             return await handler.ExecuteAsync(payload, token).ConfigureAwait(false);
         }
     }
-    public bool Contains(string jobType) => handlers.ContainsKey(jobType);
-    public ValueTask<PlatformJobResultMetadataV1?> ExecuteAsync(string jobType, string payloadJson, CancellationToken cancellationToken) =>
-        handlers.TryGetValue(jobType, out var handler) ? handler.Execute(payloadJson, cancellationToken) : throw new InvalidOperationException("No trusted handler is registered for this JobType.");
+    public bool Contains(string jobType) { lock (gate) return handlers.ContainsKey(jobType) || contributions.ContainsKey(jobType); }
+    public ValueTask<PlatformJobResultMetadataV1?> ExecuteAsync(string jobType, string payloadJson, CancellationToken cancellationToken)
+    {
+        Func<string, CancellationToken, ValueTask<PlatformJobResultMetadataV1?>>? localExecute = null;
+        ModuleContribution? contribution = null;
+        lock (gate)
+        {
+            if (handlers.TryGetValue(jobType, out var handler)) localExecute = handler.Execute;
+            else if (contributions.TryGetValue(jobType, out contribution)) { }
+            else throw new PlatformJobHandlerUnavailableException("No authorized handler is currently registered for this JobType.");
+        }
+        if (localExecute is not null) return localExecute(payloadJson, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ExecuteContributionAsync(contribution!, jobType, payloadJson, cancellationToken);
+    }
+
+    public void ValidateModuleBatch(string moduleId, long generation, IReadOnlyCollection<string> jobTypes)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(moduleId);
+        ArgumentNullException.ThrowIfNull(jobTypes);
+        if (generation < 1 || jobTypes.Count == 0 || jobTypes.Any(type => !IsValidJobType(type)) || jobTypes.Distinct(StringComparer.Ordinal).Count() != jobTypes.Count)
+            throw new InvalidDataException("Module Job contribution batch is invalid.");
+        lock (gate)
+            foreach (var type in jobTypes)
+                if (handlers.ContainsKey(type) || contributions.TryGetValue(type, out var existing) && existing.ModuleId != moduleId)
+                    throw new InvalidOperationException("Job type is already registered by another handler or module generation.");
+    }
+
+    public void RegisterModuleBatch(string moduleId, long generation, IReadOnlyCollection<string> jobTypes,
+        Func<string, string, CancellationToken, ValueTask<PlatformJobResultMetadataV1?>> execute, Func<bool> isAuthorized)
+    {
+        ArgumentNullException.ThrowIfNull(execute); ArgumentNullException.ThrowIfNull(isAuthorized);
+        ValidateModuleBatch(moduleId, generation, jobTypes);
+        lock (gate)
+        {
+            if (jobTypes.All(type => contributions.TryGetValue(type, out var current) && current.ModuleId == moduleId && current.Generation == generation)) return;
+            foreach (var type in jobTypes)
+                if (handlers.ContainsKey(type) || contributions.TryGetValue(type, out var current) &&
+                    (current.ModuleId != moduleId || current.Generation != generation))
+                    throw new InvalidOperationException("Job type is already registered by another handler or module generation.");
+            var contribution = new ModuleContribution(moduleId, generation, execute, isAuthorized);
+            foreach (var type in jobTypes) contributions.Add(type, contribution);
+        }
+    }
+
+    public void RemoveModuleBatch(string moduleId, long generation)
+    {
+        lock (gate)
+        {
+            var matched = contributions.Where(pair => pair.Value.ModuleId == moduleId && pair.Value.Generation == generation).ToArray();
+            foreach (var type in matched.Select(pair => pair.Key)) contributions.Remove(type);
+            foreach (var contribution in matched.Select(pair => pair.Value).Distinct()) contribution.Dispose();
+        }
+    }
+
+    public void BeginModuleDrain(string moduleId, long generation)
+    {
+        ModuleContribution[] matched;
+        lock (gate) matched = contributions.Values.Where(item => item.ModuleId == moduleId && item.Generation == generation).Distinct().ToArray();
+        foreach (var item in matched) item.Stop();
+    }
+
+    public void ResumeModuleBatch(string moduleId, long generation)
+    { lock (gate) foreach (var item in contributions.Values.Where(item => item.ModuleId == moduleId && item.Generation == generation).Distinct()) item.Resume(); }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static async ValueTask<PlatformJobResultMetadataV1?> ExecuteContributionAsync(ModuleContribution contribution, string jobType, string payloadJson, CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, contribution.Token);
+        linked.Token.ThrowIfCancellationRequested();
+        if (!contribution.IsAuthorized()) throw new PlatformJobHandlerUnavailableException("The module Job contribution is no longer authorized or active.");
+        return await contribution.Execute(jobType, payloadJson, linked.Token).ConfigureAwait(false);
+    }
+
+    private sealed class ModuleContribution(string moduleId, long generation,
+        Func<string, string, CancellationToken, ValueTask<PlatformJobResultMetadataV1?>> execute, Func<bool> isAuthorized) : IDisposable
+    {
+        private CancellationTokenSource stopped = new();
+        public string ModuleId { get; } = moduleId;
+        public long Generation { get; } = generation;
+        private Func<string, string, CancellationToken, ValueTask<PlatformJobResultMetadataV1?>>? executeHandler = execute;
+        private Func<bool>? authorizationCheck = isAuthorized;
+        public Func<string, string, CancellationToken, ValueTask<PlatformJobResultMetadataV1?>> Execute => executeHandler ?? throw new ObjectDisposedException(nameof(ModuleContribution));
+        public Func<bool> IsAuthorized => authorizationCheck ?? (static () => false);
+        public CancellationToken Token { get { lock (this) return stopped.Token; } }
+        public void Stop() { CancellationTokenSource current; lock (this) current = stopped; if (!current.IsCancellationRequested) current.Cancel(); }
+        public void Resume() { lock (this) if (stopped.IsCancellationRequested) { stopped.Dispose(); stopped = new(); } }
+        public void Dispose()
+        {
+            CancellationTokenSource current;
+            lock (this) { current = stopped; executeHandler = null; authorizationCheck = null; }
+            if (!current.IsCancellationRequested) current.Cancel();
+            current.Dispose();
+        }
+    }
     public static bool IsValidJobType(string? value) => value is { Length: >= 3 and <= 128 } && value.Split('.').Length is >= 2 and <= 8 && value.Split('.').All(part => part.Length is >= 1 and <= 32 && part.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'));
 }
 

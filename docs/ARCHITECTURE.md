@@ -400,6 +400,12 @@ Inventory reads require a session with `inventory.read`; mutations require `inve
 
 The API keeps these read routes public by design: `GET /api/v1/artwork/{id}` serves published poster/backdrop assets consumed by native image elements, and `GET /api/assets/{id}` plus `/content` continue honoring `PublicRead` for public assets. The existing administrative bearer may still read private Platform assets only on those explicit Platform asset endpoints. Inventory APIs, Media catalog/metadata/people, playback, metadata administration and TMDB operations are protected. Web navigation and direct routes reflect effective permissions; the server remains authoritative. Session-authenticated playback fetches the stream with an Authorization header and creates a temporary browser object URL because native `<video src>` cannot attach the `Session` header.
 
+## Step 2.1-F — ModuleHost Platform Job contributions
+
+The signed module manifest may opt into `IPlatformJobContributionV1` using capability-versioned Job declarations. `ModuleExtensionCatalog` validates the declared contract and current publisher trust, then atomically publishes callbacks through the existing `PlatformJobHandlerRegistryV1`; it does not add another scheduler or durable store. The catalog binds callbacks to its module ID and generation, rechecks authorization during dispatch, and acquires the existing operation lease. Deactivation/revocation drains the contribution and cancels active cooperative work; updates fence the old generation before publishing the candidate. Persisted Jobs with missing handlers fail terminally and require explicit retry after an authorized handler is available.
+
+The process-isolated ModuleHost flow and in-process activation/job/drain path are covered by signed test packages. The in-process unload regression was traced to generic `JsonSerializer.Deserialize<T>` of a DTO defined in the collectible test fixture assembly; replacing that test-only payload parsing with `JsonDocument` makes the full unload check pass. This isolates a fixture trigger but does not identify the runtime GC root or prevent arbitrary trusted module code from retaining references. The focused ModuleHost suite passes 9/9 and the unload scenario passed five consecutive repetitions; the full Runtime suite had one unrelated unload timeout in `HeldCallLeaseUsesConfiguredDrainTimeoutAndRecoversAfterRelease` that passed when rerun alone. Gate F1 therefore has focused passing evidence but remains open pending a clean full-suite and platform matrix. See [ADR-0050](adr/ADR-0050-module-platform-job-contributions.md).
+
 ## Phase 13.6 — Remote Platform Jobs
 
 The Platform dispatcher may route explicitly registered Jobs locally or through the existing single-coordinator WorkerAgent transport. The composition adapter maps `platform.test.hash` to `platform.jobs.hash@1.0`; a bounded `platform.test.delay` test capability exercises cooperative cancellation/timeout. It reuses mTLS worker authorization, capability/version checks, heartbeats, capacity, leases, and generation fencing. `RemoteOnly` remains Pending until a compatible worker is available; `RemotePreferred` uses remote execution when available and may fall back locally; `LocalOnly` never leaves the coordinator. Jobs SQLite remains the source of truth and fences late attempt completion independently. WorkerAgent loads the trusted Platform capability provider through its existing configured provider list and gains no Jobs persistence or domain dependency. Execution remains at-least-once. See [ADR-0035](adr/ADR-0035-platform-remote-job-execution.md).
@@ -471,3 +477,19 @@ Format 2 adds authenticated package SemVer/dependencies while format 1 and immut
 [Phase 20](PHASE-20-DYNAMIC-WEB-MODULES.md) adds signed declarative Web Schema Generation 1 as independent compatibility axis 25. Package Format 2, distribution 0.7.0 and private npm 0.1.0 remain unchanged; zero contracts are Public Stable. Required UI uses existing host/CLR capability negotiation; optional future UI is blocked independently of a healthy backend. Modern and Classic share one existing routing/registry composition and fixed authorized Platform operations. No package JavaScript, raw HTML/CSS, remote URLs, Node runtime or hostile-code browser sandbox is introduced.
 
 The package catalog, journal, trust/authorization and dependency graph remain authoritative; immutable UI projections and parsed-descriptor caches are ephemeral. Actual browser, portable restore and verified predecessor distribution-upgrade tests accompany preserved Phase 14–19 gates. Windows local evidence and pending Linux/native/live-PostgreSQL CI are distinguished in the local acceptance report. See [ADR 0045](adr/ADR-0045-dynamic-web-contributions.md), [author guide](DYNAMIC-WEB-AUTHOR-GUIDE.md) and [operator guide](DYNAMIC-WEB-OPERATOR-GUIDE.md).
+
+## HISPANIA 0.7.0 Platform-only composition (Step 2, PARTIAL)
+
+`apps/server/Hispania.Server.csproj` supports a compile-time `PlatformOnly=true` profile. It uses the same Server project but builds the separate `Hispania.Platform.Server` assembly. The profile keeps `Hispania.Runtime`, Module System and Platform contracts, Identity/Authorization, Platform SQLite persistence, filesystem Storage, Jobs, Maintenance, Observability and distributed coordinator infrastructure. Conditional project references, source exclusions and route composition remove Media and Inventory implementations. The default build remains the full distribution and preserves its domain registrations and APIs.
+
+```mermaid
+flowchart TB
+  Server[Server composition root]
+  Server --> Platform[Platform services and persistence]
+  Server --> Runtime[Module runtime and package catalogue]
+  Server --> Worker[Generic worker/job coordinator contracts]
+  Server -. only full profile .-> Media[Media implementation suite]
+  Server -. only full profile .-> Inventory[Inventory implementation suite]
+```
+
+The profile is validated by `tools/validate-platform-only.ps1` with local build/publish, dependency inventory, HTTP startup, identity/bootstrap, module/jobs/observability, domain-route absence and graceful shutdown checks. `linux-arm64` cross-publication and SQLite ELF architecture were inspected; no native ARM64/Raspberry Pi execution is claimed. Platform-only is not integrated into the production installation, upgrade, backup or managed bootstrap lifecycle. See the [Step 2 record](HISPANIA-0.7.0-STEP-2.md) and [ARM64 runbook](operations/PLATFORM-ONLY-ARM64.md). This remains PARTIAL, not a support declaration.

@@ -4,6 +4,7 @@ using Hispania.Platform.Contracts.Assets;
 using Hispania.Platform.Contracts.Audit;
 using Hispania.Platform.Contracts.Authorization;
 using Hispania.Platform.Contracts.Storage;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Hispania.Server;
 
@@ -12,7 +13,7 @@ public static class PlatformEndpoints
     public static IEndpointRouteBuilder MapPlatformAssetEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/assets").WithTags("Platform Assets");
-        group.MapPost("", async (HttpContext http, IPlatformAssetStore assets, IPlatformAuditWriter audit, IConfiguration config, CancellationToken ct) =>
+        group.MapPost("", async (HttpContext http, [FromServices] IPlatformAssetStore assets, [FromServices] IPlatformAuditWriter audit, IConfiguration config, CancellationToken ct) =>
         {
             var maximumBytes = config.GetValue("Platform:Assets:MaximumBytes", 100L * 1024 * 1024);
             if (http.Request.ContentLength is long declaredLength && declaredLength > maximumBytes) return Results.Problem("Asset exceeds upload limit.", statusCode: StatusCodes.Status413PayloadTooLarge);
@@ -29,20 +30,20 @@ public static class PlatformEndpoints
             await audit.WriteAsync(new(DateTimeOffset.UtcNow, "admin", Correlation(http), "platform.assets", "asset-created", "asset", asset.Id.Value.ToString("D"), "success", new Dictionary<string, string> { ["type"] = type.ToString(), ["scope"] = domain }), ct);
             return Results.Created($"/api/assets/{asset.Id.Value:D}", AssetView(asset));
         }).RequirePlatformPermission(PlatformPermissionIds.AssetsWrite);
-        group.MapGet("/{id:guid}", async (Guid id, HttpContext http, IPlatformAssetStore assets, IConfiguration config, CancellationToken ct) =>
+        group.MapGet("/{id:guid}", async (Guid id, HttpContext http, [FromServices] IPlatformAssetStore assets, IConfiguration config, CancellationToken ct) =>
         {
             var asset = await assets.GetMetadataAsync(new(id), ct); if (asset is null) return Results.NotFound();
             if (!asset.AccessPolicy.PublicRead && !await IsAdminAsync(http, config, ct)) return Results.Unauthorized();
             return Results.Ok(AssetView(asset));
         });
-        group.MapGet("/{id:guid}/content", async (Guid id, HttpContext http, IPlatformAssetStore assets, IConfiguration config, CancellationToken ct) =>
+        group.MapGet("/{id:guid}/content", async (Guid id, HttpContext http, [FromServices] IPlatformAssetStore assets, IConfiguration config, CancellationToken ct) =>
         {
             var asset = await assets.GetMetadataAsync(new(id), ct); if (asset is null) return Results.NotFound();
             if (!asset.AccessPolicy.PublicRead && !await IsAdminAsync(http, config, ct)) return Results.Unauthorized();
             try { var stream = await assets.OpenReadAsync(new(id), ct); return stream is null ? Results.NotFound() : Results.Stream(stream, asset.MimeType, enableRangeProcessing: true); }
             catch (StorageProviderNotFoundException) { return Results.Problem("The asset storage provider is unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable); }
         });
-        group.MapDelete("/{id:guid}", async (Guid id, HttpContext http, IPlatformAssetStore assets, IPlatformAuditWriter audit, CancellationToken ct) =>
+        group.MapDelete("/{id:guid}", async (Guid id, HttpContext http, [FromServices] IPlatformAssetStore assets, [FromServices] IPlatformAuditWriter audit, CancellationToken ct) =>
         {
             try
             {
@@ -57,13 +58,14 @@ public static class PlatformEndpoints
 
     public static IEndpointRouteBuilder MapPlatformAuditEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/internal/admin/audit", async (IPlatformAuditReader reader, string? domain, string? action, string? resourceType, string? resourceId, string? actorId, string? correlationId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, int? page, int? pageSize, CancellationToken ct) =>
+        endpoints.MapGet("/internal/admin/audit", async ([FromServices] IPlatformAuditReader reader, string? domain, string? action, string? resourceType, string? resourceId, string? actorId, string? correlationId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, int? page, int? pageSize, CancellationToken ct) =>
         {
             return Results.Ok(await reader.QueryAsync(new(domain, action, resourceType, resourceId, actorId, correlationId, fromUtc, toUtc, page ?? 1, pageSize ?? 50), ct));
         }).RequirePlatformPermission(PlatformPermissionIds.AuditRead).WithTags("Platform Audit");
         return endpoints;
     }
 
+#if !HISPANIA_PLATFORM_ONLY
     /// <summary>Composition adapter advertising streamable Platform Assets to Media consumers.</summary>
     public static IEndpointRouteBuilder MapInventoryMediaAssetEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -83,6 +85,7 @@ public static class PlatformEndpoints
         }).RequirePlatformPermission(Hispania.Library.Contracts.MediaPermissionIds.PlaybackUse, allowLegacyAdminBearer: false);
         return endpoints;
     }
+#endif
 
     internal static ValueTask<bool> IsAdminAsync(HttpContext http, IConfiguration config, CancellationToken ct)
     {

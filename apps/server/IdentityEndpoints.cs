@@ -1,4 +1,5 @@
 using Hispania.Platform.Contracts.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Hispania.Platform.Contracts.Authorization;
 
 namespace Hispania.Server;
@@ -8,7 +9,7 @@ public static class IdentityEndpoints
     public static IEndpointRouteBuilder MapIdentityEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/identity").WithTags("Platform Identity");
-        group.MapPost("/users", async (CreateUserRequest request, HttpContext http, IIdentityCommandV1 commands, CancellationToken ct) =>
+        group.MapPost("/users", async (CreateUserRequest request, HttpContext http, [FromServices] IIdentityCommandV1 commands, CancellationToken ct) =>
         {
             var result = await commands.CreateUserAsync(request.Username, request.DisplayName, request.Password, Correlation(http), ct);
             if (!result.Succeeded) return result.Failure switch
@@ -19,7 +20,7 @@ public static class IdentityEndpoints
             return Results.Created($"/api/identity/users/{result.Value!.Id.Value:D}", result.Value);
         }).RequirePlatformPermission(PlatformPermissionIds.UsersWrite);
 
-        group.MapPost("/login", async (LoginRequest request, HttpContext http, IIdentityCommandV1 commands, CancellationToken ct) =>
+        group.MapPost("/login", async (LoginRequest request, HttpContext http, [FromServices] IIdentityCommandV1 commands, CancellationToken ct) =>
         {
             var limited = SecurityAbuseLimiter.CheckAccount(http, request.Username);
             if (limited is not null) return limited;
@@ -27,7 +28,7 @@ public static class IdentityEndpoints
             return result.Succeeded ? Results.Ok(new { result.User, result.Session, result.SessionToken }) : Results.Json(new { error = "invalid_credentials" }, statusCode: StatusCodes.Status401Unauthorized);
         });
 
-        group.MapGet("/me", async (HttpContext http, IIdentityQueryV1 query, IAuthorizationServiceV1 authorization, CancellationToken ct) =>
+        group.MapGet("/me", async (HttpContext http, [FromServices] IIdentityQueryV1 query, [FromServices] IAuthorizationServiceV1 authorization, CancellationToken ct) =>
         {
             var token = SessionToken(http);
             if (token is null) return Results.Unauthorized();
@@ -39,7 +40,7 @@ public static class IdentityEndpoints
             return Results.Ok(new { user, session, effectivePermissions });
         });
 
-        group.MapPost("/logout", async (HttpContext http, IIdentityCommandV1 commands, CancellationToken ct) =>
+        group.MapPost("/logout", async (HttpContext http, [FromServices] IIdentityCommandV1 commands, CancellationToken ct) =>
         {
             var token = SessionToken(http);
             if (token is null || !await commands.LogoutAsync(token, Correlation(http), ct)) return Results.Unauthorized();

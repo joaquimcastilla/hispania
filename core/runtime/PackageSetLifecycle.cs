@@ -264,7 +264,11 @@ public sealed partial class ModuleExtensionCatalog
             runtime.UnregisterStoppedModule(id);
             lock (syncRoot) loaded.Remove(id);
             var weak = extension.Unload(); extension = null;
-            if (!await WaitForUnloadAsync(weak, bounded.Token).ConfigureAwait(false)) throw new InvalidOperationException("Package load context did not unload.");
+            // MaximumRequestDuration bounds module drain/stop, not CLR collection of an
+            // already-unloaded ALC. The bounded token may have little time left after
+            // cancellation recovery, while collection legitimately spans several GC cycles.
+            // Preserve caller cancellation, but don't reapply the module request deadline.
+            if (!await WaitForUnloadAsync(weak, cancellationToken).ConfigureAwait(false)) throw new InvalidOperationException("Package load context did not unload.");
         }
     }
 

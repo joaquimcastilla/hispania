@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Text.Json;
 using Hispania.ModuleSystem.Contracts;
+using Hispania.Platform.Contracts.Jobs;
 
 namespace Hispania.Runtime;
 
@@ -32,6 +33,7 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
     private readonly OutOfProcessResourceLimits resourceLimits;
     private readonly OutOfProcessRestartPolicy restartPolicy;
     private readonly Hispania.Platform.Contracts.Audit.IPlatformAuditWriter? packageAuditWriter;
+    private readonly IPlatformJobContributionRegistryV1? jobContributionRegistry;
     private readonly object syncRoot = new();
     private readonly SemaphoreSlim activationGate = new(1, 1);
     private readonly Dictionary<string, DiscoveredExtension> discovered = new(StringComparer.Ordinal);
@@ -46,11 +48,15 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
             revokedPublisherIds, requirePublisherSignature, resourceLimits, restartPolicy, null) { }
 
     public ModuleExtensionCatalog(string directory, Version hostVersion, IModuleRuntime runtime, IModuleRegistry registry, IReadOnlyDictionary<string, Func<IModule>> trustedFactories, IEnumerable<string>? allowedExtensionIds = null, string? moduleHostPath = null, IReadOnlyDictionary<string, string>? trustedPublisherKeys = null, IEnumerable<string>? revokedPublisherIds = null, bool requirePublisherSignature = false, OutOfProcessResourceLimits? resourceLimits = null, OutOfProcessRestartPolicy? restartPolicy = null, Hispania.Platform.Contracts.Audit.IPlatformAuditWriter? packageAuditWriter = null)
+        : this(directory, hostVersion, runtime, registry, trustedFactories, allowedExtensionIds, moduleHostPath, trustedPublisherKeys, revokedPublisherIds, requirePublisherSignature, resourceLimits, restartPolicy, packageAuditWriter, null) { }
+
+    public ModuleExtensionCatalog(string directory, Version hostVersion, IModuleRuntime runtime, IModuleRegistry registry, IReadOnlyDictionary<string, Func<IModule>> trustedFactories, IEnumerable<string>? allowedExtensionIds, string? moduleHostPath, IReadOnlyDictionary<string, string>? trustedPublisherKeys, IEnumerable<string>? revokedPublisherIds, bool requirePublisherSignature, OutOfProcessResourceLimits? resourceLimits, OutOfProcessRestartPolicy? restartPolicy, Hispania.Platform.Contracts.Audit.IPlatformAuditWriter? packageAuditWriter, IPlatformJobContributionRegistryV1? jobContributionRegistry)
     {
         this.directory = Path.GetFullPath(directory);
         this.hostVersion = hostVersion;
         this.runtime = runtime;
         this.packageAuditWriter = packageAuditWriter;
+        this.jobContributionRegistry = jobContributionRegistry;
         this.registry = registry;
         this.moduleHostPath = Path.GetFullPath(moduleHostPath ?? Path.Combine(AppContext.BaseDirectory, "module-host", "Hispania.ModuleHost.dll"));
         this.trustedPublisherKeys = new Dictionary<string, string>(trustedPublisherKeys ?? new Dictionary<string, string>(StringComparer.Ordinal), StringComparer.Ordinal);
@@ -256,6 +262,8 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
                 }
                 await runtime.StartModuleAsync(id, cancellationToken).ConfigureAwait(false);
                 existing.ResumeAccepting();
+                jobContributionRegistry?.ResumeModuleBatch(id, existing.Generation);
+                RegisterJobContributions(existing);
             }
             else if (trustedFactories.TryGetValue(id, out var factory))
             {
@@ -298,6 +306,7 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
 
             // Load, validate identity/contracts, start, and health-check the candidate before taking the old generation offline.
             candidate = CreateLoadedModule(target);
+            ValidateJobContributions(candidate);
             candidate.StartAttempted = true;
             await candidate.Module!.StartAsync(cancellationToken).ConfigureAwait(false);
             if (candidate.Module is IModuleHealthCheck healthCheck && !await healthCheck.IsHealthyAsync(cancellationToken).ConfigureAwait(false))
@@ -307,11 +316,13 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
             if (previousLoaded is not null)
             {
                 previousLoaded.StopAccepting();
+                jobContributionRegistry?.BeginModuleDrain(id, previousLoaded.Generation);
                 await previousLoaded.DrainAsync(cancellationToken).ConfigureAwait(false);
             }
             if (registry.List().Any(module => module.Descriptor.Id == id))
             {
                 await runtime.StopModuleAsync(id, cancellationToken).ConfigureAwait(false);
+                if (previousLoaded is not null) jobContributionRegistry?.RemoveModuleBatch(id, previousLoaded.Generation);
                 runtime.UnregisterStoppedModule(id);
             }
             if (previousLoaded is not null)
@@ -322,12 +333,13 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
                 if (!await WaitForUnloadAsync(oldContext, cancellationToken).ConfigureAwait(false)) throw new InvalidOperationException("Previous extension load context did not unload after its operations drained.");
             }
             runtime.RegisterStartedModule(candidate.Module!);
-            candidate.ResumeAccepting();
             lock (syncRoot)
             {
                 loaded[id] = candidate;
                 discovered[id] = target with { State = ModuleLifecycleState.Running, Installed = true, Loaded = true };
             }
+            candidate.ResumeAccepting();
+            RegisterJobContributions(candidate);
             candidate = null;
             return target with { State = ModuleLifecycleState.Running, Installed = true, Loaded = true };
         }
@@ -335,6 +347,13 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
         {
             if (candidate is not null)
             {
+                lock (syncRoot) loaded.Remove(id);
+                jobContributionRegistry?.RemoveModuleBatch(id, candidate.Generation);
+                if (registry.List().Any(module => module.Descriptor.Id == id))
+                {
+                    try { await runtime.StopModuleAsync(id, CancellationToken.None).ConfigureAwait(false); } catch { }
+                    try { runtime.UnregisterStoppedModule(id); } catch { }
+                }
                 try { if (candidate.StartAttempted) await candidate.Module!.StopAsync(CancellationToken.None).ConfigureAwait(false); } catch { }
                 var weak = candidate.Unload();
                 candidate = null;
@@ -348,7 +367,10 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
                 registered = false;
             }
             if (registered && runtime.GetHealth(id).State == ModuleLifecycleState.Running && loaded.TryGetValue(id, out var oldGeneration))
+            {
                 oldGeneration.ResumeAccepting();
+                jobContributionRegistry?.ResumeModuleBatch(id, oldGeneration.Generation);
+            }
             if (!registered)
             {
                 try
@@ -372,19 +394,30 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
         var candidate = CreateLoadedModule(extension);
         try
         {
+            ValidateJobContributions(candidate);
             candidate.StartAttempted = true;
             await runtime.RegisterAndStartAsync(candidate.Module!, cancellationToken).ConfigureAwait(false);
             candidate.Running = true;
             candidate.ResumeAccepting();
             lock (syncRoot) loaded[extension.Manifest.Id] = candidate;
+            RegisterJobContributions(candidate);
         }
         catch
         {
-            try { if (candidate.StartAttempted) await candidate.Module!.StopAsync(CancellationToken.None).ConfigureAwait(false); } catch { }
+            lock (syncRoot) loaded.Remove(extension.Manifest.Id);
+            jobContributionRegistry?.RemoveModuleBatch(extension.Manifest.Id, candidate.Generation);
             if (registry.List().Any(module => module.Descriptor.Id == extension.Manifest.Id))
             {
+                try
+                {
+                    var state = runtime.GetHealth(extension.Manifest.Id).State;
+                    if (state is ModuleLifecycleState.Running or ModuleLifecycleState.Degraded or ModuleLifecycleState.Draining)
+                        await runtime.StopModuleAsync(extension.Manifest.Id, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch { }
                 try { runtime.UnregisterStoppedModule(extension.Manifest.Id); } catch (InvalidOperationException) { }
             }
+            else try { if (candidate.StartAttempted) await candidate.Module!.StopAsync(CancellationToken.None).ConfigureAwait(false); } catch { }
             candidate.Unload();
             throw;
         }
@@ -437,15 +470,29 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
         if (loaded.TryGetValue(id, out loadedExtension))
         {
             loadedExtension.StopAccepting();
+            jobContributionRegistry?.BeginModuleDrain(id, loadedExtension.Generation);
             try { await loadedExtension.DrainAsync(cancellationToken).ConfigureAwait(false); }
             catch
             {
                 if (registry.List().Any(module => module.Descriptor.Id == id) && runtime.GetHealth(id).State == ModuleLifecycleState.Running)
+                {
                     loadedExtension.ResumeAccepting();
+                    jobContributionRegistry?.ResumeModuleBatch(id, loadedExtension.Generation);
+                }
                 throw;
             }
         }
-        if (registry.List().Any(module => module.Descriptor.Id == id)) await runtime.StopModuleAsync(id, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (registry.List().Any(module => module.Descriptor.Id == id)) await runtime.StopModuleAsync(id, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            if (loadedExtension is not null && runtime.GetHealth(id).State == ModuleLifecycleState.Running)
+            { loadedExtension.ResumeAccepting(); jobContributionRegistry?.ResumeModuleBatch(id, loadedExtension.Generation); }
+            throw;
+        }
+        if (loadedExtension is not null) jobContributionRegistry?.RemoveModuleBatch(id, loadedExtension.Generation);
         if (loaded.TryGetValue(id, out loadedExtension)) loadedExtension.MarkStopped();
         var inactive = extension with { State = registry.List().Any(module => module.Descriptor.Id == id) ? runtime.GetHealth(id).State : null,
             Installed = extension.Manifest.EntryAssembly is not null, Loaded = registry.List().Any(module => module.Descriptor.Id == id) };
@@ -494,6 +541,69 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
             if (!extension.Running || !extension.TryAcquire()) throw new InvalidOperationException($"Extension '{id}' is not accepting operations.");
             return new ExtensionLease<TContract>(contract, extension.Release);
         }
+    }
+
+    private void ValidateJobContributions(LoadedExtension extension)
+    {
+        var declarations = extension.Manifest.JobContributions ?? [];
+        if (declarations.Length == 0) return;
+        if (jobContributionRegistry is null) throw new InvalidOperationException("Module declares Platform Job contributions, but the host has no contribution registry.");
+        var contractName = typeof(IPlatformJobContributionV1).FullName;
+        foreach (var declaration in declarations)
+        {
+            if (!PlatformJobHandlerRegistryV1.IsValidJobType(declaration.JobType) ||
+                !Version.TryParse(declaration.CapabilityVersion, out var capabilityVersion) || capabilityVersion.Major != 1 ||
+                !extension.Manifest.Provides.Contains($"{declaration.CapabilityId}@{capabilityVersion}", StringComparer.Ordinal) ||
+                !extension.Manifest.ContractTypes.TryGetValue($"{declaration.CapabilityId}@{capabilityVersion}", out var declaredType) || declaredType != contractName)
+                throw new InvalidDataException("Module Job contribution does not match the signed capability contract.");
+        }
+        jobContributionRegistry.ValidateModuleBatch(extension.Manifest.Id, extension.Generation, declarations.Select(item => item.JobType).ToArray());
+        using var lease = AcquireJobContributionCandidate(extension);
+    }
+
+    private static ExtensionLease<IPlatformJobContributionV1> AcquireJobContributionCandidate(LoadedExtension extension)
+    {
+        if (extension.Module is IPlatformJobContributionV1 direct) return new(direct, static () => { });
+        if (extension.Module is IModuleCapabilityProxyFactory proxy &&
+            extension.Manifest.ContractTypes.Values.Contains(typeof(IPlatformJobContributionV1).FullName, StringComparer.Ordinal))
+            return new((IPlatformJobContributionV1)proxy.CreateCapabilityProxy(typeof(IPlatformJobContributionV1)), static () => { });
+        throw new InvalidDataException("Module does not implement its declared Platform Job contribution capability.");
+    }
+
+    private void RegisterJobContributions(LoadedExtension extension)
+    {
+        var declarations = extension.Manifest.JobContributions ?? [];
+        if (declarations.Length == 0) return;
+        jobContributionRegistry!.RegisterModuleBatch(extension.Manifest.Id, extension.Generation,
+            declarations.Select(item => item.JobType).ToArray(),
+            (jobType, payload, cancellationToken) => ExecuteModuleJobAsync(this, extension.Manifest.Id, extension.Generation, jobType, payload, cancellationToken),
+            () => IsJobContributionGenerationActive(extension.Manifest.Id, extension.Generation));
+    }
+
+    private static async ValueTask<PlatformJobResultMetadataV1?> ExecuteModuleJobAsync(ModuleExtensionCatalog catalog, string moduleId, long generation, string jobType, string payloadJson, CancellationToken cancellationToken)
+    {
+        if (!catalog.IsJobContributionGenerationActive(moduleId, generation)) throw new InvalidOperationException("Module Job generation is no longer active.");
+        using var lease = catalog.AcquireGeneration<IPlatformJobContributionV1>(moduleId, generation);
+        var result = await lease.Value.ExecuteAsync(new(jobType, payloadJson), cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return result;
+    }
+
+    private ExtensionLease<TContract> AcquireGeneration<TContract>(string moduleId, long generation) where TContract : class
+    {
+        lock (syncRoot)
+        {
+            if (!loaded.TryGetValue(moduleId, out var extension) || extension.Generation != generation)
+                throw new InvalidOperationException("The requested module generation is no longer active.");
+            return Acquire<TContract>(moduleId);
+        }
+    }
+
+    private bool IsJobContributionGenerationActive(string moduleId, long generation)
+    {
+        lock (syncRoot)
+            return loaded.TryGetValue(moduleId, out var extension) && extension.Generation == generation && extension.Accepting &&
+                extension.Running && runtime.GetHealth(moduleId).State == ModuleLifecycleState.Running && allowlist.Contains(moduleId);
     }
 
     private string? Validate(ModuleManifest manifest, string manifestDirectory)
@@ -653,11 +763,11 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
 
     private static async Task<bool> WaitForUnloadAsync(WeakReference context, CancellationToken cancellationToken)
     {
-        for (var attempt = 0; context.IsAlive && attempt < 10; attempt++)
+        for (var attempt = 0; context.IsAlive && attempt < 40; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
-            await Task.Delay(25, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(50, cancellationToken).ConfigureAwait(false);
         }
         return !context.IsAlive;
     }
@@ -666,6 +776,7 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
 
     private sealed class LoadedExtension(IModule module, string packageDirectory, ModuleManifest manifest, bool running, ExtensionAssemblyLoadContext? context = null)
     {
+        private static long nextGeneration;
         private readonly object gate = new();
         private int leases;
         private TaskCompletionSource? drained;
@@ -674,13 +785,15 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
         public IModule? Module { get; private set; } = module;
         public string PackageDirectory { get; } = packageDirectory;
         public ModuleManifest Manifest { get; } = manifest;
+        public long Generation { get; } = Interlocked.Increment(ref nextGeneration);
         public bool Running { get { lock (gate) return running; } set { lock (gate) running = value; } }
-        public bool Accepting { get; set; } = running;
+        private bool accepting = running;
+        public bool Accepting { get { lock (gate) return accepting; } }
         public bool StartAttempted { get; set; }
-        public bool TryAcquire() { lock (gate) { if (!Accepting || !running) return false; leases++; return true; } }
-        public void StopAccepting() { lock (gate) Accepting = false; }
-        public void ResumeAccepting() { lock (gate) { running = true; Accepting = true; if (leases == 0) drained = null; } }
-        public void MarkStopped() { lock (gate) { running = false; Accepting = false; } }
+        public bool TryAcquire() { lock (gate) { if (!accepting || !running) return false; leases++; return true; } }
+        public void StopAccepting() { lock (gate) accepting = false; }
+        public void ResumeAccepting() { lock (gate) { running = true; accepting = true; if (leases == 0) drained = null; } }
+        public void MarkStopped() { lock (gate) { running = false; accepting = false; } }
         public void Release() { lock (gate) { leases--; if (leases == 0) drained?.TrySetResult(); } }
         public Task DrainAsync(CancellationToken cancellationToken) { lock (gate) { if (leases == 0) return Task.CompletedTask; drained ??= new(TaskCreationOptions.RunContinuationsAsynchronously); return drained.Task.WaitAsync(cancellationToken); } }
         public WeakReference Unload()

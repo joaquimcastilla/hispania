@@ -31,7 +31,9 @@ internal static class InstallationMetadata
             var record = JsonSerializer.Deserialize<Record>(File.ReadAllText(PathFor(home)), ProductionConfiguration.Json) ?? throw new InvalidDataException();
             var artifact = JsonSerializer.Deserialize<ArtifactManifest>(File.ReadAllText(Path.Combine(app, "artifact-manifest.json")), ProductionConfiguration.Json) ?? throw new InvalidDataException();
             if (record.DistributionVersion != artifact.DistributionVersion || record.GitSha != artifact.GitSha || record.TargetRid != artifact.TargetRid || record.ManifestSha256 != Digest(app) || record.InstalledUtc == default) throw new InvalidDataException();
-            var entry = role == "server" ? "server/Hispania.Server.dll" : "worker/Hispania.WorkerAgent.dll";
+            var entry = role == "server"
+                ? artifact.DistributionType == "platform-only" ? "server/Hispania.Platform.Server.dll" : "server/Hispania.Server.dll"
+                : "worker/Hispania.WorkerAgent.dll";
             using var executable = File.OpenRead(Path.Combine(app, entry));
             if (!artifact.Files.TryGetValue(entry, out var expected) || !Convert.ToHexString(SHA256.HashData(executable)).Equals(expected, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException();
             executable.Position = 0;

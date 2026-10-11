@@ -197,7 +197,7 @@ public sealed class LocalPlatformJobDispatcher(IPlatformJobStoreV1 store, IPlatf
         catch (Exception ex)
         {
             if (job.ExecutionPolicy != PlatformJobExecutionPolicyV1.LocalOnly) metrics?.RemoteRetried();
-            var nonRetryable = ex is InvalidDataException or JsonException;
+            var nonRetryable = ex is InvalidDataException or JsonException or PlatformJobHandlerUnavailableException;
             var error = SafeError(ex);
             var exhausted = nonRetryable || job.AttemptCount >= job.MaxAttempts;
             await store.FailAsync(job.JobId, job.AttemptCount, PlatformJobAttemptOutcomeV1.Failed, error,

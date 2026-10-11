@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory)][string]$PredecessorDirectory,
     [string]$ResultsDirectory='.artifacts/phase18-gate',
     [string]$WebPredecessorDirectory,
+    [string]$PredecessorSha,
     [switch]$RequirePostgreSql,
     [switch]$RequireNativeService
 )
@@ -12,6 +13,11 @@ Push-Location (Split-Path $PSScriptRoot -Parent)
 try {
     $env:HISPANIA_PHASE18_ARTIFACT=[IO.Path]::GetFullPath($ArtifactDirectory)
     $env:HISPANIA_PHASE18_PREDECESSOR=[IO.Path]::GetFullPath($PredecessorDirectory)
+    $expectedPredecessorSha = if ($PredecessorSha) { $PredecessorSha } else { 'c3a827a4b828cff37785884e889689af7cc5fce2' }
+    if ($expectedPredecessorSha -notmatch '^[0-9a-fA-F]{40}$') { throw 'Predecessor SHA must be a full Git commit hash.' }
+    $predecessorManifest = Get-Content -LiteralPath (Join-Path $env:HISPANIA_PHASE18_PREDECESSOR 'artifact-manifest.json') -Raw | ConvertFrom-Json
+    if ($predecessorManifest.gitSha -cne $expectedPredecessorSha) { throw 'Predecessor artifact does not match the expected SHA.' }
+    $env:HISPANIA_PHASE18_PREDECESSOR_SHA = $expectedPredecessorSha
     $results=[IO.Path]::GetFullPath($ResultsDirectory)
     if ($env:GITHUB_ACTIONS -eq 'true') {
         $manifest = Get-Content -LiteralPath (Join-Path $env:HISPANIA_PHASE18_ARTIFACT 'artifact-manifest.json') -Raw | ConvertFrom-Json

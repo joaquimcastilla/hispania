@@ -65,12 +65,14 @@ public static class AuthorizationEndpointFilters
 
             http.Items[UserKey] = session.UserId;
             var result = await next(context).ConfigureAwait(false);
+#if !HISPANIA_PLATFORM_ONLY
             if (permissionId == Hispania.Library.Contracts.MediaPermissionIds.Admin && !HttpMethods.IsGet(http.Request.Method))
             {
                 var audit = http.RequestServices.GetService<IPlatformAuditWriter>();
                 if (audit is not null)
                     await audit.WriteAsync(new(DateTimeOffset.UtcNow, session.UserId.Value.ToString("D"), correlationId, "media", $"{http.Request.Method.ToLowerInvariant()} {http.Request.Path}", "media-operation", http.Request.Path, "attempted", new Dictionary<string, string>()), http.RequestAborted).ConfigureAwait(false);
             }
+#endif
             return result;
         }
     }

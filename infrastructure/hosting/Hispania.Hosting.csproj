@@ -1,9 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
   <PropertyGroup Condition="'$(ProductionPublication)' == 'true'"><DefineConstants>$(DefineConstants);HISPANIA_PRODUCTION_DISTRIBUTION</DefineConstants></PropertyGroup>
+  <PropertyGroup Condition="'$(PlatformOnly)' == 'true'"><DefineConstants>$(DefineConstants);HISPANIA_PLATFORM_ONLY</DefineConstants></PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" Condition="'$(PlatformOnly)' != 'true'" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.0" />
   </ItemGroup>
 </Project>

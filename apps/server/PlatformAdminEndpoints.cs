@@ -7,6 +7,7 @@ using Hispania.Platform.Contracts.Identity;
 using Hispania.Platform.Contracts.Jobs;
 using Hispania.Platform.Contracts.Observability;
 using Hispania.Runtime;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Hispania.Server;
 
@@ -17,8 +18,8 @@ public static class PlatformAdminEndpoints
     {
         var group = endpoints.MapGroup("/api/platform/admin");
         group.MapGet("/overview", async (HttpContext http, IPlatformHealthV1 health, IPlatformMetricsV1 metrics,
-            IIdentityQueryV1 identity, IAuthorizationServiceV1 authorization, IPlatformJobServiceV1 jobs,
-            IDurablePlatformEventBusV1 events, IDistributedWorkCoordinatorV1 workers, IModuleRuntime runtime, CancellationToken ct) =>
+            [FromServices] IIdentityQueryV1 identity, [FromServices] IAuthorizationServiceV1 authorization, [FromServices] IPlatformJobServiceV1 jobs,
+            IDurablePlatformEventBusV1 events, [FromServices] IDistributedWorkCoordinatorV1 workers, IModuleRuntime runtime, CancellationToken ct) =>
         {
             var snapshot = await health.CheckAsync(ct);
             var userId = AuthorizationEndpointFilters.AuthenticatedUserId(http)!.Value;
@@ -36,17 +37,17 @@ public static class PlatformAdminEndpoints
                 storageStatus = snapshot.Checks.FirstOrDefault(check => check.Component == "Storage")?.Status.ToString() ?? "Unavailable", modules });
         }).RequirePlatformPermission(PlatformPermissionIds.ObservabilityRead, false);
 
-        group.MapGet("/assets/{id:guid}", async (Guid id, IPlatformAssetStore assets, CancellationToken ct) =>
+        group.MapGet("/assets/{id:guid}", async (Guid id, [FromServices] IPlatformAssetStore assets, CancellationToken ct) =>
         {
             var asset = await assets.GetMetadataAsync(new(id), ct);
             return asset is null ? Results.NotFound() : Results.Ok(new { id = asset.Id.Value, type = asset.Type.ToString(), asset.MimeType, asset.Size,
                 provider = asset.ProviderId, asset.CreatedAtUtc, asset.UpdatedAtUtc });
         }).RequirePlatformPermission(PlatformPermissionIds.AssetsWrite, false);
 
-        group.MapGet("/modules/packages/graph", (ModuleExtensionCatalog catalog) => Results.Ok(catalog.InspectPackageGraph()))
+        group.MapGet("/modules/packages/graph", ([FromServices] ModuleExtensionCatalog catalog) => Results.Ok(catalog.InspectPackageGraph()))
             .RequirePlatformPermission(PlatformPermissionIds.Admin, false);
 
-        group.MapGet("/modules", (IModuleRuntime runtime, ModuleExtensionCatalog catalog) =>
+        group.MapGet("/modules", (IModuleRuntime runtime, [FromServices] ModuleExtensionCatalog catalog) =>
         {
             var extensions = catalog.Discover().Where(extension => !extension.Manifest.Id.StartsWith("invalid:", StringComparison.Ordinal)).ToArray();
             var states = runtime.ListHealth();
@@ -62,7 +63,7 @@ public static class PlatformAdminEndpoints
             return Results.Ok(rows.Concat(inactive));
         }).RequirePlatformPermission(PlatformPermissionIds.Admin, false);
 
-        group.MapPost("/modules/{id}/{operation}", async Task<IResult> (string id, string operation, string? version, HttpContext http, ModuleExtensionCatalog catalog, IPlatformAuditWriter audit, CancellationToken ct) =>
+        group.MapPost("/modules/{id}/{operation}", async Task<IResult> (string id, string operation, string? version, HttpContext http, [FromServices] ModuleExtensionCatalog catalog, [FromServices] IPlatformAuditWriter audit, CancellationToken ct) =>
         {
             if (operation is not ("activate" or "deactivate" or "unload" or "update" or "uninstall")) return Results.NotFound();
             if (operation is "update" or "uninstall" && !Version.TryParse(version, out _)) return Results.BadRequest(new { error = "invalid_version" });

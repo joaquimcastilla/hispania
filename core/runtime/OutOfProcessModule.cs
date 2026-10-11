@@ -13,6 +13,7 @@ namespace Hispania.Runtime;
 /// <summary>Supervises one explicitly authorized extension process over a private local named pipe.</summary>
 internal sealed class OutOfProcessModule : IModule, IModuleHealthCheck, IModuleCapabilityProxyFactory, IDisposable
 {
+    private static readonly JsonSerializerOptions ProtocolJsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly Meter ModuleMeter = new("Hispania.Runtime.OutOfProcess", "1.0");
     private static readonly Counter<long> ProcessStarts = ModuleMeter.CreateCounter<long>("hispania.modules.outofprocess.starts");
     private static readonly Counter<long> ProcessRestarts = ModuleMeter.CreateCounter<long>("hispania.modules.outofprocess.restarts");
@@ -290,7 +291,7 @@ internal sealed class OutOfProcessModule : IModule, IModuleHealthCheck, IModuleC
                 if (!response.Succeeded) throw new InvalidOperationException(response.Error?.Message ?? "Out-of-process module operation failed.");
                 if (method.ReturnType == typeof(void)) return null;
                 var returnType = method.ReturnType.IsGenericType && method.ReturnType.GetGenericTypeDefinition() == typeof(Task<>) ? method.ReturnType.GetGenericArguments()[0] : method.ReturnType;
-                return response.Payload?.Deserialize(returnType);
+                return response.Payload?.Deserialize(returnType, ProtocolJsonOptions);
             }
             finally { pending.TryRemove(requestId, out _); }
         }

@@ -100,19 +100,19 @@ public sealed class ArtifactProcessTests
     public async Task OfflineUpgradePreservesVerifiedBackupAndRestoreRollbackRejectsFutureMigratedData()
     {
         var predecessor = Environment.GetEnvironmentVariable("HISPANIA_PHASE18_PREDECESSOR") ?? throw new InvalidOperationException("Mandatory archived Phase 17 artifact missing.");
-        Assert.Equal("c3a827a4b828cff37785884e889689af7cc5fce2", ArtifactManifest.Verify(predecessor).GitSha);
+        var expectedPredecessorSha = Environment.GetEnvironmentVariable("HISPANIA_PHASE18_PREDECESSOR_SHA") ?? "c3a827a4b828cff37785884e889689af7cc5fce2";
+        Assert.Equal(expectedPredecessorSha, ArtifactManifest.Verify(predecessor).GitSha);
         using var fixture = new HostFixture(predecessor);
         var password = "PHASE18_SUPER_SECRET_CANARY_UPGRADE_" + Guid.NewGuid().ToString("N");
-        var legacyBearer = Guid.NewGuid().ToString("N");
-        var legacyArgs = new[] { $"--contentRoot={Path.Combine(fixture.Home, "app", "server")}", $"--webroot={Path.Combine(fixture.Home, "app", "server", "wwwroot", "modern")}", $"--urls=http://127.0.0.1:{fixture.Port}", $"--Backup:ManagedRoot={Path.Combine(fixture.Home, "state")}", $"--Library:Roots:0:Key=legacy", $"--Library:Roots:0:Path={Path.Combine(fixture.Home, "library-source")}", "--Ffprobe:ExecutablePath=ffprobe", "--Ffmpeg:ExecutablePath=ffmpeg", "--Modules:ArchitectureDemonstration=hispania.architecture-test.a", "--Modules:RequirePublisherSignature=true" };
+        var legacyArgs = new[] { "--home", fixture.Home };
         Directory.CreateDirectory(Path.Combine(fixture.Home, "library-source"));
-        using (var server = fixture.Start(legacyArgs, new() { ["Modules__AdminToken"] = legacyBearer }))
+        fixture.WriteConfiguration(new { bootstrapSecret = "env:PHASE18_BOOTSTRAP", bootstrapPasswordSecret = "env:PHASE18_PASSWORD", bootstrapUsername = "deployment-operator" });
+        var bootstrap = await fixture.CommandAsync(["--home", fixture.Home, "--bootstrap"], new() { ["HISPANIA_SECRET_PHASE18_BOOTSTRAP"] = Guid.NewGuid().ToString("N"), ["HISPANIA_SECRET_PHASE18_PASSWORD"] = password });
+        Assert.Equal(0, bootstrap.Code);
+        fixture.WriteConfiguration(new { });
+        using (var server = fixture.Start(legacyArgs))
         {
             await fixture.ReadyAsync(server);
-            using var create = new HttpRequestMessage(HttpMethod.Post, "/api/identity/users") { Content = JsonContent.Create(new { username = "deployment-operator", displayName = "Upgrade operator", password }) };
-            create.Headers.Authorization = new("Bearer", legacyBearer);
-            using var created = await fixture.Client.SendAsync(create);
-            Assert.Equal(HttpStatusCode.Created, created.StatusCode);
             await AssertLoginAsync(fixture.Client, password);
             using var web = await fixture.Client.GetAsync("/"); Assert.Equal(HttpStatusCode.OK, web.StatusCode);
             await Assert.ThrowsAsync<DeploymentException>(() => InstallationOperations.UpgradeAsync(Artifact, fixture.Home));

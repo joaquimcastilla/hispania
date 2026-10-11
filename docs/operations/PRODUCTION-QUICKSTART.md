@@ -7,6 +7,12 @@ package is framework-dependent. Copy the package without source/Git/SDK/Node.
 Choose an absolute installation home; spaces and Unicode are supported. Delivery
 and installation paths must be distinct and nonoverlapping.
 
+This procedure applies to the complete x64 distribution. The experimental Platform-only
+profile now uses the same Deployment CLI install/bootstrap/backup/upgrade mechanisms for
+the server role and SQLite, but has no packaged OS service installer and ARM64 native
+production lifecycle remains unvalidated. See the [Step 2.1 report](../HISPANIA-0.7.0-STEP-2-1.md)
+and [Platform-only ARM64 validation guide](PLATFORM-ONLY-ARM64.md).
+
 ```sh
 dotnet /delivery/deployment/Hispania.Deployment.dll verify /delivery
 dotnet /delivery/deployment/Hispania.Deployment.dll install /delivery /srv/hispania server

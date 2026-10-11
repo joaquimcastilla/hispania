@@ -3,6 +3,7 @@ using Hispania.Platform.Contracts.Authorization;
 using Hispania.Platform.Contracts.Identity;
 using Hispania.Platform.Contracts.Observability;
 using Hispania.Runtime;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Hispania.Server;
 
@@ -11,8 +12,8 @@ public static class WebContributionEndpoints
 {
     public static IEndpointRouteBuilder MapWebContributions(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/v1/web/contributions", async (HttpContext http, ModuleExtensionCatalog catalog,
-            IIdentityQueryV1 identity, IAuthorizationServiceV1 authorization, CancellationToken ct) =>
+        endpoints.MapGet("/api/v1/web/contributions", async (HttpContext http, [FromServices] ModuleExtensionCatalog catalog,
+            [FromServices] IIdentityQueryV1 identity, [FromServices] IAuthorizationServiceV1 authorization, CancellationToken ct) =>
         {
             http.Response.Headers.CacheControl = "no-store";
             var user = await User(http, identity, ct);
@@ -23,10 +24,10 @@ public static class WebContributionEndpoints
                 if (await authorization.HasPermissionAsync(user.Value, contribution.Page.Permission, ct)) visible.Add(contribution);
             return Results.Ok(new { schemaGeneration = WebContributionSchema.Generation, contributions = visible });
         });
-        endpoints.MapGet("/api/platform/admin/modules/web", async (ModuleExtensionCatalog catalog, CancellationToken ct) =>
+        endpoints.MapGet("/api/platform/admin/modules/web", async ([FromServices] ModuleExtensionCatalog catalog, CancellationToken ct) =>
             Results.Ok((await catalog.InspectWebContributionsAsync(ct)).Diagnostics))
             .RequirePlatformPermission(PlatformPermissionIds.Admin, false);
-        endpoints.MapGet("/api/v1/web/assets/{packageId}/{artifactHash}/{name}", async (string packageId, string artifactHash, string name, HttpContext http, ModuleExtensionCatalog catalog, CancellationToken ct) =>
+        endpoints.MapGet("/api/v1/web/assets/{packageId}/{artifactHash}/{name}", async (string packageId, string artifactHash, string name, HttpContext http, [FromServices] ModuleExtensionCatalog catalog, CancellationToken ct) =>
         {
             http.Response.Headers.CacheControl = "no-store";
             http.Response.Headers["X-Content-Type-Options"] = "nosniff";
@@ -35,8 +36,8 @@ public static class WebContributionEndpoints
         });
 
         endpoints.MapMethods("/api/v1/web/contributions/{packageId}/{contributionId}/operations/{operation}", ["GET", "POST"],
-            async (string packageId, string contributionId, string operation, HttpContext http, ModuleExtensionCatalog catalog,
-                IIdentityQueryV1 identity, IAuthorizationServiceV1 authorization, IModuleRuntime runtime, IPlatformHealthV1 health, CancellationToken ct) =>
+            async (string packageId, string contributionId, string operation, HttpContext http, [FromServices] ModuleExtensionCatalog catalog,
+                [FromServices] IIdentityQueryV1 identity, [FromServices] IAuthorizationServiceV1 authorization, [FromServices] IModuleRuntime runtime, [FromServices] IPlatformHealthV1 health, CancellationToken ct) =>
         {
             http.Response.Headers.CacheControl = "no-store";
             var user = await User(http, identity, ct);

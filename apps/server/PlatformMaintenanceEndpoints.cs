@@ -3,6 +3,7 @@ using Hispania.Platform.Contracts.Authorization;
 using Hispania.Platform.Contracts.Maintenance;
 using Hispania.Platform.Maintenance.Application;
 using Hispania.Platform.Persistence.Sqlite;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Hispania.Server;
 
@@ -19,13 +20,13 @@ public static class PlatformMaintenanceEndpoints
     public static IEndpointRouteBuilder MapPlatformMaintenanceEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/platform/maintenance").WithTags("Platform Maintenance");
-        group.MapGet("/owners", (MaintenanceCoordinatorV1 coordinator) => Results.Ok(coordinator.ListOwners()))
+        group.MapGet("/owners", ([FromServices] MaintenanceCoordinatorV1 coordinator) => Results.Ok(coordinator.ListOwners()))
             .RequirePlatformPermission(PlatformPermissionIds.MaintenanceRead, allowLegacyAdminBearer: false);
-        group.MapGet("/runs", async (int? limit, MaintenanceCoordinatorV1 coordinator, CancellationToken ct) =>
+        group.MapGet("/runs", async (int? limit, [FromServices] MaintenanceCoordinatorV1 coordinator, CancellationToken ct) =>
             Results.Ok(await coordinator.ListRunsAsync(limit ?? 50, ct)))
             .RequirePlatformPermission(PlatformPermissionIds.MaintenanceRead, allowLegacyAdminBearer: false);
         group.MapPost("/retention/plans", async (CreateRetentionPlanRequest request, HttpContext http,
-            MaintenanceCoordinatorV1 coordinator, IPlatformAuditWriter audit, ILoggerFactory loggerFactory,
+            [FromServices] MaintenanceCoordinatorV1 coordinator, [FromServices] IPlatformAuditWriter audit, ILoggerFactory loggerFactory,
             CancellationToken ct) =>
         {
             if (request.MinimumAgeDays is < 0 or > 3650 || request.BatchSize is < 1 or > 500 ||
@@ -47,7 +48,7 @@ public static class PlatformMaintenanceEndpoints
             catch (InvalidOperationException) { return Results.BadRequest(new { error = "invalid_retention_policy" }); }
         }).RequirePlatformPermission(PlatformPermissionIds.MaintenanceRead, allowLegacyAdminBearer: false);
         group.MapPost("/retention/plans/{planId:guid}/execute", async (Guid planId, ExecuteRetentionRequest request,
-            HttpContext http, MaintenanceCoordinatorV1 coordinator, IPlatformAuditWriter audit,
+            HttpContext http, [FromServices] MaintenanceCoordinatorV1 coordinator, [FromServices] IPlatformAuditWriter audit,
             ILoggerFactory loggerFactory, CancellationToken ct) =>
         {
             if (!request.Confirm || request.MaximumBatches is < 1 or > 100)

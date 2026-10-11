@@ -80,7 +80,7 @@ public static class DistributedWorkerEndpoints
             return stream is null ? Results.NotFound() : Results.Stream(stream, "application/octet-stream", enableRangeProcessing: false);
         });
         group.MapGet("/{nodeId}/jobs/{jobId}/media/grant", (string nodeId, string jobId, long generation, string transferId,
-            IDistributedWorkCoordinatorV1 coordinator, IDistributedMediaTransferBrokerV1 transfers) =>
+            [FromServices] IDistributedWorkCoordinatorV1 coordinator, [FromServices] IDistributedMediaTransferBrokerV1 transfers) =>
         {
             if (!HasCurrentLease(coordinator, nodeId, jobId, generation)) return Results.Conflict();
             var grant = transfers.GetGrant(jobId, transferId);

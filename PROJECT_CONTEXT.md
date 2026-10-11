@@ -1,18 +1,18 @@
 # HISPANIA — Project Context
 
-This is the current implementation context for developers and coding agents. Read it with the architecture, compatibility policy, security model and relevant operational runbook before making changes. `PROGRESS-LOG.md` is the historical record; this file describes the accepted repository state at the 0.7.0 RC1 preparation baseline.
+This is the current implementation context for developers and coding agents. Read it with the architecture, compatibility policy, security model and relevant operational runbook before making changes. `PROGRESS-LOG.md` is the historical record; the current local stabilization status is Step 2.1 PARTIAL, while no stable release has been published.
 
 ## Product and release state
 
-The 0.7.0 stabilization work is tracked separately from the completed 25-phase roadmap. Its ten-step outline is in `docs/HISPANIA-0.7.0-ROADMAP.md`; only Step 1 is in scope in the current audit. See `docs/HISPANIA-0.7.0-STEP-1.md` for the PR #16 review, existing worker/job contracts, control/execution/data boundaries, and outstanding CI/ARM64 evidence. The direct-data plane is a target direction, not a current generic Platform capability.
+The 0.7.0 stabilization work is tracked separately from the completed 25-phase roadmap. Its ten-step outline is in `docs/HISPANIA-0.7.0-ROADMAP.md`. Step 2.1's local changes and test limits are in `docs/HISPANIA-0.7.0-STEP-2-1.md`; they remain uncommitted, unpublished and PARTIAL. Step 2.1-F adds experimental ModuleHost Platform Job contributions and a protected ModuleAdminToken test reference. The fixture-only collectible ALC differential now passes focused unload checks; the full Runtime suite had one intermittent held-call unload timeout, so F1 awaits a clean rerun. The RC1 distribution harness schema mismatch is corrected and its two upgrade cases pass. The direct-data plane is a target direction, not a current generic Platform capability.
 
 HISPANIA is a self-hosted, modular application platform. Its shared Platform mechanisms support independently owned domain suites. The default deployment is one Server process; optional WorkerAgents execute explicitly authorized capabilities on separate processes or hosts.
 
 - Distribution candidate: `0.7.0-rc.1` (pre-1.0); authoritative value is root `version.json`.
 - The current 25-phase roadmap is complete. Historical phases were accepted incrementally; Phase 25's final Linux acceptance passed on `main` at `8817b912b8f1748977f9145942d2dc30ad492b8e` (GitHub Actions run `38064897483`).
-- RC1 is being prepared on `release/0.7.0-rc.1-preparation`. A successful package build for this preparation must use its final clean commit; prior manifests and checksums are evidence only for their recorded commits.
-- Verified distribution targets: Windows x64 and Linux x64. Linux's final Phase 25 package was built and run natively on Ubuntu 24.04 x64. ARM64 has bounded native lab and smoke evidence on Raspberry Pi 3B+ and 4B; this does not validate the production installer, release packaging or stable distribution on ARM64. macOS and other targets are not validated.
-- No tag or GitHub Release exists for RC1. Do not tag, publish or describe it as stable without explicit user authorization.
+- `v0.7.0-rc.1` is an existing prerelease tag at commit `9b5abefe4c6b631360d505587748aedcb6c522d0`, with published Windows x64 and Linux x64 assets. The authentic Windows x64 prerelease package was installed and checked in an isolated fixture during Step 2.1 audit; migration from its complete distribution to Platform-only is rejected because distribution switching is unsupported. No stable `v0.7.0` release is authorized or claimed.
+- Verified release targets remain Windows x64 and Linux x64. Step 2.1 additionally validated a local Platform-only production lifecycle on Windows x64 and isolated staging on Pi 4B; Pi 3B+ install/bootstrap/readiness passed but current throttling stopped the rest of its run. ARM64 production support, fixed-hash GitHub Actions validation and stable distribution are not claimed. macOS and other targets are not validated.
+- Do not create a stable tag/release or describe RC1 as stable without explicit user authorization.
 - No Public Stable contracts. Compatibility classes and technical versions are independent of distribution SemVer.
 
 ## Goals and deliberate non-goals

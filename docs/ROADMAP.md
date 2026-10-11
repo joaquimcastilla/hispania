@@ -2,7 +2,7 @@
 
 ## 0.7.0 stabilization workstream
 
-The completed 25-phase roadmap remains historical release evidence. The separate proposed ten-step stabilization workstream starts with the PR #16 and architecture audit; only Step 1/10 is documented in [the audit record](HISPANIA-0.7.0-STEP-1.md). Steps 2–10 are planned, not implemented or authorized by this entry. See the [step index](HISPANIA-0.7.0-ROADMAP.md).
+The completed 25-phase roadmap remains historical release evidence. The separate ten-step stabilization workstream records Step 1/10 as PARTIAL and Step 2/10 as PARTIAL. Step 2.1 adds a locally tested Platform-only Windows production lifecycle and cross-published ARM64 artifact; native ARM64, authentic RC1 migration and module-owned Job handlers remain open. See the [Step 1 audit](HISPANIA-0.7.0-STEP-1.md), [Step 2 record](HISPANIA-0.7.0-STEP-2.md), [Step 2.1 record](HISPANIA-0.7.0-STEP-2-1.md) and [step index](HISPANIA-0.7.0-ROADMAP.md).
 
 ## Current roadmap state — 2026-10-10
 

@@ -1,23 +1,32 @@
 using Hispania.Hosting;
-#if !HISPANIA_PRODUCTION_DISTRIBUTION
+#if !HISPANIA_PRODUCTION_DISTRIBUTION && !HISPANIA_PLATFORM_ONLY
 using Hispania.ArchitectureTest.Contracts;
 using Hispania.ArchitectureTest.Modules;
 #endif
 using Hispania.Runtime;
+#if !HISPANIA_PLATFORM_ONLY
 using Hispania.Library.Application;
 using Hispania.Library.Contracts;
 using Hispania.Library.FFprobe;
 using Hispania.Library.LocalFileSystem;
 using Hispania.Library.Persistence.Sqlite;
 using Hispania.Library.Persistence.PostgreSql;
-using Hispania.DistributedWork.Persistence.Sqlite;
 using Hispania.Playback.Application;
 using Hispania.Playback.Conservative;
 using Hispania.Playback.Contracts;
-using Hispania.Server;
 using Hispania.Inventory.Application;
 using Hispania.Inventory.Contracts;
 using Hispania.Inventory.Persistence.Sqlite;
+using Hispania.Metadata.Application;
+using Hispania.Metadata.Contracts;
+using Hispania.Metadata.Tmdb;
+using Hispania.Media.Domain.Sources;
+using Hispania.Transcoding.FFmpeg;
+#endif
+
+using Hispania.DistributedWork.Persistence.Sqlite;
+using Hispania.ModuleSystem.Contracts;
+using Hispania.Server;
 using Hispania.Platform.Contracts.Assets;
 using Hispania.Platform.Contracts.Storage;
 using Hispania.Platform.Storage.Application;
@@ -30,12 +39,6 @@ using Hispania.Platform.Maintenance.Application;
 using Hispania.Platform.Jobs.Application;
 using Hispania.Platform.WorkerAgentJobs;
 using Hispania.Platform.Persistence.Sqlite;
-using Hispania.Metadata.Application;
-using Hispania.Metadata.Contracts;
-using Hispania.Metadata.Tmdb;
-using Hispania.ModuleSystem.Contracts;
-using Hispania.Media.Domain.Sources;
-using Hispania.Transcoding.FFmpeg;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 
 using Hispania.Platform.Contracts.Observability;
@@ -52,7 +55,11 @@ static async Task RunHostAsync(string[] args)
 using var backupCancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; backupCancellation.Cancel(); };
 if (await BackupInstallation.TryCommandAsync(args, backupCancellation.Token)) return;
+#if HISPANIA_PLATFORM_ONLY
+var production = ProductionInstallation.Load(args, "server", platformOnly: true);
+#else
 var production = ProductionInstallation.Load(args, "server");
+#endif
 using var runtimeLease = production?.AcquireRuntimeLease();
 if (production is not null)
 {
@@ -69,12 +76,16 @@ if (production is not null)
     production.Apply(builder.Configuration);
     if (production.Configuration.Persistence == "postgresql")
     {
+#if !HISPANIA_PLATFORM_ONLY
         var pg = production.Configuration.PostgreSql;
         builder.Configuration["Persistence:PostgreSql:ConnectionString"] = new Npgsql.NpgsqlConnectionStringBuilder
         {
             Host = pg.Host, Port = pg.Port, Database = pg.Database, Username = pg.Username,
             Password = production.Secrets.Resolve(pg.PasswordSecret!), IncludeErrorDetail = false
         }.ConnectionString;
+#else
+        throw new InvalidOperationException("Platform-only distribution does not configure domain persistence providers.");
+#endif
     }
     ProductionInstallation.AddServiceLifetime(builder.Services, "server");
     production.ConfigureLogging(builder.Logging);
@@ -101,10 +112,12 @@ builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https
     // the coordinator host's configured trust store before endpoint-level pin authorization.
     https.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
 }));
+#if !HISPANIA_PLATFORM_ONLY
 var webBuild = builder.Configuration["Web:Build"] ?? "modern";
 WebUiStaticAssets.Configure(builder.Environment, webBuild);
+#endif
 
-#if !HISPANIA_PRODUCTION_DISTRIBUTION
+#if !HISPANIA_PRODUCTION_DISTRIBUTION && !HISPANIA_PLATFORM_ONLY
 if (production is null) builder.Services.AddArchitectureTestModules();
 #endif
 builder.Services.AddModuleRuntime();
@@ -120,9 +133,13 @@ var durableEventBus = new SqliteDurablePlatformEventBus(
 builder.Services.AddSingleton(sp => { durableEventBus.Metrics = sp.GetRequiredService<IPlatformMetricsV1>(); return durableEventBus; });
 builder.Services.AddSingleton<Hispania.Platform.Contracts.Events.IDurablePlatformEventBusV1>(sp => sp.GetRequiredService<SqliteDurablePlatformEventBus>());
 builder.Services.AddSingleton<IRetentionOwnerV1>(_ => new SqliteEventRetentionOwnerV1(eventStorePath));
+#if HISPANIA_PLATFORM_ONLY
+builder.Services.AddSingleton(_ => new Hispania.Platform.Contracts.Events.DurableEventHandlerRegistryV1());
+#else
 builder.Services.AddSingleton(sp => new Hispania.Platform.Contracts.Events.DurableEventHandlerRegistryV1()
     .Register<StockChangedV1>("inventory.stock-changed", 1, "platform.inventory.stock-observer", sp.GetRequiredService<InventoryStockEventObserver>()));
 builder.Services.AddSingleton<InventoryStockEventObserver>();
+#endif
 builder.Services.AddSingleton<IPlatformEventPublisher, DurablePlatformEventPublisher>();
 builder.Services.AddHostedService<DurablePlatformEventDispatcher>();
 var storageRoot = builder.Configuration["Storage:Providers:Filesystem:Root"] ?? builder.Configuration["Platform:Assets:ContentPath"] ?? Path.Combine(platformDataPath, "assets");
@@ -137,12 +154,14 @@ builder.Services.AddSingleton<FilesystemCapacitySourceV1>(_ => new FilesystemCap
 builder.Services.AddSingleton<ICapacitySourceV1>(sp => sp.GetRequiredService<FilesystemCapacitySourceV1>());
 builder.Services.AddSingleton<ICapacitySourceV1>(_ => new FilesystemCapacitySourceV1(platformDataPath, "platform.databases", capacityThresholds));
 var archiveCapacityRoot = builder.Configuration["Backup:ArchiveRoot"];
+#if !HISPANIA_PLATFORM_ONLY
 if (!string.IsNullOrWhiteSpace(archiveCapacityRoot))
 {
     if (!string.IsNullOrWhiteSpace(builder.Configuration["Backup:ManagedRoot"]))
         BackupInstallation.RejectOverlap(Path.GetFullPath(archiveCapacityRoot), Path.GetFullPath(builder.Configuration["Backup:ManagedRoot"]!));
     builder.Services.AddSingleton<ICapacitySourceV1>(_ => new FilesystemCapacitySourceV1(archiveCapacityRoot, "platform.backup-archive", capacityThresholds));
 }
+#endif
 var packageCapacityRoot = builder.Configuration["Modules:ExtensionsPath"] ?? Path.Combine(AppContext.BaseDirectory, "extensions");
 builder.Services.AddSingleton<ICapacitySourceV1>(_ => new FilesystemCapacitySourceV1(packageCapacityRoot, "platform.packages", capacityThresholds));
 builder.Services.AddSingleton<FilesystemStorageProviderV1>(sp => new FilesystemStorageProviderV1(
@@ -163,10 +182,12 @@ jobOptions.Validate();
 builder.Services.AddSingleton(jobOptions);
 builder.Services.AddSingleton<PlatformJobMetricsV1>();
 #if HISPANIA_PRODUCTION_DISTRIBUTION
-builder.Services.AddSingleton<IPlatformJobHandlerRegistryV1>(_ => new PlatformJobHandlerRegistryV1());
+builder.Services.AddSingleton<PlatformJobHandlerRegistryV1>(_ => new PlatformJobHandlerRegistryV1());
 #else
-builder.Services.AddSingleton<IPlatformJobHandlerRegistryV1>(_ => production is null ? new PlatformJobHandlerRegistryV1().Register(new PlatformTestHashHandlerV1()) : new PlatformJobHandlerRegistryV1());
+builder.Services.AddSingleton<PlatformJobHandlerRegistryV1>(_ => production is null ? new PlatformJobHandlerRegistryV1().Register(new PlatformTestHashHandlerV1()) : new PlatformJobHandlerRegistryV1());
 #endif
+builder.Services.AddSingleton<IPlatformJobHandlerRegistryV1>(services => services.GetRequiredService<PlatformJobHandlerRegistryV1>());
+builder.Services.AddSingleton<IPlatformJobContributionRegistryV1>(services => services.GetRequiredService<PlatformJobHandlerRegistryV1>());
 builder.Services.AddSingleton<IPlatformRemoteJobExecutorV1>(services => new DistributedPlatformJobExecutor(services.GetRequiredService<IDistributedWorkCoordinatorV1>(), metrics: services.GetRequiredService<IPlatformMetricsV1>()));
 var idempotencyHorizonDays = builder.Configuration.GetValue("Platform:Maintenance:JobIdempotencyHorizonDays", 365);
 if (idempotencyHorizonDays is < 1 or > 3650) throw new InvalidDataException("Job idempotency horizon is outside supported bounds.");
@@ -175,8 +196,10 @@ builder.Services.AddPlatformJobsSqlite(builder.Configuration["Platform:Jobs:Path
 var maintenanceStorePath = builder.Configuration["Platform:Maintenance:Path"] ?? Path.Combine(platformDataPath, "maintenance.sqlite");
 builder.Services.AddPlatformMaintenanceSqlite(maintenanceStorePath);
 builder.Services.AddSingleton<IRetentionOwnerV1>(_ => new SqliteMaintenanceHistoryRetentionOwnerV1(maintenanceStorePath));
+#if !HISPANIA_PLATFORM_ONLY
 builder.Services.AddSingleton<IRetentionOwnerV1>(_ => new BackupArchiveRetentionOwnerV1(builder.Configuration["Backup:ArchiveRoot"]));
 builder.Services.AddSingleton<IRetentionOwnerV1>(_ => new BackupStagingRetentionOwnerV1(builder.Configuration["Backup:ArchiveRoot"]));
+#endif
 builder.Services.AddSingleton<LocalPlatformJobDispatcher>();
 builder.Services.AddSingleton<IPlatformJobExecutionControlV1>(sp => sp.GetRequiredService<LocalPlatformJobDispatcher>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<LocalPlatformJobDispatcher>());
@@ -201,11 +224,20 @@ builder.Services.AddSingleton<IRetentionOwnerV1>(_ => new SqliteSessionRetention
 builder.Services.AddPlatformAuthorizationSqlite(
     identityStorePath,
     builder.Configuration["Identity:Bootstrap:Token"]);
+#if !HISPANIA_PLATFORM_ONLY
 var inventoryDatabasePath = builder.Configuration["Inventory:Sqlite:Path"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "inventory.sqlite");
 builder.Services.AddInventorySqlite(inventoryDatabasePath);
-var distributedStatePath = builder.Configuration["DistributedWorkers:StatePath"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "distributed-coordinator.sqlite");
+#endif
+#if HISPANIA_PLATFORM_ONLY
+var distributedStateDefault = Path.Combine(platformDataPath, "distributed-coordinator.sqlite");
+var distributedTransferDefault = Path.Combine(platformDataPath, "distributed-transfers");
+#else
+var distributedStateDefault = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "distributed-coordinator.sqlite");
+var distributedTransferDefault = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "distributed-transfers");
+#endif
+var distributedStatePath = builder.Configuration["DistributedWorkers:StatePath"] ?? distributedStateDefault;
 builder.Services.AddSingleton<IDistributedWorkStateStoreV1>(_ => new SqliteDistributedWorkStateStore(distributedStatePath));
-var distributedTransferPath = builder.Configuration["DistributedWorkers:TransferPath"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hispania", "distributed-transfers");
+var distributedTransferPath = builder.Configuration["DistributedWorkers:TransferPath"] ?? distributedTransferDefault;
 var distributedTransferStorageBytes = builder.Configuration.GetValue("DistributedWorkers:TransferStorageBytes", 40L * 1024 * 1024 * 1024);
 builder.Services.AddSingleton<DistributedMediaTransferRegistry>(services =>
 {
@@ -235,9 +267,11 @@ builder.Services.AddSingleton<ModuleExtensionCatalog>(services => new ModuleExte
     builder.Configuration.GetValue("Modules:RequirePublisherSignature", false),
     builder.Configuration.GetSection("Modules:OutOfProcessResources").Get<OutOfProcessResourceLimits>(),
     builder.Configuration.GetSection("Modules:OutOfProcessRestarts").Get<OutOfProcessRestartPolicy>(),
-    services.GetRequiredService<Hispania.Platform.Contracts.Audit.IPlatformAuditWriter>()));
+    services.GetRequiredService<Hispania.Platform.Contracts.Audit.IPlatformAuditWriter>(),
+    services.GetRequiredService<IPlatformJobContributionRegistryV1>()));
 builder.Services.AddHostedService<PackageLifecycleHostedService>();
 builder.Services.AddSingleton<IRetentionOwnerV1>(services => services.GetRequiredService<ModuleExtensionCatalog>());
+#if !HISPANIA_PLATFORM_ONLY
 var libraryOptions = builder.Configuration.GetSection("Library").Get<LibraryOptions>() ?? new LibraryOptions();
 if (libraryOptions.Roots.Count == 0)
 {
@@ -301,6 +335,8 @@ if (tmdbOptions.Enabled)
     builder.Services.AddSingleton<IMovieMetadataAutoMatcher, MovieMetadataAutoMatcher>();
     builder.Services.AddSingleton<MovieMetadataAutoEnrichmentService>();
 }
+#endif
+#if !HISPANIA_PLATFORM_ONLY
 builder.Services.AddSingleton<IMediaDiscovery, LocalFileSystemMediaDiscovery>();
 builder.Services.AddSingleton<IMediaProbe>(provider => new FfprobeMediaProbe(provider.GetRequiredService<IMediaSourceContentAccessV1>(), new FfprobeOptions(ffprobePath)));
 builder.Services.AddSingleton<IProbedMediaMapper, ProbedMediaMapper>();
@@ -354,6 +390,8 @@ builder.Services.AddSingleton<ITranscodedContentStore>(services => services.GetR
 builder.Services.AddSingleton<ICompatibleMediaTranscoderV1>(services => services.GetRequiredService<ICapabilityResolver>()
     .Resolve<ICompatibleMediaTranscoderV1>("hispania.playback.compatible-transcoder", new Version(1, 0), "hispania.transcoding.ffmpeg"));
 builder.Services.AddSingleton<LibraryReadiness>();
+#endif
+#if !HISPANIA_PLATFORM_ONLY
 // Domain composition contributes health without introducing a Platform -> Media dependency.
 builder.Services.AddSingleton<IPlatformHealthCheckV1>(sp => new DelegatePlatformHealthCheckV1("Media", _ =>
 {
@@ -367,8 +405,9 @@ if (tmdbOptions.Enabled)
     builder.Services.AddSingleton<AutomaticMovieMetadataEnrichmentHostedService>();
     builder.Services.AddHostedService(provider => provider.GetRequiredService<AutomaticMovieMetadataEnrichmentHostedService>());
 }
+#endif
 
-#if !HISPANIA_PRODUCTION_DISTRIBUTION
+#if !HISPANIA_PRODUCTION_DISTRIBUTION && !HISPANIA_PLATFORM_ONLY
 if (production is null)
 {
 var selectedModuleId = builder.Configuration["Modules:ArchitectureDemonstration"]
@@ -382,6 +421,17 @@ builder.Services.AddSingleton<IArchitectureDemonstrationService>(serviceProvider
 
 #endif
 var app = builder.Build();
+if (production?.PlatformOnly == true)
+{
+    // Provision every owner store during first production startup so backup and
+    // maintenance do not depend on which endpoint has previously been called.
+    _ = app.Services.GetRequiredService<IPlatformAssetMetadataRepository>();
+    _ = app.Services.GetRequiredService<IMaintenanceRunStoreV1>();
+    _ = app.Services.GetRequiredService<IDurablePlatformEventBusV1>();
+    _ = app.Services.GetRequiredService<IPlatformJobStoreV1>();
+    _ = app.Services.GetRequiredService<SqlitePlatformAuditStore>();
+    _ = app.Services.GetRequiredService<IDistributedWorkCoordinatorV1>();
+}
 var phase24ShutdownToken = builder.Configuration["Hispania:Phase24:ShutdownToken"];
 if (!string.IsNullOrWhiteSpace(phase24ShutdownToken))
 {
@@ -413,7 +463,7 @@ if (production?.BootstrapOnly == true)
 }
 app.UsePlatformErrorBoundary();
 app.UseMiddleware<SecurityRequestMiddleware>();
-#if !HISPANIA_PRODUCTION_DISTRIBUTION
+#if !HISPANIA_PRODUCTION_DISTRIBUTION && !HISPANIA_PLATFORM_ONLY
 if (production is null) await SeedInventoryDemoAsync(app.Services);
 #endif
 
@@ -422,22 +472,35 @@ app.MapPlatformObservability();
 app.MapPlatformAdmin();
 app.MapWebContributions();
 app.MapPackageSetAdmin();
+#if !HISPANIA_PLATFORM_ONLY
 app.UseDefaultFiles();
 app.UseStaticFiles();
+#endif
 
 app.MapGet("/healthz", () => Results.Ok());
+#if HISPANIA_PLATFORM_ONLY
+app.MapGet("/readyz", async (IPlatformHealthV1 health, CancellationToken ct) => (await health.CheckAsync(ct)).Status == PlatformHealthStatusV1.Healthy ? Results.Ok() : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+#else
 app.MapGet("/readyz", (LibraryReadiness readiness) => readiness.IsReady ? Results.Ok() : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+#endif
+#if !HISPANIA_PLATFORM_ONLY
 app.MapGet("/internal/metadata-enrichment", (IServiceProvider services) =>
 {
     var enrichment = services.GetService<AutomaticMovieMetadataEnrichmentHostedService>();
     return enrichment is null ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable) : Results.Ok(enrichment.LastRun);
 }).RequirePlatformPermission(Hispania.Library.Contracts.MediaPermissionIds.Admin);
-#if !HISPANIA_PRODUCTION_DISTRIBUTION
+#endif
+#if !HISPANIA_PRODUCTION_DISTRIBUTION && !HISPANIA_PLATFORM_ONLY
 if (production is null) app.MapGet("/internal/module-test", (IArchitectureDemonstrationService service) => Results.Ok(service.GetResponse()));
 #endif
+#if !HISPANIA_PLATFORM_ONLY
 app.MapPublicModuleHealth();
 app.MapModuleAdminEndpoints();
+#else
+app.MapPlatformOnlyModuleEndpoints();
+#endif
 app.MapDistributedWorkerEndpoints();
+#if !HISPANIA_PLATFORM_ONLY
 app.MapGet("/internal/capabilities/transcoding/health", (ITranscodingCapabilityHealthV1 health) => Results.Ok(health.GetSnapshot()))
     .RequirePlatformPermission(Hispania.Platform.Contracts.Authorization.PlatformPermissionIds.ObservabilityRead);
 app.MapDirectPlayEndpoints();
@@ -448,6 +511,7 @@ app.MapTmdbMovieMetadataEndpoints();
 app.MapMetadataEnrichmentControlEndpoints();
 app.MapArtworkDeliveryEndpoints();
 app.MapInventoryEndpoints();
+#endif
 app.MapPlatformAssetEndpoints();
 app.MapPlatformAuditEndpoints();
 app.MapPlatformEventAdminEndpoints();
@@ -455,7 +519,9 @@ app.MapPlatformJobEndpoints();
 app.MapPlatformMaintenanceEndpoints();
 app.MapIdentityEndpoints();
 app.MapAuthorizationEndpoints();
+#if !HISPANIA_PLATFORM_ONLY
 app.MapInventoryMediaAssetEndpoints();
+#endif
 #if !HISPANIA_PRODUCTION_DISTRIBUTION
 var testShutdownToken = production is null ? builder.Configuration["Testing:ShutdownToken"] : null;
 if (!string.IsNullOrWhiteSpace(testShutdownToken))
@@ -468,7 +534,9 @@ if (!string.IsNullOrWhiteSpace(testShutdownToken))
     });
 }
 #endif
+#if !HISPANIA_PLATFORM_ONLY
 app.MapFallbackToFile("index.html");
+#endif
 app.MapGet("/api/platform/admin/security/endpoints", () => Results.Ok(SecurityEndpointInventory.Snapshot(((IEndpointRouteBuilder)app).DataSources)))
     .RequirePlatformPermission(Hispania.Platform.Contracts.Authorization.PlatformPermissionIds.Admin, false);
 SecurityEndpointInventory.Validate(((IEndpointRouteBuilder)app).DataSources);
@@ -478,6 +546,7 @@ await app.RunAsync();
 }
 
 #if !HISPANIA_PRODUCTION_DISTRIBUTION
+#if !HISPANIA_PLATFORM_ONLY
 static async Task SeedInventoryDemoAsync(IServiceProvider services)
 {
     await using var scope = services.CreateAsyncScope();
@@ -504,5 +573,5 @@ static async Task SeedInventoryDemoAsync(IServiceProvider services)
         await command.AssociateAssetAsync(item.Id, new AssetReference(stored.Id));
     }
 }
-
+#endif
 #endif

@@ -6,35 +6,36 @@
     <WebDistPath>$(MSBuildProjectDirectory)\..\web\dist\</WebDistPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(ProductionPublication)' == 'true'"><DefineConstants>$(DefineConstants);HISPANIA_PRODUCTION_DISTRIBUTION</DefineConstants></PropertyGroup>
-  <ItemGroup Condition="Exists('$(WebDistPath)')">
+  <PropertyGroup Condition="'$(PlatformOnly)' == 'true'"><DefineConstants>$(DefineConstants);HISPANIA_PLATFORM_ONLY</DefineConstants><AssemblyName>Hispania.Platform.Server</AssemblyName><RootNamespace>Hispania.Platform.Server</RootNamespace></PropertyGroup>
+  <ItemGroup Condition="Exists('$(WebDistPath)') and '$(PlatformOnly)' != 'true'">
     <Content Include="$(WebDistPath)**\*" Link="wwwroot\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\infrastructure\hosting\Hispania.Hosting.csproj" />
     <ProjectReference Include="..\module-host\Hispania.ModuleHost.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\contracts\architecture-test\Hispania.ArchitectureTest.Contracts.csproj" Condition="'$(ProductionPublication)' != 'true'" />
+    <ProjectReference Include="..\..\contracts\architecture-test\Hispania.ArchitectureTest.Contracts.csproj" Condition="'$(ProductionPublication)' != 'true' and '$(PlatformOnly)' != 'true'" />
     <ProjectReference Include="..\..\core\runtime\Hispania.Runtime.csproj" />
-    <ProjectReference Include="..\..\modules\architecture-test\Hispania.ArchitectureTest.Modules.csproj" Condition="'$(ProductionPublication)' != 'true'" />
-    <ProjectReference Include="..\..\contracts\extension-demo\Hispania.ExtensionDemo.Contracts.csproj" />
-    <ProjectReference Include="..\..\application\library\Hispania.Library.Application.csproj" />
-    <ProjectReference Include="..\..\application\playback\Hispania.Playback.Application.csproj" />
-    <ProjectReference Include="..\..\modules\playback-conservative\Hispania.Playback.Conservative.csproj" />
-    <ProjectReference Include="..\..\infrastructure\library\Hispania.Library.LocalFileSystem.csproj" />
-    <ProjectReference Include="..\..\infrastructure\ffprobe\Hispania.Library.FFprobe.csproj" />
-    <ProjectReference Include="..\..\infrastructure\transcoding-ffmpeg\Hispania.Transcoding.FFmpeg.csproj" />
-    <ProjectReference Include="..\ffmpeg-worker\Hispania.FFmpeg.Worker.csproj" />
-    <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.Sqlite\Hispania.Library.Persistence.Sqlite.csproj" />
-    <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.EFCore\Hispania.Library.Persistence.EFCore.csproj" />
-    <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.PostgreSql\Hispania.Library.Persistence.PostgreSql.csproj" />
-    <ProjectReference Include="..\..\contracts\library\Hispania.Library.Contracts.csproj" />
-    <ProjectReference Include="..\..\contracts\playback\Hispania.Playback.Contracts.csproj" />
-    <ProjectReference Include="..\..\core\domain\Hispania.Media.Domain.csproj" />
-    <ProjectReference Include="..\..\application\metadata\Hispania.Metadata.Application.csproj" />
-    <ProjectReference Include="..\..\infrastructure\metadata\Hispania.Metadata.Tmdb\Hispania.Metadata.Tmdb.csproj" />
+    <ProjectReference Include="..\..\modules\architecture-test\Hispania.ArchitectureTest.Modules.csproj" Condition="'$(ProductionPublication)' != 'true' and '$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\contracts\extension-demo\Hispania.ExtensionDemo.Contracts.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\application\library\Hispania.Library.Application.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\application\playback\Hispania.Playback.Application.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\modules\playback-conservative\Hispania.Playback.Conservative.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\infrastructure\library\Hispania.Library.LocalFileSystem.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\infrastructure\ffprobe\Hispania.Library.FFprobe.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\infrastructure\transcoding-ffmpeg\Hispania.Transcoding.FFmpeg.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\ffmpeg-worker\Hispania.FFmpeg.Worker.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.Sqlite\Hispania.Library.Persistence.Sqlite.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.EFCore\Hispania.Library.Persistence.EFCore.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\infrastructure\persistence\Hispania.Library.Persistence.PostgreSql\Hispania.Library.Persistence.PostgreSql.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\contracts\library\Hispania.Library.Contracts.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\contracts\playback\Hispania.Playback.Contracts.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\core\domain\Hispania.Media.Domain.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\application\metadata\Hispania.Metadata.Application.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\infrastructure\metadata\Hispania.Metadata.Tmdb\Hispania.Metadata.Tmdb.csproj" Condition="'$(PlatformOnly)' != 'true'" />
     <ProjectReference Include="..\..\infrastructure\persistence\distributed-work\Hispania.DistributedWork.Persistence.Sqlite.csproj" />
-    <ProjectReference Include="..\..\application\inventory\Hispania.Inventory.Application.csproj" />
-    <ProjectReference Include="..\..\infrastructure\persistence\inventory-sqlite\Hispania.Inventory.Persistence.Sqlite.csproj" />
-    <ProjectReference Include="..\..\contracts\inventory\Hispania.Inventory.Contracts.csproj" />
+    <ProjectReference Include="..\..\application\inventory\Hispania.Inventory.Application.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\infrastructure\persistence\inventory-sqlite\Hispania.Inventory.Persistence.Sqlite.csproj" Condition="'$(PlatformOnly)' != 'true'" />
+    <ProjectReference Include="..\..\contracts\inventory\Hispania.Inventory.Contracts.csproj" Condition="'$(PlatformOnly)' != 'true'" />
     <ProjectReference Include="..\..\contracts\platform\Hispania.Platform.Contracts.csproj" />
     <ProjectReference Include="..\..\application\platform\storage\Hispania.Platform.Storage.Application.csproj" />
     <ProjectReference Include="..\..\infrastructure\platform\storage-filesystem\Hispania.Platform.Storage.Filesystem.csproj" />
@@ -46,10 +47,13 @@
     <ProjectReference Include="..\..\infrastructure\platform\persistence-sqlite\Hispania.Platform.Persistence.Sqlite.csproj" />
     <ProjectReference Include="..\..\application\platform\observability\Hispania.Platform.Observability.Application.csproj" />
   </ItemGroup>
+  <ItemGroup Condition="'$(PlatformOnly)' == 'true'">
+    <Compile Remove="ArtworkDeliveryEndpoints.cs;BackupArchiveRetentionOwnerV1.cs;BackupStagingRetentionOwnerV1.cs;DirectPlayEndpoints.cs;EffectiveMetadataEndpoints.cs;InventoryEndpoints.cs;MetadataEditingEndpoints.cs;MetadataEnrichmentControlEndpoints.cs;MovieMetadataIndexDocument.cs;PersonMetadataEndpoints.cs;TmdbMovieMetadataEndpoints.cs;LibraryComposition.cs;PlaybackExperimentService.cs;PlaybackPlannerHotSwapService.cs;ExperimentRoutedPlaybackPlanner.cs;InventoryStockEventObserver.cs;ModuleAdminEndpoints.cs" />
+  </ItemGroup>
   <ItemGroup>
     <Content Include="../../version.json" Link="version.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\extensions\**\module.json" Link="extensions\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="demo-assets\**\*" Link="demo-assets\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\extensions\**\module.json" Link="extensions\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="'$(PlatformOnly)' != 'true'" />
+    <Content Include="demo-assets\**\*" Link="demo-assets\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="'$(PlatformOnly)' != 'true'" />
   </ItemGroup>
   <Target Name="CopyGenericModuleHostAfterBuild" AfterTargets="Build" Condition="'$(ProductionPublication)' != 'true'">
     <ItemGroup>
@@ -57,7 +61,7 @@
     </ItemGroup>
     <Copy SourceFiles="@(GenericModuleHostFiles)" DestinationFiles="@(GenericModuleHostFiles->'$(OutDir)module-host\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'@(GenericModuleHostFiles)' != ''" />
   </Target>
-  <Target Name="CopyGenericModuleHostAfterPublish" AfterTargets="Publish" Condition="'$(ProductionPublication)' != 'true'">
+  <Target Name="CopyGenericModuleHostAfterPublish" AfterTargets="Publish" Condition="'$(ProductionPublication)' != 'true' or '$(PlatformOnly)' == 'true'">
     <ItemGroup>
       <GenericModuleHostPublishFiles Include="$(MSBuildProjectDirectory)\..\module-host\bin\$(Configuration)\net10.0\**\*" />
     </ItemGroup>

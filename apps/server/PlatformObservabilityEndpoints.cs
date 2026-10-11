@@ -6,6 +6,7 @@ using Hispania.Platform.Contracts.Jobs;
 using Hispania.Platform.Contracts.Observability;
 using Hispania.Platform.Contracts.Storage;
 using Hispania.Platform.Observability.Application;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Hispania.Server;
 
@@ -65,8 +66,8 @@ public static class PlatformObservabilityEndpoints
         });
         endpoints.MapGet("/api/health/details", async (IPlatformHealthV1 health, CancellationToken ct) => View(await health.CheckAsync(ct)))
             .RequirePlatformPermission(PlatformPermissionIds.ObservabilityRead, allowLegacyAdminBearer: false);
-        endpoints.MapGet("/api/platform/observability", async (IPlatformHealthV1 health, IPlatformMetricsV1 metrics, IPlatformJobServiceV1 jobs,
-            IDurablePlatformEventBusV1 events, IDistributedWorkCoordinatorV1 workers, IStorageProviderResolverV1 storage, CancellationToken ct) =>
+        endpoints.MapGet("/api/platform/observability", async (IPlatformHealthV1 health, IPlatformMetricsV1 metrics, [FromServices] IPlatformJobServiceV1 jobs,
+            IDurablePlatformEventBusV1 events, [FromServices] IDistributedWorkCoordinatorV1 workers, [FromServices] IStorageProviderResolverV1 storage, CancellationToken ct) =>
         {
             var snapshot = await health.CheckAsync(ct);
             object? jobBacklog = null, eventBacklog = null;

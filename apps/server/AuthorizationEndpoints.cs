@@ -1,4 +1,5 @@
 using Hispania.Platform.Contracts.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Hispania.Platform.Contracts.Identity;
 
 namespace Hispania.Server;
@@ -9,7 +10,7 @@ public static class AuthorizationEndpoints
     {
         var group = endpoints.MapGroup("/api/authorization").WithTags("Platform Authorization");
 
-        group.MapPost("/bootstrap-admin", async (BootstrapAdministratorRequest request, HttpContext http, IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
+        group.MapPost("/bootstrap-admin", async (BootstrapAdministratorRequest request, HttpContext http, [FromServices] IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
         {
             var header = http.Request.Headers.Authorization.ToString();
             if (!header.StartsWith("Bootstrap ", StringComparison.OrdinalIgnoreCase)) return Results.Unauthorized();
@@ -18,7 +19,7 @@ public static class AuthorizationEndpoints
             return bootstrapped ? Results.Ok(new { status = "bootstrap-complete" }) : Results.StatusCode(StatusCodes.Status403Forbidden);
         });
 
-        group.MapGet("/users", async (IIdentityQueryV1 identity, IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
+        group.MapGet("/users", async ([FromServices] IIdentityQueryV1 identity, [FromServices] IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
         {
             var users = await identity.ListUsersAsync(ct);
             var result = new List<UserAdministrationView>(users.Count);
@@ -26,7 +27,7 @@ public static class AuthorizationEndpoints
             return Results.Ok(result);
         }).RequirePlatformPermission(PlatformPermissionIds.UsersRead);
 
-        group.MapPatch("/users/{userId:guid}/status", async (Guid userId, UserStatusRequest request, HttpContext http, IIdentityCommandV1 identity, IIdentityQueryV1 identityQuery, IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
+        group.MapPatch("/users/{userId:guid}/status", async (Guid userId, UserStatusRequest request, HttpContext http, [FromServices] IIdentityCommandV1 identity, [FromServices] IIdentityQueryV1 identityQuery, [FromServices] IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
         {
             if (!request.Enabled)
             {
@@ -37,11 +38,11 @@ public static class AuthorizationEndpoints
             return result.Succeeded ? Results.Ok(result.Value) : Results.NotFound();
         }).RequirePlatformPermission(PlatformPermissionIds.UsersWrite);
 
-        group.MapGet("/users/{userId:guid}/roles", async (Guid userId, IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
+        group.MapGet("/users/{userId:guid}/roles", async (Guid userId, [FromServices] IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
             Results.Ok(await admin.GetUserRolesAsync(new(userId), ct)))
             .RequirePlatformPermission(PlatformPermissionIds.UsersRead);
 
-        group.MapPost("/users/{userId:guid}/roles/{roleId:guid}", async (Guid userId, Guid roleId, HttpContext http, IAuthorizationAdministrationV1 admin, IAuthorizationServiceV1 authorization, CancellationToken ct) =>
+        group.MapPost("/users/{userId:guid}/roles/{roleId:guid}", async (Guid userId, Guid roleId, HttpContext http, [FromServices] IAuthorizationAdministrationV1 admin, [FromServices] IAuthorizationServiceV1 authorization, CancellationToken ct) =>
         {
             var role = await admin.GetRoleAsync(new(roleId), ct);
             if (role is null) return Results.NotFound();
@@ -55,7 +56,7 @@ public static class AuthorizationEndpoints
             };
         }).RequirePlatformPermission(PlatformPermissionIds.UsersWrite);
 
-        group.MapDelete("/users/{userId:guid}/roles/{roleId:guid}", async (Guid userId, Guid roleId, HttpContext http, IAuthorizationAdministrationV1 admin, IAuthorizationServiceV1 authorization, CancellationToken ct) =>
+        group.MapDelete("/users/{userId:guid}/roles/{roleId:guid}", async (Guid userId, Guid roleId, HttpContext http, [FromServices] IAuthorizationAdministrationV1 admin, [FromServices] IAuthorizationServiceV1 authorization, CancellationToken ct) =>
         {
             var role = await admin.GetRoleAsync(new(roleId), ct);
             if (role is null) return Results.NotFound();
@@ -69,7 +70,7 @@ public static class AuthorizationEndpoints
             };
         }).RequirePlatformPermission(PlatformPermissionIds.UsersWrite);
 
-        group.MapGet("/roles", async (IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
+        group.MapGet("/roles", async ([FromServices] IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
         {
             var roles = await admin.ListRolesAsync(ct);
             var result = new List<RoleAdministrationView>(roles.Count);
@@ -77,7 +78,7 @@ public static class AuthorizationEndpoints
             return Results.Ok(result);
         }).RequirePlatformPermission(PlatformPermissionIds.RolesRead);
 
-        group.MapPost("/roles", async (CreateRoleRequest request, HttpContext http, IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
+        group.MapPost("/roles", async (CreateRoleRequest request, HttpContext http, [FromServices] IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
         {
             var result = await admin.CreateRoleAsync(request.Name, request.Description, Correlation(http), ct);
             return result.Failure switch
@@ -88,7 +89,7 @@ public static class AuthorizationEndpoints
             };
         }).RequirePlatformPermission(PlatformPermissionIds.RolesWrite);
 
-        group.MapPut("/roles/{roleId:guid}", async (Guid roleId, UpdateRoleRequest request, HttpContext http, IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
+        group.MapPut("/roles/{roleId:guid}", async (Guid roleId, UpdateRoleRequest request, HttpContext http, [FromServices] IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
         {
             var result = await admin.UpdateRoleAsync(new(roleId), request.Name, request.Description, Correlation(http), ct);
             return result.Failure switch
@@ -101,13 +102,13 @@ public static class AuthorizationEndpoints
             };
         }).RequirePlatformPermission(PlatformPermissionIds.RolesWrite);
 
-        group.MapPut("/roles/{roleId:guid}/permissions/{permissionId}", async (Guid roleId, string permissionId, HttpContext http, IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
+        group.MapPut("/roles/{roleId:guid}/permissions/{permissionId}", async (Guid roleId, string permissionId, HttpContext http, [FromServices] IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
         {
             var result = await admin.AddPermissionAsync(new(roleId), permissionId, Correlation(http), ct);
             return result.Failure switch { AuthorizationFailure.NotFound => Results.NotFound(), AuthorizationFailure.InvalidInput => Results.BadRequest(new { error = "invalid_permission" }), AuthorizationFailure.Conflict => Results.Conflict(), _ => Results.Ok(new { added = result.Value }) };
         }).RequirePlatformPermission(PlatformPermissionIds.RolesPermissionsWrite);
 
-        group.MapDelete("/roles/{roleId:guid}/permissions/{permissionId}", async (Guid roleId, string permissionId, HttpContext http, IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
+        group.MapDelete("/roles/{roleId:guid}/permissions/{permissionId}", async (Guid roleId, string permissionId, HttpContext http, [FromServices] IAuthorizationAdministrationV1 admin, CancellationToken ct) =>
         {
             var result = await admin.RemovePermissionAsync(new(roleId), permissionId, Correlation(http), ct);
             return result.Failure switch { AuthorizationFailure.NotFound => Results.NotFound(), AuthorizationFailure.InvalidInput => Results.BadRequest(new { error = "invalid_permission" }), AuthorizationFailure.Conflict => Results.Conflict(), _ => result.Value == true ? Results.NoContent() : Results.NotFound() };
@@ -116,7 +117,7 @@ public static class AuthorizationEndpoints
         return endpoints;
     }
 
-    private static async ValueTask<bool> IsAdministratorAsync(HttpContext http, IAuthorizationServiceV1 authorization, CancellationToken cancellationToken)
+    private static async ValueTask<bool> IsAdministratorAsync(HttpContext http, [FromServices] IAuthorizationServiceV1 authorization, CancellationToken cancellationToken)
     {
         if (AuthorizationEndpointFilters.IsLegacyAdmin(http)) return true;
         var userId = AuthorizationEndpointFilters.AuthenticatedUserId(http);

@@ -11,6 +11,9 @@ public sealed record ModuleManifest
     public PackageDependency[]? PackageDependencies { get; init; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public int? RequiredModuleHostProtocol { get; init; }
+    /// <summary>Signed, host-validated declarations of Platform Job handlers. Null preserves historical manifest signatures.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ModuleJobContributionV1[]? JobContributions { get; init; }
     public required string Id { get; init; }
     public required string Name { get; init; }
     public required string Version { get; init; }
@@ -44,5 +47,8 @@ public sealed record ModuleManifest
     /// <summary>Version of the .hispania package container format.</summary>
     public int PackageFormatVersion { get; init; } = 1;
 }
+
+/// <summary>Declares one Job type served through a public contribution capability implemented by this module.</summary>
+public sealed record ModuleJobContributionV1(string JobType, string CapabilityId, string CapabilityVersion);
 
 public sealed record PackageDependency(string PackageId, string VersionRange);

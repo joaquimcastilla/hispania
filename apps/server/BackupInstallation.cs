@@ -22,6 +22,24 @@ internal static class BackupInstallation
     private static readonly Histogram<long> Components = Meter.CreateHistogram<long>("hispania.backup.components");
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
     private static readonly JsonSerializerOptions ModuleJson = new() { PropertyNameCaseInsensitive = true };
+#if HISPANIA_PLATFORM_ONLY
+    private static readonly Dictionary<string, string> Paths = new()
+    {
+        ["Platform:DataPath"] = "platform", ["Platform:Events:Path"] = "platform/events.sqlite",
+        ["Platform:Jobs:Path"] = "platform/jobs.sqlite", ["Platform:Assets:MetadataPath"] = "platform/assets.sqlite",
+        ["Platform:Maintenance:Path"] = "platform/maintenance.sqlite", ["Platform:Audit:Path"] = "platform/audit.sqlite",
+        ["Identity:Sqlite:Path"] = "platform/identity.sqlite", ["DistributedWorkers:StatePath"] = "coordinator.sqlite",
+        ["DistributedWorkers:TransferPath"] = "transfers", ["Modules:ExtensionsPath"] = "extensions",
+        ["Storage:Providers:Filesystem:Root"] = "storage"
+    };
+    private static readonly Dictionary<string, string> Databases = new()
+    {
+        ["platform/identity.sqlite"] = "Identity.Authorization", ["platform/events.sqlite"] = "Events",
+        ["platform/jobs.sqlite"] = "Jobs", ["platform/assets.sqlite"] = "Assets",
+        ["platform/maintenance.sqlite"] = "Maintenance", ["platform/audit.sqlite"] = "Audit",
+        ["coordinator.sqlite"] = "Coordinator"
+    };
+#else
     private static readonly Dictionary<string, string> Paths = new()
     {
         ["Platform:DataPath"] = "platform", ["Platform:Events:Path"] = "platform/events.sqlite",
@@ -42,6 +60,7 @@ internal static class BackupInstallation
         ["platform/audit.sqlite"] = "Audit", ["inventory.sqlite"] = "Inventory",
         ["coordinator.sqlite"] = "Coordinator", ["media.sqlite"] = "Media.SQLite"
     };
+#endif
     private static readonly string[] PortablePrefixes =
     ["Storage:DefaultProvider", "Modules:TrustedExtensionIds:", "Modules:TrustedPublisherKeys:",
      "Modules:RevokedPublisherIds:", "Modules:RequirePublisherSignature", "Modules:PlaybackPlanner",
@@ -107,6 +126,9 @@ internal static class BackupInstallation
             if ((configuration["Storage:DefaultProvider"] ?? "filesystem") != "filesystem")
                 throw new InvalidOperationException("Managed backup supports only the filesystem Storage provider.");
             var provider = configuration["Persistence:Provider"] ?? "sqlite";
+#if HISPANIA_PLATFORM_ONLY
+            if (provider != "sqlite") throw new InvalidOperationException("Platform-only backup supports SQLite only.");
+#endif
             if (provider is not ("sqlite" or "postgresql")) throw new InvalidDataException("Unsupported managed persistence provider.");
             configuration["Persistence:Provider"] = provider;
             if (provider == "postgresql")
@@ -233,6 +255,9 @@ internal static class BackupInstallation
             string? postgresSchema = null;
             if (provider == "postgresql")
             {
+#if HISPANIA_PLATFORM_ONLY
+                throw new InvalidDataException("Platform-only backup supports SQLite only.");
+#else
                 ValidatePostgreSqlSource(source);
                 var tooling = (await PostgreSqlAsync("pg_dump", ["--version"], token)).Trim();
                 var serverVersion = (await PostgreSqlAsync("psql", ["--no-psqlrc", "--tuples-only", "--no-align", "--command=SHOW server_version_num"], token)).Trim();
@@ -243,6 +268,7 @@ internal static class BackupInstallation
                 Hispania.Library.Persistence.PostgreSql.PostgreSqlMigrationRunner.ValidateBackupHistory(migration);
                 postgresSchema = migration + "|" + tooling;
                 await PostgreSqlAsync("pg_dump", ["--format=custom", "--no-owner", "--no-acl", "--file=" + Path.Combine(staging, "media.dump")], token);
+#endif
             }
             var files = await InventoryAsync(staging, token);
             files = files.Select(file => file.Path == "media.dump" ? file with { Schema = postgresSchema } : file).ToArray();
@@ -272,11 +298,14 @@ internal static class BackupInstallation
         if (!File.Exists(manifestPath) || new FileInfo(manifestPath).Length > MaximumManifestBytes) throw new InvalidDataException("Manifest is missing or oversized.");
         var manifestText = await File.ReadAllTextAsync(manifestPath, token);
         using (var document = JsonDocument.Parse(manifestText)) RejectDuplicateProperties(document.RootElement);
-        var manifest = JsonSerializer.Deserialize<Manifest>(manifestText, Json) ?? throw new InvalidDataException("Invalid manifest.");
+            var manifest = JsonSerializer.Deserialize<Manifest>(manifestText, Json) ?? throw new InvalidDataException("Invalid manifest.");
         if (manifest.BackupFormatGeneration != FormatGeneration || manifest.BackupId == Guid.Empty || !IsDistributionVersionCompatible(manifest.DistributionVersion, DistributionVersion()) ||
             manifest.ConsistencyMode != "offline-exclusive-installation-lock" || manifest.Provider is not ("sqlite" or "postgresql") || manifest.StorageProvider != "filesystem" || manifest.CreatedUtc == default || manifest.CreatedUtc.Offset != TimeSpan.Zero ||
             manifest.Files is null || manifest.RequiredComponents is null || manifest.Reprovision is null || manifest.Warnings is null)
             throw new InvalidDataException("Unsupported backup metadata.");
+#if HISPANIA_PLATFORM_ONLY
+        if (manifest.Provider != "sqlite") throw new InvalidDataException("Platform-only backups support SQLite only.");
+#endif
         if (manifest.Files.Length > 65536 || manifest.Files.Any(file => file is null || file.Size < 0) || manifest.Files.Sum(file => (decimal)file.Size) > 1024m * 1024 * 1024 * 1024)
             throw new InvalidDataException("Backup exceeds the 65536-file or 1 TiB resource policy.");
         var expected = Databases.Values.Where(v => (manifest.Provider == "sqlite" || v != "Media.SQLite") &&
@@ -297,7 +326,9 @@ internal static class BackupInstallation
                 throw new InvalidDataException("Payload integrity failed.");
             if (Databases.ContainsKey(file.Path) && CheckDatabase(path) != file.Schema) throw new InvalidDataException("Schema metadata mismatch.");
             if (file.Path == "playback.json" && CheckPlaybackSchema(path) != file.Schema) throw new InvalidDataException("Playback schema metadata mismatch.");
+#if !HISPANIA_PLATFORM_ONLY
             if (file.Path == "media.dump") Hispania.Library.Persistence.PostgreSql.PostgreSqlMigrationRunner.ValidateBackupMetadata(file.Schema);
+#endif
         }
         var actual = EnumerateSafe(bundle).Select(path => Path.GetRelativePath(bundle, path).Replace('\\', '/')).Where(path => path != "manifest.json").ToHashSet(PathComparer);
         if (!seen.SetEquals(actual)) throw new InvalidDataException("Unlisted or missing payload.");
@@ -352,18 +383,26 @@ internal static class BackupInstallation
             Checkpoint("restore-before-switch");
             if (manifest.Provider == "postgresql")
             {
+#if HISPANIA_PLATFORM_ONLY
+                throw new InvalidDataException("Platform-only backup supports SQLite only.");
+#else
                 // Tooling preflight and empty DB test occur before any external write.
                 await PostgreSqlAsync("pg_restore", ["--version"], token);
                 var empty = await PostgreSqlAsync("psql", ["--no-psqlrc", "--tuples-only", "--no-align", "--command=SELECT count(*) FROM pg_class c JOIN pg_namespace n ON c.relnamespace=n.oid WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%' AND c.relkind IN ('r','p','v','m','S','f')"], token);
                 if (empty.Trim() != "0") throw new InvalidDataException("PostgreSQL restore requires an empty database.");
+#endif
             }
             WriteJson(marker, new { manifest.BackupId, state = "switch-in-progress" });
             Checkpoint("restore-switch");
             if (manifest.Provider == "postgresql")
             {
+#if HISPANIA_PLATFORM_ONLY
+                throw new InvalidDataException("Platform-only backup supports SQLite only.");
+#else
                 externalStarted = true;
                 await PostgreSqlAsync("pg_restore", ["--exit-on-error", "--single-transaction", "--no-owner", "--no-acl", "--dbname=" + RequirePostgreSqlDatabase(), Path.Combine(staging, "media.dump")], CancellationToken.None);
                 File.Delete(Path.Combine(staging, "media.dump"));
+#endif
             }
             Directory.Move(staging, target); // Single local commit; cancellation is no longer honored.
             Checkpoint("restore-published");
@@ -471,9 +510,13 @@ internal static class BackupInstallation
             "assets.sqlite" => new Dictionary<string, string> { ["Platform.Assets"] = "0002_reconciliation_quarantine" },
             _ => null
         };
+#if HISPANIA_PLATFORM_ONLY
+        return Hispania.Platform.Persistence.Sqlite.SqliteBackupInspection.Inspect(path, secondMigrations: migrations);
+#else
         return Hispania.Platform.Persistence.Sqlite.SqliteBackupInspection.Inspect(path,
             name == "media.sqlite" ? Hispania.Library.Persistence.Sqlite.SqliteMigrationRunner.InspectBackupHistory : null,
             migrations);
+#endif
     }
 
     private static void PreflightBackupCapacity(string destination, Dictionary<string, string?> portable,

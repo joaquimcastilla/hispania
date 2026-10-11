@@ -8,9 +8,13 @@ public sealed class ArtifactManifest
 {
     public int ManifestGeneration { get; set; } = 1;
     public string DistributionVersion { get; set; } = "";
+    public string DistributionType { get; set; } = "complete";
     public string GitSha { get; set; } = "";
+    public string SourceBranch { get; set; } = "unknown";
     public bool SourceDirty { get; set; }
     public string TargetRid { get; set; } = "";
+    public string Architecture { get; set; } = "";
+    public string PublishProfile { get; set; } = "complete-production";
     public string BuildConfiguration { get; set; } = "Release";
     public string DotnetSdkVersion { get; set; } = "";
     public string RuntimePrerequisite { get; set; } = "ASP.NET Core Runtime 10.0 (x64)";
@@ -35,7 +39,7 @@ public sealed class ArtifactManifest
             var path = Path.Combine(artifact, "artifact-manifest.json");
             if (new FileInfo(path).Length > 16 * 1024 * 1024) throw new InvalidDataException();
             var manifest = JsonSerializer.Deserialize<ArtifactManifest>(File.ReadAllText(path), ProductionConfiguration.Json) ?? throw new InvalidDataException();
-            if (manifest.ManifestGeneration != 1 || manifest.DistributionVersion is null || !IsSemVer(manifest.DistributionVersion) || manifest.GitSha.Length != 40 || !manifest.GitSha.All(Uri.IsHexDigit) || manifest.TargetRid is not ("win-x64" or "linux-x64") || manifest.BuildConfiguration != "Release" || manifest.BuildUtc == default) throw new InvalidDataException();
+            if (manifest.ManifestGeneration != 1 || manifest.DistributionVersion is null || !IsSemVer(manifest.DistributionVersion) || manifest.GitSha.Length != 40 || !manifest.GitSha.All(Uri.IsHexDigit) || manifest.TargetRid is not ("win-x64" or "linux-x64" or "linux-arm64") || manifest.DistributionType is not ("complete" or "platform-only") || manifest.BuildConfiguration != "Release" || manifest.BuildUtc == default) throw new InvalidDataException();
             stage = "file inventory";
             var files = Directory.EnumerateFiles(artifact, "*", SearchOption.AllDirectories).Select(file => Path.GetRelativePath(artifact, file).Replace('\\', '/')).Where(file => file != "artifact-manifest.json").Order(StringComparer.Ordinal).ToArray();
             if (!files.SequenceEqual(manifest.Files.Keys.Order(StringComparer.Ordinal))) throw new InvalidDataException();
@@ -49,8 +53,20 @@ public sealed class ArtifactManifest
                 using var stream = File.OpenRead(file);
                 if (!Convert.ToHexString(SHA256.HashData(stream)).Equals(expected, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException();
             }
-            foreach (var required in new[] { "server/Hispania.Server.dll", "server/module-host/Hispania.ModuleHost.dll", "server/ffmpeg-worker/Hispania.FFmpeg.Worker.dll", "server/wwwroot/modern/index.html", "server/wwwroot/classic/index.html", "worker/Hispania.WorkerAgent.dll", "worker/module-host/Hispania.ModuleHost.dll" })
+            var requiredFiles = manifest.DistributionType == "platform-only"
+                ? new[] { "server/Hispania.Platform.Server.dll", "server/Hispania.Platform.Server.deps.json", "server/module-host/Hispania.ModuleHost.dll", "deployment/Hispania.Deployment.dll" }
+                : new[] { "server/Hispania.Server.dll", "server/module-host/Hispania.ModuleHost.dll", "server/ffmpeg-worker/Hispania.FFmpeg.Worker.dll", "server/wwwroot/modern/index.html", "server/wwwroot/classic/index.html", "worker/Hispania.WorkerAgent.dll", "worker/module-host/Hispania.ModuleHost.dll" };
+            foreach (var required in requiredFiles)
                 if (!manifest.Files.ContainsKey(required)) throw new InvalidDataException();
+            if (manifest.DistributionType == "platform-only")
+            {
+                if (manifest.TargetRid == "win-x64" && manifest.Architecture is not ("x86_64" or "")) throw new InvalidDataException();
+                if (manifest.TargetRid == "linux-x64" && manifest.Architecture is not ("x86_64" or "")) throw new InvalidDataException();
+                if (manifest.TargetRid == "linux-arm64" && manifest.Architecture is not ("aarch64" or "")) throw new InvalidDataException();
+                if (files.Any(file => System.Text.RegularExpressions.Regex.IsMatch(file, @"Hispania\.(Media|Inventory|Library|Playback|Transcoding|Metadata|FFmpeg)|WindowsServices|ServiceController", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant))) throw new InvalidDataException();
+                var deps = File.ReadAllText(Path.Combine(artifact, "server", "Hispania.Platform.Server.deps.json"));
+                if (System.Text.RegularExpressions.Regex.IsMatch(deps, @"Hispania\.(Media|Inventory|Library|Playback|Transcoding|Metadata|FFmpeg)|WindowsServices|ServiceController", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)) throw new InvalidDataException();
+            }
             return manifest;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or UnauthorizedAccessException or InvalidOperationException)

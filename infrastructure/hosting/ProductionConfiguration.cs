@@ -17,6 +17,8 @@ public sealed class ProductionConfiguration
     public string? BootstrapSecret { get; set; }
     public string? BootstrapUsername { get; set; }
     public string? BootstrapPasswordSecret { get; set; }
+    /// <summary>Optional reference to the compatibility module-administration bearer secret; raw tokens never belong in this file.</summary>
+    public string? ModuleAdminToken { get; set; }
     public string Ffmpeg { get; set; } = "ffmpeg";
     public string Ffprobe { get; set; } = "ffprobe";
     public string Persistence { get; set; } = "sqlite";
@@ -77,7 +79,7 @@ public sealed class ProductionConfiguration
         foreach (var path in LibraryRoots) Require(path is not null && Path.IsPathFullyQualified(path), "libraryRoots", "paths must be absolute");
         foreach (var path in Worker.CapabilityProviderAssemblies)
             Require(!string.IsNullOrWhiteSpace(path) && !Path.IsPathRooted(path) && !path.Contains(':', StringComparison.Ordinal) && !path.Split('/', '\\').Any(part => part is ".." or ".") && path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase), "worker.capabilityProviderAssemblies", "use artifact-relative DLL paths");
-        foreach (var reference in new[] { BootstrapSecret, BootstrapPasswordSecret, PostgreSql.PasswordSecret, Tls.PasswordSecret, Worker.PasswordSecret })
+        foreach (var reference in new[] { BootstrapSecret, BootstrapPasswordSecret, ModuleAdminToken, PostgreSql.PasswordSecret, Tls.PasswordSecret, Worker.PasswordSecret })
             if (reference is not null) InstallationSecrets.ValidateReference(reference);
         foreach (var path in new[] { Tls.CertificateFile, Worker.CertificateFile })
             if (path is not null) Require(!Path.IsPathRooted(path) && !path.Contains(':', StringComparison.Ordinal) && !path.Split('/', '\\').Any(part => part is ".." or ".") && !string.IsNullOrWhiteSpace(path), "certificateFile", "use a path within secrets/");

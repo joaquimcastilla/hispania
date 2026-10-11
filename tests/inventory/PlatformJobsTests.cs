@@ -11,6 +11,17 @@ namespace Hispania.Inventory.Tests;
 public sealed class PlatformJobsTests
 {
     [Fact]
+    public async Task EmptyCoreRegistryRejectsUnprovidedJobWithoutPersistingIt()
+    {
+        using var temp = new JobTemp();
+        var store = new SqlitePlatformJobStore(temp.File("jobs.sqlite"));
+        var service = new PlatformJobService(store, new PlatformJobHandlerRegistryV1(), new PlatformJobOptionsV1());
+
+        await Assert.ThrowsAsync<ArgumentException>(async () => await service.CreateAsync(HashRequest()));
+        Assert.Empty(await store.ListAsync(null, 20, default));
+    }
+
+    [Fact]
     public async Task JobsPersistIdempotentlyAndKeepScheduledWorkUnclaimedUntilDue()
     {
         const string privatePayloadMarker = "TEST-ONLY-private-job-payload";

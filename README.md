@@ -16,6 +16,8 @@ The current candidate is **0.7.0-rc.1**, a pre-1.0 release candidate prepared fo
 
 RC1 is a public pre-release, not a stable release. Public contracts remain pre-1.0; no subsystem or contract has been promoted to stable.
 
+The separate 0.7.0 stabilization workstream remains in progress. Step 2.1's local production-lifecycle and packaging results are recorded in [its validation report](docs/HISPANIA-0.7.0-STEP-2-1.md); they do not change the RC1 support matrix or publish a release.
+
 ## Architecture
 
 ```text
@@ -48,6 +50,8 @@ See [Architecture](docs/ARCHITECTURE.md), [Module System](docs/MODULE_SYSTEM.md)
 
 The published applications target Windows x64 and Linux x64 and require the **.NET 10 ASP.NET Core x64 runtime**. They are framework-dependent, not self-contained. Media operations that analyze or transcode files need the documented FFmpeg/FFprobe tools. Verify the delivered package against its separately obtained manifest checksum before installation.
 
+An experimental `PlatformOnly=true` Server composition now builds without Media/Inventory implementations and cross-publishes for Linux ARM64. Local Windows runtime and HTTP smoke checks pass; native ARM64 and Raspberry Pi are not validated. This profile is not integrated with the production installation/upgrade/bootstrap lifecycle. See the [Step 2 evidence](docs/HISPANIA-0.7.0-STEP-2.md) and [ARM64 validation procedure](docs/operations/PLATFORM-ONLY-ARM64.md); do not treat it as a supported production install target.
+
 The production publisher is `tools/publish-production.ps1`. For an already prepared distribution, verify and install using the included deployment CLI:
 
 ```sh
@@ -66,6 +70,7 @@ Configure `/srv/hispania/config/production.json`, provision the first operator t
 - [Security model](docs/SECURITY_MODEL.md) · [Security policy](SECURITY.md)
 - [Architecture](docs/ARCHITECTURE.md) · [Module development](docs/MODULE_SYSTEM.md)
 - [0.7.0 stabilization roadmap](docs/HISPANIA-0.7.0-ROADMAP.md) · [Step 1 audit and contracts](docs/HISPANIA-0.7.0-STEP-1.md)
+- [Step 2 Platform-only and ARM64 evidence](docs/HISPANIA-0.7.0-STEP-2.md) · [ARM64 validation procedure](docs/operations/PLATFORM-ONLY-ARM64.md)
 - [Support matrix](docs/SUPPORT-MATRIX.md) · [Compatibility policy](docs/COMPATIBILITY-POLICY.md)
 - [Release notes: 0.7.0 RC1](docs/RELEASE-NOTES-0.7.0-rc.1.md)
 - [Progress log](PROGRESS-LOG.md) · [Roadmap](docs/ROADMAP.md)

@@ -1,6 +1,8 @@
 # HISPANIA 0.7.0 — Step 2 validation record
 
-**Status: PARTIAL.** This document records the bounded ARM64 CI evidence only. It does not accept or publish the pending Step 2 refactor, claim production-ready ARM64 installation, or start Step 2.1 or Step 3.
+**Status: PARTIAL.** This document records the bounded ARM64 CI evidence only. It does not accept or publish the pending Step 2 refactor, claim production-ready ARM64 installation, or start Step 3.
+
+**Correction:** Step 2.1 is now being validated in a separate local worktree. Its production lifecycle and packaging evidence, plus unresolved RC1/module-handler/ARM64 gates, are recorded in [HISPANIA-0.7.0-STEP-2-1.md](HISPANIA-0.7.0-STEP-2-1.md). This historical Step 2 smoke record is not the Step 2.1 result.
 
 ## CI evidence
 

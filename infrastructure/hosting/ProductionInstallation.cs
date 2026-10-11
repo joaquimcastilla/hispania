@@ -16,6 +16,7 @@ public sealed class ProductionInstallation
     public IInstallationSecretProvider Secrets { get; }
     public bool CheckOnly { get; }
     public bool BootstrapOnly { get; }
+    public bool PlatformOnly { get; }
     public string State => Path.Combine(Home, "state");
     public string PrivateFile(string relative) => Path.Combine(Home, "secrets", relative);
 
@@ -43,12 +44,13 @@ public sealed class ProductionInstallation
         catch { throw new DeploymentException(6, "Upgrade startup record is invalid; inspect recovery evidence before starting."); }
     }
 
-    private ProductionInstallation(string home, ProductionConfiguration configuration, bool checkOnly, bool bootstrapOnly)
+    private ProductionInstallation(string home, ProductionConfiguration configuration, bool checkOnly, bool bootstrapOnly, bool platformOnly)
     {
         Home = home;
         Configuration = configuration;
         CheckOnly = checkOnly;
         BootstrapOnly = bootstrapOnly;
+        PlatformOnly = platformOnly;
         Secrets = new InstallationSecrets(Path.Combine(home, "secrets"));
     }
 
@@ -61,11 +63,16 @@ public sealed class ProductionInstallation
 #endif
     }
 
-    public static ProductionInstallation? Load(string[] args, string role)
+    public static ProductionInstallation? Load(string[] args, string role, bool platformOnly = false)
     {
         if (!IsProduction(args)) return null;
-        if ((!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()) || System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture != System.Runtime.InteropServices.Architecture.X64)
-            throw new DeploymentException(5, "Production hosting currently supports Windows x64 and Linux x64; this platform has not been validated.");
+        var architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
+        var supportedHost = platformOnly
+            ? OperatingSystem.IsWindows() && architecture == System.Runtime.InteropServices.Architecture.X64 || OperatingSystem.IsLinux() && architecture is System.Runtime.InteropServices.Architecture.X64 or System.Runtime.InteropServices.Architecture.Arm64
+            : (OperatingSystem.IsWindows() || OperatingSystem.IsLinux()) && architecture == System.Runtime.InteropServices.Architecture.X64;
+        if (!supportedHost) throw new DeploymentException(5, platformOnly
+            ? "Platform-only production hosting supports Windows x64, Linux x64 and Linux ARM64 only."
+            : "Production hosting currently supports Windows x64 and Linux x64; this platform has not been validated.");
         string? home = Environment.GetEnvironmentVariable("HISPANIA__HOME");
         var overrides = new List<KeyValuePair<string, string?>>();
         foreach (DictionaryEntry entry in Environment.GetEnvironmentVariables())
@@ -96,8 +103,13 @@ public sealed class ProductionInstallation
         if (File.Exists(Path.Combine(home, "run", "upgrade-in-progress.json"))) throw new DeploymentException(6, "Interrupted upgrade: inspect run/upgrade-in-progress.json and recover before starting.");
         var configuration = ProductionConfiguration.Read(Path.Combine(home, "config", "production.json"), overrides);
         configuration.Validate(role);
+        if (platformOnly)
+        {
+            ProductionConfiguration.Require(role == "server", "role", "Platform-only production supports the server host only");
+            ProductionConfiguration.Require(configuration.Persistence == "sqlite", "persistence", "Platform-only production currently supports SQLite only");
+        }
         ProductionConfiguration.Require(!bootstrap || role == "server" && !check && configuration.BootstrapSecret is not null && configuration.BootstrapPasswordSecret is not null && !string.IsNullOrWhiteSpace(configuration.BootstrapUsername), "bootstrap", "requires server, bootstrapUsername, bootstrapSecret and bootstrapPasswordSecret; cannot combine with --check");
-        return new ProductionInstallation(home, configuration, check, bootstrap);
+        return new ProductionInstallation(home, configuration, check, bootstrap, platformOnly);
     }
 
     public void ValidatePrerequisites()
@@ -111,7 +123,7 @@ public sealed class ProductionInstallation
             try { using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { } File.Delete(probe); }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { throw new DeploymentException(5, $"Directory is not writable: {name}; grant service account access."); }
         }
-        foreach (var reference in new[] { Configuration.BootstrapSecret, Configuration.BootstrapPasswordSecret, Configuration.PostgreSql.PasswordSecret, Configuration.Tls.PasswordSecret, Configuration.Worker.PasswordSecret })
+        foreach (var reference in new[] { Configuration.BootstrapSecret, Configuration.BootstrapPasswordSecret, Configuration.ModuleAdminToken, Configuration.PostgreSql.PasswordSecret, Configuration.Tls.PasswordSecret, Configuration.Worker.PasswordSecret })
             if (reference is not null) _ = Secrets.Resolve(reference);
         foreach (var path in new[] { Configuration.Tls.CertificateFile, Configuration.Worker.CertificateFile })
             if (path is not null) InstallationSecrets.ValidateProtectedFile(PrivateFile(path));
@@ -125,7 +137,7 @@ public sealed class ProductionInstallation
         }
         var moduleHost = Path.Combine(AppContext.BaseDirectory, "module-host", "Hispania.ModuleHost.dll");
         if (!File.Exists(moduleHost)) throw new DeploymentException(5, "Missing ModuleHost child artifact; reinstall a complete publication.");
-        if (Configuration.Role == "server")
+        if (Configuration.Role == "server" && !PlatformOnly)
         {
             CheckTool(Configuration.Ffprobe, "ffprobe"); CheckTool(Configuration.Ffmpeg, "ffmpeg");
             var web = Path.Combine(AppContext.BaseDirectory, "wwwroot", Configuration.WebBuild, "index.html");
@@ -133,7 +145,7 @@ public sealed class ProductionInstallation
             foreach (var root in Configuration.LibraryRoots)
                 if (!Directory.Exists(root)) throw new DeploymentException(5, "Library root is unavailable; mount configured media directories before startup.");
         }
-        else if (Configuration.Worker.FfmpegEnabled) CheckTool(Configuration.Ffmpeg, "ffmpeg");
+        else if (Configuration.Role == "worker" && Configuration.Worker.FfmpegEnabled) CheckTool(Configuration.Ffmpeg, "ffmpeg");
         foreach (var assembly in Configuration.Worker.CapabilityProviderAssemblies)
             if (!File.Exists(Path.Combine(Home, "app", assembly))) throw new DeploymentException(5, "Missing configured Worker capability provider; use an artifact-relative assembly from the verified publication.");
     }
@@ -187,6 +199,9 @@ public sealed class ProductionInstallation
             ["DistributedWorker:PollMilliseconds"] = config.Worker.PollMilliseconds.ToString(CultureInfo.InvariantCulture),
             ["DistributedWorker:HeartbeatSeconds"] = config.Worker.HeartbeatSeconds.ToString(CultureInfo.InvariantCulture)
         };
+#if HISPANIA_PLATFORM_ONLY
+        values["Platform:DataPath"] = Path.Combine(State, "platform");
+#endif
         values["DistributedWorker:Ffmpeg:Enabled"] = config.Worker.FfmpegEnabled.ToString(CultureInfo.InvariantCulture);
         values["DistributedWorker:Ffmpeg:ExecutablePath"] = config.Ffmpeg;
         values["DistributedWorker:Ffmpeg:WorkerAssemblyPath"] = Path.Combine(Home, "app", "server", "ffmpeg-worker", "Hispania.FFmpeg.Worker.dll");
@@ -195,6 +210,7 @@ public sealed class ProductionInstallation
         foreach (var (key, reference) in new Dictionary<string, string?>
         {
             ["Identity:Bootstrap:Token"] = config.BootstrapSecret,
+            ["Modules:AdminToken"] = config.ModuleAdminToken,
             ["Kestrel:Certificates:Default:Password"] = config.Tls.PasswordSecret,
             ["DistributedWorker:ClientCertificatePassword"] = config.Worker.PasswordSecret
         }) if (reference is not null) values[key] = Secrets.Resolve(reference);
@@ -234,7 +250,9 @@ public sealed class ProductionInstallation
 
     public static void AddServiceLifetime(IServiceCollection services, string role)
     {
+#if !HISPANIA_PLATFORM_ONLY
         services.AddWindowsService(options => options.ServiceName = role == "server" ? "HispaniaServer" : "HispaniaWorker");
+#endif
         services.AddSystemd();
         services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(30));
     }

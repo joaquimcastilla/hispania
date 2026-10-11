@@ -21,6 +21,7 @@ public static class InstallationOperations
         var manifest = ArtifactManifest.Verify(artifact);
         RequirePlatform(manifest);
         ProductionConfiguration.Require(role is "server" or "worker", "role", "use server or worker");
+        ProductionConfiguration.Require(manifest.DistributionType != "platform-only" || role == "server", "role", "Platform-only artifacts install only the server role");
         ProductionInstallation.RejectLinks(home);
         Directory.CreateDirectory(home);
         Directory.CreateDirectory(Path.Combine(home, "run"));
@@ -39,12 +40,15 @@ public static class InstallationOperations
     {
         RequireAbsolute(home); RequireAbsolute(artifact);
         RejectOverlap(artifact, home);
-        RequirePlatform(ArtifactManifest.Verify(artifact));
+        var candidate = ArtifactManifest.Verify(artifact);
+        RequirePlatform(candidate);
         using var lease = Lock(home);
         var marker = Path.Combine(home, "run", "upgrade-in-progress.json");
         if (File.Exists(marker) || Directory.Exists(Path.Combine(home, "app.new")) || Directory.Exists(Path.Combine(home, "app.old"))) throw new DeploymentException(6, "An earlier upgrade requires explicit recovery; preserve app.old and backups.");
         var app = Path.Combine(home, "app");
-        _ = ArtifactManifest.Verify(app);
+        var installed = ArtifactManifest.Verify(app);
+        ProductionConfiguration.Require(installed.DistributionType == candidate.DistributionType, "distributionType", "upgrade cannot switch between complete and Platform-only distributions");
+        ProductionConfiguration.Require(installed.TargetRid == candidate.TargetRid, "targetRid", "upgrade artifact must match the installed target RID");
         var state = Path.Combine(home, "state");
         using (StateLock(state)) { } // Stop verified before staging and backup.
         var bundle = Path.Combine(home, "backups", "pre-upgrade-" + Guid.NewGuid().ToString("N"));
@@ -157,8 +161,12 @@ public static class InstallationOperations
     }
     private static void RequirePlatform(ArtifactManifest manifest)
     {
-        if ((!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()) || manifest.TargetRid != (OperatingSystem.IsWindows() ? "win-x64" : "linux-x64") || System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture != System.Runtime.InteropServices.Architecture.X64)
-            throw new DeploymentException(5, "Artifact RID does not match the supported x64 host.");
+        var architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
+        var hostRid = OperatingSystem.IsWindows() && architecture == System.Runtime.InteropServices.Architecture.X64 ? "win-x64"
+            : OperatingSystem.IsLinux() && architecture == System.Runtime.InteropServices.Architecture.X64 ? "linux-x64"
+            : OperatingSystem.IsLinux() && architecture == System.Runtime.InteropServices.Architecture.Arm64 ? "linux-arm64" : "unsupported";
+        if (manifest.TargetRid != hostRid || (manifest.DistributionType != "platform-only" && hostRid == "linux-arm64"))
+            throw new DeploymentException(5, "Artifact RID does not match this host; complete distributions support x64 and Platform-only also supports Linux ARM64.");
     }
 
     private static void CopyTree(string source, string destination)
@@ -176,8 +184,9 @@ public static class InstallationOperations
 
     private static async Task BackupCommandAsync(string app, string[] arguments, CancellationToken token)
     {
+        var manifest = ArtifactManifest.Verify(app);
         var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = app };
-        start.ArgumentList.Add(Path.Combine(app, "server", "Hispania.Server.dll"));
+        start.ArgumentList.Add(Path.Combine(app, "server", manifest.DistributionType == "platform-only" ? "Hispania.Platform.Server.dll" : "Hispania.Server.dll"));
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         // Home overrides are irrelevant to the existing offline Phase 17 command.
         start.Environment.Remove("HISPANIA__HOME");

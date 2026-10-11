@@ -62,13 +62,25 @@ public static class PackageDependencyResolver
 
     public static void ValidateManifest(ModuleManifest manifest)
     {
-        if (manifest.Implements is null || manifest.Provides is null || manifest.Requires is null || manifest.OptionalDependencies is null || manifest.Dependencies is null ||
+        if (manifest.Implements is null || manifest.Provides is null || manifest.Requires is null || manifest.OptionalDependencies is null || manifest.Dependencies is null || manifest.JobContributions is { Length: > 128 } ||
             manifest.Permissions is null || manifest.SharedAssemblies is null || manifest.Files is null || manifest.ContractTypes is null || manifest.DependencyMinimumVersions is null ||
             new[] { manifest.Implements, manifest.Provides, manifest.Requires, manifest.OptionalDependencies, manifest.Dependencies, manifest.Permissions, manifest.SharedAssemblies }
                 .Any(values => values.Length > 256 || values.Any(value => value is null || value.Length > 1024 || value.Any(char.IsControl))) ||
             manifest.Files.Count > 512 || manifest.ContractTypes.Count > 256 || manifest.DependencyMinimumVersions.Count > 256)
             throw new InvalidDataException("Manifest collections are null or exceed security bounds.");
         if (manifest.PackageFormatVersion is not (1 or 2)) throw new InvalidDataException("Unsupported package format generation.");
+        if (manifest.JobContributions is { } contributions)
+        {
+            var jobTypes = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var contribution in contributions)
+            {
+                if (contribution is null || !Hispania.Platform.Contracts.Jobs.PlatformJobHandlerRegistryV1.IsValidJobType(contribution.JobType) ||
+                    string.IsNullOrWhiteSpace(contribution.CapabilityId) || contribution.CapabilityId.Length > 256 ||
+                    !System.Version.TryParse(contribution.CapabilityVersion, out var contributionVersion) || contributionVersion.Major != 1 ||
+                    !manifest.Provides.Contains($"{contribution.CapabilityId}@{contributionVersion}", StringComparer.Ordinal) || !jobTypes.Add(contribution.JobType))
+                    throw new InvalidDataException("Module Job contribution declarations are invalid, duplicated, or not provided by the manifest.");
+            }
+        }
         if (manifest.PackageFormatVersion == 1)
         {
             if (manifest.PackageVersion is not null || manifest.PackageDependencies is not null || manifest.RequiredModuleHostProtocol is not null)

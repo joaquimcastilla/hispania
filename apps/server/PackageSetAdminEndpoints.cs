@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Hispania.Platform.Contracts.Authorization;
 using Hispania.Runtime;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Hispania.Server;
 
@@ -11,7 +12,7 @@ public static class PackageSetAdminEndpoints
     {
         var group = endpoints.MapGroup("/api/platform/admin/modules/packages")
             .RequirePlatformPermission(PlatformPermissionIds.Admin, false);
-        group.MapPost("", async Task<IResult> (HttpRequest request, ModuleExtensionCatalog catalog, CancellationToken ct) =>
+        group.MapPost("", async Task<IResult> (HttpRequest request, [FromServices] ModuleExtensionCatalog catalog, CancellationToken ct) =>
         {
             var path = Path.Combine(Path.GetTempPath(), "hispania-upload-" + Guid.NewGuid().ToString("N") + ".hispania");
             try
@@ -32,7 +33,7 @@ public static class PackageSetAdminEndpoints
             { return Results.Conflict(new { error = "package_operation_rejected" }); }
             finally { if (File.Exists(path)) File.Delete(path); }
         }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(134_217_728));
-        group.MapPost("/{id}/{operation}", async Task<IResult> (string id, string operation, ModuleExtensionCatalog catalog, CancellationToken ct) =>
+        group.MapPost("/{id}/{operation}", async Task<IResult> (string id, string operation, [FromServices] ModuleExtensionCatalog catalog, CancellationToken ct) =>
         {
             if (operation is not ("enable" or "disable" or "uninstall")) return Results.NotFound();
             try

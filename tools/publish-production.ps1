@@ -41,6 +41,9 @@ try {
     Copy-Item -LiteralPath 'LICENSE.md' -Destination (Join-Path $outputRoot 'LICENSE.md')
     $sourceSha = (& git rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Source SHA unavailable.' }
+    $sourceBranch = (& git branch --show-current).Trim()
+    if (-not $sourceBranch -and $env:GITHUB_REF_NAME) { $sourceBranch = $env:GITHUB_REF_NAME }
+    if (-not $sourceBranch) { throw 'Source branch/tag is unavailable; set GITHUB_REF_NAME for detached builds.' }
     $sourceDirty = @(& git status --porcelain --untracked-files=normal).Count -ne 0
     $buildUtc = if ($sourceDirty) {
         [DateTimeOffset]::UtcNow
@@ -56,15 +59,22 @@ try {
     }
     $manifest = [ordered]@{
         manifestGeneration=1; distributionVersion=(Get-Content -Raw version.json | ConvertFrom-Json).distributionVersion
-        gitSha=$sourceSha; sourceDirty=$sourceDirty; targetRid=$Rid; buildConfiguration='Release'; dotnetSdkVersion=(& dotnet --version).Trim()
+        distributionType='complete'; gitSha=$sourceSha; sourceBranch=$sourceBranch; sourceDirty=$sourceDirty
+        targetRid=$Rid; architecture='x86_64'; publishProfile='complete-production'
+        buildConfiguration='Release'; dotnetSdkVersion=(& dotnet --version).Trim()
         runtimePrerequisite='ASP.NET Core Runtime 10.0 (x64)'; buildUtc=$buildUtc.ToUniversalTime().ToString('O'); files=$files
     }
     $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outputRoot 'artifact-manifest.json') -Encoding utf8NoBOM
     # The dirty flag is evidence alongside the artifact, never silently claimed as exact-commit output.
-    [ordered]@{ sourceDirty=$sourceDirty; sourceSha=$sourceSha; note='A dirty artifact is local verification evidence, not a reproducible release.' } | ConvertTo-Json | Set-Content -LiteralPath ($outputRoot + '.build-evidence.json') -Encoding utf8NoBOM
+    [ordered]@{ sourceDirty=$sourceDirty; sourceSha=$sourceSha; sourceBranch=$sourceBranch; targetRid=$Rid; architecture='x86_64'; distributionType='complete'; publishProfile='complete-production'; note='A dirty artifact is local verification evidence, not a reproducible release.' } | ConvertTo-Json | Set-Content -LiteralPath ($outputRoot + '.build-evidence.json') -Encoding utf8NoBOM
     (Get-FileHash -LiteralPath (Join-Path $outputRoot 'artifact-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content -LiteralPath ($outputRoot + '.manifest.sha256') -Encoding ascii
     & dotnet (Join-Path $outputRoot 'deployment/Hispania.Deployment.dll') verify $outputRoot
     if ($LASTEXITCODE -ne 0) { throw 'Published artifact verification failed.' }
+    $packagePath = $outputRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + '.zip'
+    Compress-Archive -Path (Join-Path $outputRoot '*') -DestinationPath $packagePath -CompressionLevel Optimal
+    (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content -LiteralPath ($packagePath + '.sha256') -Encoding ascii
     Write-Host "Published $Rid artifact: $outputRoot"
+    Write-Host "Package: $packagePath"
+    Write-Host "Package SHA-256: $((Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant())"
 }
 finally { Pop-Location }

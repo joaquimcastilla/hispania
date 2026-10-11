@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Hispania.ModuleJob.Fixtures</AssemblyName>
+    <RootNamespace>Hispania.ModuleJob.Fixtures</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />
+    <ProjectReference Include="..\..\contracts\platform\Hispania.Platform.Contracts.csproj" />
+  </ItemGroup>
+</Project>
