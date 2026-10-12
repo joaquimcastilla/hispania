@@ -37,9 +37,9 @@ try {
     $runtime = if ($Rid -eq 'linux-arm64') { 'Microsoft.AspNetCore.App 10.0 (ARM64)' } else { 'Microsoft.AspNetCore.App 10.0 (x64)' }
 
     New-Item -ItemType Directory -Path $outputRoot | Out-Null
-    & dotnet publish 'apps/server/Hispania.Server.csproj' -c Release -r $Rid --self-contained false -p:PlatformOnly=true -p:ProductionPublication=true -p:UseAppHost=false ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot 'server')
+    & dotnet publish 'apps/server/Hispania.Server.csproj' -c Release -r $Rid --self-contained false -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:PlatformOnly=true -p:ProductionPublication=true -p:UseAppHost=false ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot 'server')
     if ($LASTEXITCODE -ne 0) { throw 'Platform-only server publication failed.' }
-    & dotnet publish 'apps/deployment/Hispania.Deployment.csproj' -c Release -r $Rid --self-contained false -p:PlatformOnly=true -p:UseAppHost=false ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot 'deployment')
+    & dotnet publish 'apps/deployment/Hispania.Deployment.csproj' -c Release -r $Rid --self-contained false -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:PlatformOnly=true -p:UseAppHost=false ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot 'deployment')
     if ($LASTEXITCODE -ne 0) { throw 'Deployment CLI publication failed.' }
 
     $files = [ordered]@{}
@@ -47,10 +47,14 @@ try {
         $relative = [IO.Path]::GetRelativePath($outputRoot, $file.FullName).Replace('\','/')
         $files[$relative] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     }
+    $sdkVersionOutput = & dotnet --version
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to read the selected .NET SDK version.' }
+    $sdkVersion = ([string]$sdkVersionOutput).Trim()
+    if (-not $sdkVersion) { throw 'The selected .NET SDK version output was empty.' }
     $manifest = [ordered]@{
         manifestGeneration=1; distributionVersion=$version; distributionType='platform-only'
         gitSha=$sourceSha; sourceBranch=$branch; sourceDirty=$sourceDirty; targetRid=$Rid; architecture=$architecture
-        buildConfiguration='Release'; publishProfile='platform-only-production'; dotnetSdkVersion=(& dotnet --version).Trim()
+        buildConfiguration='Release'; publishProfile='platform-only-production'; dotnetSdkVersion=$sdkVersion
         runtimePrerequisite=$runtime; buildUtc=$buildUtc.ToUniversalTime().ToString('O'); files=$files
     }
     $manifestPath = Join-Path $outputRoot 'artifact-manifest.json'
@@ -62,7 +66,7 @@ try {
 
     $verifier = Join-Path $outputRoot 'deployment/Hispania.Deployment.dll'
     if ($Rid -eq 'linux-arm64') {
-        & dotnet build 'apps/deployment/Hispania.Deployment.csproj' -c Release -p:PlatformOnly=true -p:UseAppHost=false --nologo -v quiet
+        & dotnet build 'apps/deployment/Hispania.Deployment.csproj' -c Release -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:PlatformOnly=true -p:UseAppHost=false --nologo -v quiet
         if ($LASTEXITCODE -ne 0) { throw 'Host-native Deployment verifier build failed.' }
         $verifier = Join-Path $repoRoot 'apps/deployment/bin/Release/net10.0/Hispania.Deployment.dll'
     }

@@ -39,17 +39,23 @@ try {
     New-Item -ItemType Directory -Path (Join-Path $outputRoot 'operations') | Out-Null
     Copy-Item -LiteralPath 'deployment/windows-service.ps1','deployment/hispania.service.in','deployment/install-systemd.sh' -Destination (Join-Path $outputRoot 'operations')
     Copy-Item -LiteralPath 'LICENSE.md' -Destination (Join-Path $outputRoot 'LICENSE.md')
-    $sourceSha = (& git rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'Source SHA unavailable.' }
-    $sourceBranch = (& git branch --show-current).Trim()
+    $sourceShaOutput = & git rev-parse HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Source SHA command failed.' }
+    $sourceSha = ([string]$sourceShaOutput).Trim()
+    if ($sourceSha -notmatch '^[0-9a-fA-F]{40}$') { throw 'Source SHA unavailable or malformed.' }
+    $sourceBranchOutput = & git branch --show-current
+    if ($LASTEXITCODE -ne 0) { throw 'Source branch command failed.' }
+    $sourceBranch = ([string]$sourceBranchOutput).Trim()
     if (-not $sourceBranch -and $env:GITHUB_REF_NAME) { $sourceBranch = $env:GITHUB_REF_NAME }
     if (-not $sourceBranch) { throw 'Source branch/tag is unavailable; set GITHUB_REF_NAME for detached builds.' }
     $sourceDirty = @(& git status --porcelain --untracked-files=normal).Count -ne 0
     $buildUtc = if ($sourceDirty) {
         [DateTimeOffset]::UtcNow
     } else {
-        $sourceCommitEpoch = (& git show -s --format=%ct $sourceSha).Trim()
-        if ($LASTEXITCODE -ne 0 -or $sourceCommitEpoch -notmatch '^\d+$') { throw 'Clean-source commit timestamp unavailable.' }
+        $sourceCommitEpochOutput = & git show -s --format=%ct $sourceSha
+        if ($LASTEXITCODE -ne 0) { throw 'Clean-source timestamp command failed.' }
+        $sourceCommitEpoch = ([string]$sourceCommitEpochOutput).Trim()
+        if ($sourceCommitEpoch -notmatch '^\d+$') { throw 'Clean-source commit timestamp unavailable or malformed.' }
         [DateTimeOffset]::FromUnixTimeSeconds([long]$sourceCommitEpoch)
     }
     $files = [ordered]@{}
@@ -57,11 +63,15 @@ try {
         $relative = [IO.Path]::GetRelativePath($outputRoot,$file.FullName).Replace('\','/')
         $files[$relative] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     }
+    $sdkVersionOutput = & dotnet --version
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to read the selected .NET SDK version.' }
+    $sdkVersion = ([string]$sdkVersionOutput).Trim()
+    if (-not $sdkVersion) { throw 'The selected .NET SDK version output was empty.' }
     $manifest = [ordered]@{
         manifestGeneration=1; distributionVersion=(Get-Content -Raw version.json | ConvertFrom-Json).distributionVersion
         distributionType='complete'; gitSha=$sourceSha; sourceBranch=$sourceBranch; sourceDirty=$sourceDirty
         targetRid=$Rid; architecture='x86_64'; publishProfile='complete-production'
-        buildConfiguration='Release'; dotnetSdkVersion=(& dotnet --version).Trim()
+        buildConfiguration='Release'; dotnetSdkVersion=$sdkVersion
         runtimePrerequisite='ASP.NET Core Runtime 10.0 (x64)'; buildUtc=$buildUtc.ToUniversalTime().ToString('O'); files=$files
     }
     $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outputRoot 'artifact-manifest.json') -Encoding utf8NoBOM
