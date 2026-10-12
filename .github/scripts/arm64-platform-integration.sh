@@ -76,6 +76,11 @@ ready_ms=0
 started_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 printf 'available_memory_kib_at_start=%s\ntemperature_millidegrees_at_start=%s\n' \
   "$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)" "$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo unavailable)" >> "$metrics"
+cgroup_rel="$(awk -F: '$1 == 0 {print $3}' /proc/self/cgroup)"
+for name in pids.current pids.max memory.current memory.max; do
+  value='unavailable'; [[ -r "/sys/fs/cgroup${cgroup_rel}/$name" ]] && value="$(cat "/sys/fs/cgroup${cgroup_rel}/$name")"
+  printf 'runner_cgroup_%s_at_start=%s\n' "$name" "$value" >> "$metrics"
+done
 
 stop_server() {
   if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
@@ -127,8 +132,13 @@ resource_sample() {
     cpu="$(ps -p "$pid" -o %cpu= 2>/dev/null | xargs || echo unavailable)"
   fi
   temp="$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo unavailable)"
-  printf 'resource_sample stage=%s available_kib=%s cgroup_current=%s cgroup_max=%s rss_kib=%s cpu_percent=%s temperature_millidegrees=%s\n' \
-    "$stage" "$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)" "$current" "$max" "$rss" "$cpu" "$temp"
+  local cgroup_rel pids_current pids_max
+  cgroup_rel="$(awk -F: '$1 == 0 {print $3}' /proc/self/cgroup)"
+  pids_current='unavailable'; pids_max='unavailable'
+  [[ ! -r "/sys/fs/cgroup${cgroup_rel}/pids.current" ]] || pids_current="$(cat "/sys/fs/cgroup${cgroup_rel}/pids.current")"
+  [[ ! -r "/sys/fs/cgroup${cgroup_rel}/pids.max" ]] || pids_max="$(cat "/sys/fs/cgroup${cgroup_rel}/pids.max")"
+  printf 'resource_sample stage=%s available_kib=%s cgroup_current=%s cgroup_max=%s pids_current=%s pids_max=%s rss_kib=%s cpu_percent=%s temperature_millidegrees=%s\n' \
+    "$stage" "$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)" "$current" "$max" "$pids_current" "$pids_max" "$rss" "$cpu" "$temp"
 }
 trap cleanup EXIT TERM INT
 
@@ -181,7 +191,7 @@ printf 'artifact_files=%s\nartifact_bytes=%s\nsqlite_sha256=%s\n' \
 start_server() {
   thermal_guard
   if [[ -n "$expected_git_sha" ]]; then
-    candidate_env_exec HISPANIA_CI_DIAGNOSTICS=1 dotnet "$installed_server" --home "$home" >>"$log" 2>&1 &
+    candidate_env_exec HISPANIA_CI_DIAGNOSTICS=1 DOTNET_PROCESSOR_COUNT=1 dotnet "$installed_server" --home "$home" >>"$log" 2>&1 &
   else
     ASPNETCORE_URLS="$base" \
     Platform__DataPath="$run_dir/data" \
