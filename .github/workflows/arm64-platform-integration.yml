@@ -59,7 +59,7 @@ jobs:
           REQUESTED_SHA: ${{ inputs.candidate_sha }}
           TRIGGERING_ACTOR: ${{ github.triggering_actor }}
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           test "$GITHUB_REPOSITORY" = joaquimcastilla/hispania
           test "$GITHUB_ACTOR" = joaquimcastilla
           test "$TRIGGERING_ACTOR" = joaquimcastilla
