@@ -18,6 +18,14 @@ for secret in sys.argv[2:]:
 print('\n'.join(text.splitlines()[-60:]))
 PY
 }
+candidate_env() {
+  local name value
+  local -a unset_args=()
+  while IFS='=' read -r name value; do
+    case "$name" in HISPANIA__*|ASPNETCORE_URLS|ASPNETCORE_ENVIRONMENT|DOTNET_ENVIRONMENT) unset_args+=(-u "$name");; esac
+  done < <(env)
+  if ((${#unset_args[@]})); then env "${unset_args[@]}" "$@"; else env "$@"; fi
+}
 fail() { printf 'FAIL: %s\n' "$*" >&2; safe_log_tail >&2; exit 1; }
 thermal_guard() {
   local temp available
@@ -152,7 +160,7 @@ printf 'artifact_files=%s\nartifact_bytes=%s\nsqlite_sha256=%s\n' \
 start_server() {
   thermal_guard
   if [[ -n "$expected_git_sha" ]]; then
-    dotnet "$installed_server" --home "$home" >>"$log" 2>&1 &
+    candidate_env dotnet "$installed_server" --home "$home" >>"$log" 2>&1 &
   else
     ASPNETCORE_URLS="$base" \
     Platform__DataPath="$run_dir/data" \
@@ -195,9 +203,9 @@ cfg['endpoint']=sys.argv[2]; cfg['bootstrapUsername']=sys.argv[3]
 cfg['bootstrapSecret']='env:CI_BOOTSTRAP'; cfg['bootstrapPasswordSecret']='env:CI_PASSWORD'
 p.write_text(json.dumps(cfg, indent=2)+'\n', encoding='utf-8')
 PY
-  if HISPANIA_SECRET_CI_BOOTSTRAP="$bootstrap_token" HISPANIA_SECRET_CI_PASSWORD="$probe_password" \
+  if candidate_env HISPANIA_SECRET_CI_BOOTSTRAP="$bootstrap_token" HISPANIA_SECRET_CI_PASSWORD="$probe_password" \
     dotnet "$installed_server" --home "$home" --check >>"$log" 2>&1; then :; else check_exit=$?; fail "candidate installation --check failed (exit=$check_exit)"; fi
-  HISPANIA_SECRET_CI_BOOTSTRAP="$bootstrap_token" HISPANIA_SECRET_CI_PASSWORD="$probe_password" \
+  candidate_env HISPANIA_SECRET_CI_BOOTSTRAP="$bootstrap_token" HISPANIA_SECRET_CI_PASSWORD="$probe_password" \
     dotnet "$installed_server" --home "$home" --bootstrap >>"$log" 2>&1 || fail 'candidate administrator bootstrap failed'
   python3 - "$home/config/production.json" <<'PY'
 import json, pathlib, sys
