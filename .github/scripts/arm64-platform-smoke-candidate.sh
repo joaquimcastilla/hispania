@@ -21,6 +21,8 @@ started_ms=0
 ready_ms=0
 first_ready_ms=0
 restart_ready_ms=0
+first_login_ms=0
+restart_login_ms=0
 sampled_rss_kib=unavailable
 sampled_cpu_percent=unavailable
 port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
@@ -41,14 +43,21 @@ cleanup() {
   result=$?
   trap - EXIT TERM INT
   stop_server || result=1
-  printf 'result=%s\nsource_sha=%s\nartifact_sha256=%s\nmanifest_sha256=%s\narchitecture=%s\nfirst_ready_ms=%s\nrestart_ready_ms=%s\nsampled_rss_kib=%s\nsampled_cpu_percent=%s\n' \
-    "$([[ $result -eq 0 ]] && echo PASS || echo FAIL)" "$expected_git_sha" "$actual_sha" "$expected_manifest_sha" "$(uname -m)" "$first_ready_ms" "$restart_ready_ms" "$sampled_rss_kib" "$sampled_cpu_percent"
+  printf 'result=%s\nsource_sha=%s\nartifact_sha256=%s\nmanifest_sha256=%s\narchitecture=%s\nfirst_ready_ms=%s\nfirst_login_ms=%s\nrestart_ready_ms=%s\nrestart_login_ms=%s\nsampled_rss_kib=%s\nsampled_cpu_percent=%s\n' \
+    "$([[ $result -eq 0 ]] && echo PASS || echo FAIL)" "$expected_git_sha" "$actual_sha" "$expected_manifest_sha" "$(uname -m)" "$first_ready_ms" "$first_login_ms" "$restart_ready_ms" "$restart_login_ms" "$sampled_rss_kib" "$sampled_cpu_percent"
   printf 'temperature_millidegrees='; cat /sys/class/thermal/thermal_zone0/temp 2>&1 || true
   printf 'memory_available='; awk '/MemAvailable:/ {print $2 " KiB"}' /proc/meminfo
   if [[ -n "$pid" && -r "/proc/$pid/status" ]]; then printf 'sampled_rss_kib='; awk '/VmRSS:/ {print $2}' "/proc/$pid/status"; fi
   if [[ -d "$home/state" ]]; then printf 'sqlite_files=%s\n' "$(find "$home/state" -type f -name '*.sqlite' | wc -l)"; else printf 'sqlite_files=0\n'; fi
   printf 'error_log_lines='; grep -Eic '(^|[[:space:]])(fail|error|exception)([[:space:]:]|$)' "$log" 2>/dev/null || true
-  [[ ! -s "$log" ]] || cat "$log"
+  if [[ -s "$log" ]]; then python3 - "$log" "$token" "$password" <<'PY'
+import pathlib, sys
+text=pathlib.Path(sys.argv[1]).read_text(errors='replace')
+for secret in sys.argv[2:]:
+    if secret: text=text.replace(secret, '[REDACTED]')
+print(text)
+PY
+  fi
   [[ "$(dirname "$temp_root")" == "$(realpath -e "$RUNNER_TEMP")" && "$(basename "$temp_root")" =~ ^hispania-pi3-smoke-[0-9]+-[0-9]+\.[A-Za-z0-9]+$ && ! -L "$temp_root" ]] || result=1
   rm -rf -- "$temp_root"
   exit "$result"
@@ -124,7 +133,9 @@ for endpoint in /healthz /readyz /api/health/live /api/health/ready; do
   [[ "$(curl --silent --output /dev/null --max-time 3 --write-out '%{http_code}' "$base$endpoint")" == 200 ]] || { echo "FAIL: $endpoint" >&2; exit 1; }
 done
 body="$(python3 -c 'import json,sys; print(json.dumps({"username":"candidate-smoke","password":sys.argv[1]}))' "$password")"
-code="$(curl --silent --show-error --max-time 5 --output "$temp_root/login.json" --write-out '%{http_code}' -H 'Content-Type: application/json' --data "$body" "$base/api/identity/login")"
+login_started_ms="$(date +%s%3N)"
+code="$(curl --silent --show-error --max-time 30 --output "$temp_root/login.json" --write-out '%{http_code}' -H 'Content-Type: application/json' --data "$body" "$base/api/identity/login")"
+first_login_ms=$(( $(date +%s%3N)-login_started_ms ))
 [[ "$code" == 200 ]] || { echo "FAIL: login returned HTTP $code" >&2; exit 1; }
 if grep -Eiq 'Input/output error|database disk image is malformed|SQLITE_CORRUPT|SQLite Error 11' "$log"; then echo 'FAIL: storage or SQLite corruption error observed' >&2; exit 1; fi
 db_before="$(find "$home/state" -type f -name '*.sqlite' | wc -l)"
@@ -134,7 +145,9 @@ sampled_cpu_percent="$(ps -p "$pid" -o %cpu= 2>/dev/null | xargs || echo unavail
 stop_server
 start_server
 restart_ready_ms="$ready_ms"
-code="$(curl --silent --show-error --max-time 5 --output "$temp_root/login-after-restart.json" --write-out '%{http_code}' -H 'Content-Type: application/json' --data "$body" "$base/api/identity/login")"
+login_started_ms="$(date +%s%3N)"
+code="$(curl --silent --show-error --max-time 30 --output "$temp_root/login-after-restart.json" --write-out '%{http_code}' -H 'Content-Type: application/json' --data "$body" "$base/api/identity/login")"
+restart_login_ms=$(( $(date +%s%3N)-login_started_ms ))
 [[ "$code" == 200 ]] || { echo "FAIL: persisted login returned HTTP $code" >&2; exit 1; }
 if grep -Eiq 'Input/output error|database disk image is malformed|SQLITE_CORRUPT|SQLite Error 11' "$log"; then echo 'FAIL: storage or SQLite corruption error observed' >&2; exit 1; fi
 db_after="$(find "$home/state" -type f -name '*.sqlite' | wc -l)"

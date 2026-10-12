@@ -8,7 +8,17 @@ readonly data_root=/var/lib/hispania-ci-integration/staging
 readonly report_root=/opt/hispania-ci-integration/tests
 app_dll=Hispania.Platform.Server.dll
 
-fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+safe_log_tail() {
+  [[ -s "${log:-}" ]] || return 0
+  python3 - "${log}" "${admin_token:-}" "${bootstrap_token:-}" "${probe_password:-}" <<'PY'
+import pathlib, sys
+text=pathlib.Path(sys.argv[1]).read_text(errors='replace')
+for secret in sys.argv[2:]:
+    if secret: text=text.replace(secret, '[REDACTED]')
+print('\n'.join(text.splitlines()[-60:]))
+PY
+}
+fail() { printf 'FAIL: %s\n' "$*" >&2; safe_log_tail >&2; exit 1; }
 thermal_guard() {
   local temp available
   temp="$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)"
@@ -182,8 +192,8 @@ cfg['endpoint']=sys.argv[2]; cfg['bootstrapUsername']=sys.argv[3]
 cfg['bootstrapSecret']='env:CI_BOOTSTRAP'; cfg['bootstrapPasswordSecret']='env:CI_PASSWORD'
 p.write_text(json.dumps(cfg, indent=2)+'\n', encoding='utf-8')
 PY
-  HISPANIA_SECRET_CI_BOOTSTRAP="$bootstrap_token" HISPANIA_SECRET_CI_PASSWORD="$probe_password" \
-    dotnet "$package/server/$app_dll" --home "$home" --check >>"$log" 2>&1 || fail 'candidate installation --check failed'
+  if HISPANIA_SECRET_CI_BOOTSTRAP="$bootstrap_token" HISPANIA_SECRET_CI_PASSWORD="$probe_password" \
+    dotnet "$package/server/$app_dll" --home "$home" --check >>"$log" 2>&1; then :; else check_exit=$?; fail "candidate installation --check failed (exit=$check_exit)"; fi
   HISPANIA_SECRET_CI_BOOTSTRAP="$bootstrap_token" HISPANIA_SECRET_CI_PASSWORD="$probe_password" \
     dotnet "$package/server/$app_dll" --home "$home" --bootstrap >>"$log" 2>&1 || fail 'candidate administrator bootstrap failed'
   python3 - "$home/config/production.json" <<'PY'
