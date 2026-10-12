@@ -48,8 +48,8 @@ try {
     if ($sourceSha -notmatch '^[0-9a-fA-F]{40}$') { throw 'Source SHA unavailable or malformed.' }
     $sourceBranchOutput = & git branch --show-current
     if ($LASTEXITCODE -ne 0) { throw 'Source branch command failed.' }
-    $sourceBranch = ([string]$sourceBranchOutput).Trim()
-    if (-not $sourceBranch -and $env:GITHUB_REF_NAME) { $sourceBranch = $env:GITHUB_REF_NAME }
+    $sourceBranch = if ($null -eq $sourceBranchOutput) { '' } else { ([string]$sourceBranchOutput).Trim() }
+    if ([string]::IsNullOrWhiteSpace($sourceBranch) -and $env:GITHUB_REF_NAME) { $sourceBranch = $env:GITHUB_REF_NAME }
     if (-not $sourceBranch) { throw 'Source branch/tag is unavailable; set GITHUB_REF_NAME for detached builds.' }
     $sourceDirty = @(& git status --porcelain --untracked-files=normal).Count -ne 0
     $buildUtc = if ($sourceDirty) {
