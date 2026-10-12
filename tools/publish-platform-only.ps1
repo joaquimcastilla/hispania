@@ -39,6 +39,8 @@ try {
     New-Item -ItemType Directory -Path $outputRoot | Out-Null
     & dotnet publish 'apps/server/Hispania.Server.csproj' -c Release -r $Rid --self-contained false -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:PlatformOnly=true -p:ProductionPublication=true -p:UseAppHost=false ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot 'server')
     if ($LASTEXITCODE -ne 0) { throw 'Platform-only server publication failed.' }
+    & dotnet publish 'apps/module-host/Hispania.ModuleHost.csproj' -c Release --self-contained false -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:UseAppHost=false ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot 'server/module-host')
+    if ($LASTEXITCODE -ne 0) { throw 'Portable ModuleHost publication failed.' }
     & dotnet publish 'apps/deployment/Hispania.Deployment.csproj' -c Release -r $Rid --self-contained false -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:PlatformOnly=true -p:UseAppHost=false ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot 'deployment')
     if ($LASTEXITCODE -ne 0) { throw 'Deployment CLI publication failed.' }
 
