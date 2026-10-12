@@ -1,4 +1,4 @@
-param([switch]$Server, [string]$Action, [string]$InstallationHome, [string]$Role)
+param([switch]$Server, [string]$Action, [string]$InstallationHome, [string]$Role, [string]$ServiceName)
 $ErrorActionPreference = 'Stop'
 $pipeName = 'HispaniaPhase21NativeServices'
 if (-not $Server) {
@@ -7,7 +7,7 @@ if (-not $Server) {
         $pipe.Connect(15000)
         $writer = [IO.StreamWriter]::new($pipe); $writer.AutoFlush = $true
         $reader = [IO.StreamReader]::new($pipe)
-        $writer.WriteLine((@{action=$Action;home=$InstallationHome;role=$Role} | ConvertTo-Json -Compress))
+        $writer.WriteLine((@{action=$Action;home=$InstallationHome;role=$Role;serviceName=$ServiceName} | ConvertTo-Json -Compress))
         $response = $reader.ReadLine() | ConvertFrom-Json
         if (-not $response.ok) { throw ('Restricted SCM helper rejected or failed the operation; operation={0}; stage={1}; win32={2}; hresult={3}.' -f $response.operation,$response.stage,$response.win32,$response.hresult) }
     } finally { $pipe.Dispose() }
@@ -65,10 +65,13 @@ while ([DateTime]::UtcNow -lt $deadline) {
             $line = $reader.ReadLine()
             if (-not $line -or $line.Length -gt 2048) { throw 'Request bound' }
             $request = $line | ConvertFrom-Json
-            if ($request.action -notin @('install','start','stop','restart','status','uninstall','reclaim','retained-secret') -or $request.role -notin @('server','worker')) { throw 'Operation rejected' }
+            if ($request.action -notin @('install','start','stop','restart','status','uninstall','reclaim','retained-secret') -or $request.role -notin @('server','worker') -or [string]$request.serviceName -cnotmatch '^Hispania-Test-[0-9a-f]{32}-(Server|Worker)$') { throw 'Operation rejected' }
+            if (($request.role -eq 'server' -and -not [string]$request.serviceName.EndsWith('-Server')) -or ($request.role -eq 'worker' -and -not [string]$request.serviceName.EndsWith('-Worker'))) { throw 'Service role mismatch' }
             $operation=$request.action; $stage='fixture-validation'
             $fixtureHome = [IO.Path]::GetFullPath([string]$request.home)
             if ([IO.Path]::GetDirectoryName($fixtureHome) -cne $root -or [IO.Path]::GetFileName($fixtureHome) -cnotmatch '^hispania-phase18 isolated ñ [0-9a-f]{32}$') { throw 'Fixture root rejected' }
+            $fixtureRunId=[regex]::Match([IO.Path]::GetFileName($fixtureHome),'^hispania-phase18 isolated ñ ([0-9a-f]{32})$').Groups[1].Value
+            if ($request.serviceName -cne ('Hispania-Test-'+$fixtureRunId+$(if($request.role -eq 'server'){'-Server'}else{'-Worker'}))) { throw 'Service name does not belong to fixture run' }
             foreach ($item in @((Get-Item -LiteralPath $root),(Get-Item -LiteralPath $fixtureHome)) + @(Get-ChildItem -LiteralPath $fixtureHome -Recurse -Force)) {
                 if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse point rejected' }
                 if (-not $item.PSIsContainer) {
@@ -108,7 +111,7 @@ while ([DateTime]::UtcNow -lt $deadline) {
                 if ($LASTEXITCODE -ne 0) { throw 'ACL reclaim failed' }
             } else {
                 $stage='scm-helper'
-                & (Join-Path $PSScriptRoot 'windows-service.ps1') -Action $request.action -InstallationHome $fixtureHome -Role $request.role | Out-Null
+                & (Join-Path $PSScriptRoot 'windows-service.ps1') -Action $request.action -InstallationHome $fixtureHome -Role $request.role -ServiceName $request.serviceName | Out-Null
             }
             $ok=$true
         } catch {

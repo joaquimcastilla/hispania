@@ -235,16 +235,18 @@ public sealed class ArtifactProcessTests
     internal sealed class HostFixture : IDisposable
     {
         internal string Home { get; }
+        internal string RunId { get; }
         internal int Port { get; }
         internal HttpClient Client { get; }
         private readonly List<Process> processes = [];
         private readonly List<(int Id, DateTime Started)> identities = [];
         private readonly Dictionary<int, (ConcurrentQueue<string> Output, ConcurrentQueue<string> Error)> processLogs = [];
-        internal HostFixture(string? artifact = null, string? directoryRoot = null)
+        internal HostFixture(string? artifact = null, string? directoryRoot = null, string role = "server")
         {
-            Home = Path.Combine(directoryRoot ?? Path.GetTempPath(), "hispania-phase18 isolated ñ " + Guid.NewGuid().ToString("N"));
+            RunId = Guid.NewGuid().ToString("N");
+            Home = Path.Combine(directoryRoot ?? Path.GetTempPath(), "hispania-phase18 isolated ñ " + RunId);
             using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); Port = ((IPEndPoint)listener.LocalEndpoint).Port;
-            InstallationOperations.Install(artifact ?? Artifact, Home, "server");
+            InstallationOperations.Install(artifact ?? Artifact, Home, role);
             // Application requests include deliberate 600,000-iteration PBKDF2 password verification.
             // The short readiness polling budget must not become an authentication performance SLA.
             Client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{Port}"), Timeout = TimeSpan.FromSeconds(30) };

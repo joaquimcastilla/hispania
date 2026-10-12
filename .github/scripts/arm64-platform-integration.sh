@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly archive=/opt/hispania-ci-integration/artifacts/hispania-platform-pi4-arm64-working-tree-20261011.tar.gz
-readonly expected_sha=b484edf386c203539708004cba8ad424db7dd52aee8da29bbbe70817c3f077b4
+archive="${HISPANIA_ARM64_ARTIFACT_PATH:-/opt/hispania-ci-integration/artifacts/hispania-platform-pi4-arm64-working-tree-20261011.tar.gz}"
+expected_sha="${HISPANIA_ARM64_ARTIFACT_SHA256:-b484edf386c203539708004cba8ad424db7dd52aee8da29bbbe70817c3f077b4}"
+expected_git_sha="${HISPANIA_ARM64_ARTIFACT_GIT_SHA:-}"
 readonly data_root=/var/lib/hispania-ci-integration/staging
 readonly report_root=/opt/hispania-ci-integration/tests
-readonly app_dll=Hispania.Platform.Server.dll
+app_dll=Hispania.Platform.Server.dll
+if [[ -n "$expected_git_sha" ]]; then app_dll=server/Hispania.Server.dll; fi
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 thermal_guard() {
@@ -23,10 +25,15 @@ cd /
 actual_sha="$(sha256sum "$archive" | awk '{print $1}')"
 [[ "$actual_sha" == "$expected_sha" ]] || fail "artifact SHA-256 mismatch: $actual_sha"
 
+[[ ! -L "$data_root" && ! -L "$report_root" ]] || fail 'staging or report root must not be a symlink'
 mkdir -p "$data_root" "$report_root"
+[[ "$(realpath -e "$data_root")" == /var/lib/hispania-ci-integration/staging ]] || fail 'staging root resolved outside the dedicated CI path'
+[[ "$(realpath -e "$report_root")" == /opt/hispania-ci-integration/tests ]] || fail 'report root resolved outside the dedicated CI path'
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 run_dir="$(mktemp -d "$data_root/run.XXXXXX")"
+[[ "$(dirname "$run_dir")" == "$data_root" && "$(basename "$run_dir")" =~ ^run\.[A-Za-z0-9]+$ ]] || fail 'temporary run directory ownership check failed'
 package="$run_dir/package"
+home="$run_dir/home"
 mkdir -p "$package"
 log="$run_dir/server.log"
 metrics="$run_dir/metrics.txt"
@@ -53,6 +60,7 @@ stop_server() {
 }
 cleanup() {
   local result=$?
+  trap - EXIT TERM INT
   stop_server || result=1
   {
     printf 'result=%s\nartifact_sha256=%s\n' "$([[ $result -eq 0 ]] && echo PASS || echo FAIL)" "$actual_sha"
@@ -68,32 +76,68 @@ cleanup() {
   } > "$report"
   [[ ! -f "$log" ]] || cp "$log" "$report.server.log"
   cat "$report"
-  rm -rf -- "$run_dir"
+  if [[ "$(dirname "$run_dir")" == "$data_root" && "$(basename "$run_dir")" =~ ^run\.[A-Za-z0-9]+$ && ! -L "$run_dir" ]]; then
+    rm -rf -- "$run_dir"
+  else
+    result=1
+  fi
   exit "$result"
 }
-trap cleanup EXIT
+trap cleanup EXIT TERM INT
 
 for entry in $(tar -tzf "$archive"); do
   [[ "$entry" != /* && "/$entry/" != *"/../"* ]] || fail "unsafe archive path: $entry"
 done
 tar -xzf "$archive" --no-same-owner --no-same-permissions -C "$package"
-[[ -s "$package/$app_dll" && -s "$package/Hispania.Platform.Server.deps.json" ]] || fail 'Platform Server publish files missing'
-if find "$package" -type f -printf '%f\n' | grep -Eiq 'Hispania\.(Media|Inventory)|FFmpeg'; then fail 'artifact contains Media, Inventory or FFmpeg'; fi
-if grep -Eiq 'Hispania\.(Media|Inventory)|FFmpeg' "$package/Hispania.Platform.Server.deps.json"; then fail 'dependency manifest references Media, Inventory or FFmpeg'; fi
-[[ -s "$package/libe_sqlite3.so" ]] || fail 'SQLite native library missing'
-readelf -h "$package/libe_sqlite3.so" | grep -q 'Machine:.*AArch64' || fail 'SQLite native library is not AArch64'
+[[ -s "$package/$app_dll" ]] || fail 'Platform Server publish files missing'
+if [[ -n "$expected_git_sha" ]]; then
+  python3 - "$package/artifact-manifest.json" "$package" "$expected_git_sha" <<'PY'
+import hashlib, json, pathlib, sys
+manifest_path, root, expected = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3]
+m = json.loads(manifest_path.read_text(encoding='utf-8-sig'))
+assert m.get('gitSha') == expected and m.get('sourceDirty') is False, 'artifact source commit/cleanliness mismatch'
+assert m.get('sourceBranch') == 'codex/hispania-0.7.0-step2-1-production-readiness', 'artifact source branch mismatch'
+assert m.get('targetRid') == 'linux-arm64' and m.get('architecture') == 'aarch64', 'artifact target mismatch'
+files = m.get('files')
+assert isinstance(files, dict) and files, 'manifest file list missing'
+expected_paths = set()
+for relative, digest in files.items():
+    path = pathlib.PurePosixPath(relative)
+    assert not path.is_absolute() and '..' not in path.parts, 'unsafe manifest path'
+    full = root.joinpath(*path.parts)
+    assert full.is_file(), f'manifest file missing: {relative}'
+    assert hashlib.sha256(full.read_bytes()).hexdigest() == digest.lower(), f'manifest digest mismatch: {relative}'
+    expected_paths.add(full.resolve())
+actual_paths = {p.resolve() for p in root.rglob('*') if p.is_file() and p != manifest_path}
+assert actual_paths == expected_paths, 'artifact contains unmanifested files or misses manifest files'
+PY
+  [[ -s "$package/server/Hispania.Server.deps.json" ]] || fail 'candidate dependency manifest missing'
+  if find "$package" -type f -printf '%f\n' | grep -Eiq 'WindowsServices|Hispania\.(Media|Inventory)|FFmpeg'; then fail 'candidate artifact contains excluded WindowsServices, Media, Inventory or FFmpeg files'; fi
+  if grep -Eiq 'WindowsServices|Hispania\.(Media|Inventory)|FFmpeg' "$package/server/Hispania.Server.deps.json"; then fail 'candidate dependency manifest references excluded components'; fi
+else
+  if find "$package" -type f -printf '%f\n' | grep -Eiq 'Hispania\.(Media|Inventory)|FFmpeg'; then fail 'artifact contains Media, Inventory or FFmpeg'; fi
+  if grep -Eiq 'Hispania\.(Media|Inventory)|FFmpeg' "$package/Hispania.Platform.Server.deps.json"; then fail 'dependency manifest references Media, Inventory or FFmpeg'; fi
+fi
+sqlite_lib="$package/libe_sqlite3.so"
+if [[ -n "$expected_git_sha" ]]; then sqlite_lib="$package/server/libe_sqlite3.so"; fi
+[[ -s "$sqlite_lib" ]] || fail 'SQLite native library missing'
+readelf -h "$sqlite_lib" | grep -q 'Machine:.*AArch64' || fail 'SQLite native library is not AArch64'
 printf 'artifact_files=%s\nartifact_bytes=%s\nsqlite_sha256=%s\n' \
-  "$(find "$package" -type f | wc -l)" "$(du -sb "$package" | awk '{print $1}')" "$(sha256sum "$package/libe_sqlite3.so" | awk '{print $1}')" >> "$metrics"
+  "$(find "$package" -type f | wc -l)" "$(du -sb "$package" | awk '{print $1}')" "$(sha256sum "$sqlite_lib" | awk '{print $1}')" >> "$metrics"
 
 start_server() {
   thermal_guard
-  ASPNETCORE_URLS="$base" \
-  Platform__DataPath="$run_dir/data" \
-  Modules__ExtensionsPath="$run_dir/extensions" \
-  Identity__Bootstrap__Token="$bootstrap_token" \
-  Modules__AdminToken="$admin_token" \
-  Logging__LogLevel__Default=Warning \
-    dotnet "$package/$app_dll" >>"$log" 2>&1 &
+  if [[ -n "$expected_git_sha" ]]; then
+    dotnet "$package/$app_dll" --home "$home" >>"$log" 2>&1 &
+  else
+    ASPNETCORE_URLS="$base" \
+    Platform__DataPath="$run_dir/data" \
+    Modules__ExtensionsPath="$run_dir/extensions" \
+    Identity__Bootstrap__Token="$bootstrap_token" \
+    Modules__AdminToken="$admin_token" \
+    Logging__LogLevel__Default=Warning \
+      dotnet "$package/$app_dll" >>"$log" 2>&1 &
+  fi
   pid=$!
   start_ms="$(date +%s%3N)"
   for _ in $(seq 1 90); do
@@ -115,18 +159,40 @@ expect_status() {
   [[ "$actual" == "$expected" ]] || fail "$method $path returned HTTP $actual, expected $expected"
 }
 
+if [[ -n "$expected_git_sha" ]]; then
+  dotnet "$package/deployment/Hispania.Deployment.dll" install "$package" "$home" server >>"$log" 2>&1 || fail 'candidate artifact staging installation failed'
+  python3 - "$home/config/production.json" "$base" "$username" <<'PY'
+import json, pathlib, sys
+p=pathlib.Path(sys.argv[1]); cfg=json.loads(p.read_text(encoding='utf-8-sig'))
+cfg['endpoint']=sys.argv[2]; cfg['bootstrapUsername']=sys.argv[3]
+cfg['bootstrapSecret']='env:CI_BOOTSTRAP'; cfg['bootstrapPasswordSecret']='env:CI_PASSWORD'
+p.write_text(json.dumps(cfg, indent=2)+'\n', encoding='utf-8')
+PY
+  HISPANIA_SECRET_CI_BOOTSTRAP="$bootstrap_token" HISPANIA_SECRET_CI_PASSWORD="$probe_password" \
+    dotnet "$package/$app_dll" --home "$home" --bootstrap >>"$log" 2>&1 || fail 'candidate administrator bootstrap failed'
+  python3 - "$home/config/production.json" <<'PY'
+import json, pathlib, sys
+p=pathlib.Path(sys.argv[1]); cfg=json.loads(p.read_text(encoding='utf-8-sig'))
+cfg.pop('bootstrapSecret', None); cfg.pop('bootstrapPasswordSecret', None); cfg.pop('bootstrapUsername', None)
+p.write_text(json.dumps(cfg, indent=2)+'\n', encoding='utf-8')
+PY
+fi
 start_server
 printf 'first_ready_ms=%s\n' "$ready_ms" >> "$metrics"
 for route in /healthz /readyz /api/health/live /api/health/ready; do expect_status 200 GET "$route"; done
-create_body="$(python3 -c 'import json,sys; print(json.dumps({"username":sys.argv[1],"displayName":"ARM64 integration","password":sys.argv[2]}))' "$username" "$probe_password")"
-expect_status 201 POST /api/identity/users "$create_body" "Bearer $admin_token"
-user_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"]["value"])' "$run_dir/response.json")"
-expect_status 200 POST /api/authorization/bootstrap-admin "{\"userId\":\"$user_id\"}" "Bootstrap $bootstrap_token"
+if [[ -z "$expected_git_sha" ]]; then
+  create_body="$(python3 -c 'import json,sys; print(json.dumps({"username":sys.argv[1],"displayName":"ARM64 integration","password":sys.argv[2]}))' "$username" "$probe_password")"
+  expect_status 201 POST /api/identity/users "$create_body" "Bearer $admin_token"
+  user_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"]["value"])' "$run_dir/response.json")"
+  expect_status 200 POST /api/authorization/bootstrap-admin "{\"userId\":\"$user_id\"}" "Bootstrap $bootstrap_token"
+fi
 login_body="$(python3 -c 'import json,sys; print(json.dumps({"username":sys.argv[1],"password":sys.argv[2]}))' "$username" "$probe_password")"
 expect_status 200 POST /api/identity/login "$login_body"
 session="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sessionToken"])' "$run_dir/response.json")"
 for route in /api/platform/modules /api/platform/jobs/health /api/health/details /api/platform/observability /api/platform/admin/security/endpoints; do expect_status 200 GET "$route" '' "Session $session"; done
-db_count="$(find "$run_dir/data" -type f -name '*.sqlite' | wc -l)"
+db_root="$run_dir/data"
+if [[ -n "$expected_git_sha" ]]; then db_root="$home/state"; fi
+db_count="$(find "$db_root" -type f -name '*.sqlite' | wc -l)"
 [[ "$db_count" -gt 0 ]] || fail 'no isolated SQLite store was created'
 printf 'sqlite_files_before_restart=%s\n' "$db_count" >> "$metrics"
 printf 'sampled_rss_kib=%s\nsampled_cpu_percent=%s\n' "$(awk '/VmRSS:/ {print $2}' "/proc/$pid/status")" "$(ps -p "$pid" -o %cpu= | xargs)" >> "$metrics"
@@ -134,7 +200,7 @@ stop_server || fail 'staging process did not shut down cleanly'
 start_server
 printf 'restart_ready_ms=%s\n' "$ready_ms" >> "$metrics"
 expect_status 200 POST /api/identity/login "$login_body"
-db_count_after="$(find "$run_dir/data" -type f -name '*.sqlite' | wc -l)"
+db_count_after="$(find "$db_root" -type f -name '*.sqlite' | wc -l)"
 [[ "$db_count_after" -ge "$db_count" ]] || fail 'isolated SQLite stores did not persist across restart'
 printf 'sqlite_files_after_restart=%s\n' "$db_count_after" >> "$metrics"
 stop_server || fail 'staging process did not shut down cleanly after restart'

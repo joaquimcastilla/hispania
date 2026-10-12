@@ -11,6 +11,8 @@ public sealed class ProductionConfiguration
     public const int SchemaGeneration = 1;
     public int Generation { get; set; } = SchemaGeneration;
     public string Role { get; set; } = "server";
+    /// <summary>Optional Windows SCM name override for isolated native service tests.</summary>
+    public string? WindowsServiceName { get; set; }
     public string Endpoint { get; set; } = "http://127.0.0.1:5080";
     public string WebBuild { get; set; } = "modern";
     public string LogLevel { get; set; } = "Information";
@@ -52,6 +54,8 @@ public sealed class ProductionConfiguration
         Require(Worker.CoordinatorCertificateSha256Pins is not null && Worker.ContractAssemblies is not null && Worker.CapabilityProviderAssemblies is not null, "worker arrays", "arrays cannot be null");
         Require(Generation == SchemaGeneration, "generation", "unsupported schema; expected 1");
         Require(Role == expectedRole, "role", "must match the host executable");
+        if (WindowsServiceName is not null)
+            Require(System.Text.RegularExpressions.Regex.IsMatch(WindowsServiceName, @"\A[A-Za-z0-9][A-Za-z0-9_.-]{0,79}\z", System.Text.RegularExpressions.RegexOptions.CultureInvariant), "windowsServiceName", "use a bounded SCM service name containing only letters, digits, period, underscore or hyphen");
         Require(WebBuild is "modern" or "classic", "webBuild", "use modern or classic");
         Require(LogLevel is "Information" or "Warning" or "Error" or "Critical", "logLevel", "unsupported production log level");
         Require(Persistence is "sqlite" or "postgresql", "persistence", "use sqlite or postgresql");

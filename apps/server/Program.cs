@@ -87,7 +87,7 @@ if (production is not null)
         throw new InvalidOperationException("Platform-only distribution does not configure domain persistence providers.");
 #endif
     }
-    ProductionInstallation.AddServiceLifetime(builder.Services, "server");
+    ProductionInstallation.AddServiceLifetime(builder.Services, "server", production.Configuration.WindowsServiceName);
     production.ConfigureLogging(builder.Logging);
     builder.Environment.WebRootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", production.Configuration.WebBuild);
 }

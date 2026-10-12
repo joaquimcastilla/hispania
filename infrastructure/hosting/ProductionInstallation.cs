@@ -248,10 +248,10 @@ public sealed class ProductionInstallation
         configuration.AddInMemoryCollection(retained).AddInMemoryCollection(values);
     }
 
-    public static void AddServiceLifetime(IServiceCollection services, string role)
+    public static void AddServiceLifetime(IServiceCollection services, string role, string? windowsServiceName = null)
     {
 #if !HISPANIA_PLATFORM_ONLY
-        services.AddWindowsService(options => options.ServiceName = role == "server" ? "HispaniaServer" : "HispaniaWorker");
+        services.AddWindowsService(options => options.ServiceName = windowsServiceName ?? (role == "server" ? "HispaniaServer" : "HispaniaWorker"));
 #endif
         services.AddSystemd();
         services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(30));

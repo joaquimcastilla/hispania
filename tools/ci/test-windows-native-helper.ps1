@@ -3,9 +3,11 @@ $ErrorActionPreference='Stop'
 if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-20') {throw 'Regression must use the actual NetworkService caller identity'}
 $root='C:\ProgramData\HispaniaPhase18CI'
 $fixture=Join-Path $root ('hispania-phase18 isolated ñ '+[Guid]::NewGuid().ToString('N'))
+$runId=[IO.Path]::GetFileName($fixture).Substring('hispania-phase18 isolated ñ '.Length)
+$serviceName='Hispania-Test-'+$runId+'-Server'
 function Require-Rejection([string]$Action,[string]$FixtureHome,[string]$Stage) {
     $message=$null
-    try { & $Helper -Action $Action -InstallationHome $FixtureHome -Role server } catch {$message=$_.Exception.Message}
+    try { & $Helper -Action $Action -InstallationHome $FixtureHome -Role server -ServiceName $serviceName } catch {$message=$_.Exception.Message}
     if(-not $message -or -not $message.Contains("stage=$Stage;",[StringComparison]::Ordinal)) {throw "Expected restricted rejection at $Stage"}
 }
 try {

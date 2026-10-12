@@ -32,7 +32,7 @@ var builder = production is null ? Host.CreateApplicationBuilder(args) : Host.Cr
 if (production is not null)
 {
     production.Apply(builder.Configuration);
-    ProductionInstallation.AddServiceLifetime(builder.Services, "worker");
+    ProductionInstallation.AddServiceLifetime(builder.Services, "worker", production.Configuration.WindowsServiceName);
     production.ConfigureLogging(builder.Logging);
 }
 var coordinatorUri = builder.Configuration["DistributedWorker:CoordinatorUri"]

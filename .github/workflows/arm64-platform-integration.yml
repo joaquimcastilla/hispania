@@ -2,6 +2,12 @@ name: ARM64 Platform integration (Pi 4B)
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Optional full SHA for the exact candidate branch commit.
+        required: false
+        default: ''
+        type: string
 
 permissions: {}
 
@@ -35,3 +41,93 @@ jobs:
       - name: Run isolated ARM64 Platform integration smoke
         shell: bash
         run: bash /opt/hispania-ci-integration/scripts/arm64-platform-integration.sh
+
+  candidate-arm64-integration:
+    if: github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
+    permissions:
+      contents: read
+    runs-on:
+      - self-hosted
+      - Linux
+      - ARM64
+      - hispania-arm64-integration
+    timeout-minutes: 25
+    steps:
+      - name: Verify dispatch identity and runner
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.candidate_sha }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = joaquimcastilla/hispania
+          test "$GITHUB_ACTOR" = joaquimcastilla
+          test "$TRIGGERING_ACTOR" = joaquimcastilla
+          test "$GITHUB_REF" = refs/heads/codex/hispania-0.7.0-step2-1-production-readiness
+          test "$REQUESTED_SHA" = "$GITHUB_SHA"
+          test "$(id -un)" = hispania-integration-runner
+          test "$(uname -m)" = aarch64
+          dotnet --list-runtimes | grep -q '^Microsoft.AspNetCore.App 10\.'
+          command -v pwsh >/dev/null
+          command -v tar >/dev/null
+          command -v sha256sum >/dev/null
+
+      - name: Checkout exact candidate commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Build and verify candidate artifact on Pi 4B
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"
+          output="$RUNNER_TEMP/hispania-arm64-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          archive="$RUNNER_TEMP/hispania-arm64-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.tar.gz"
+          printf 'HISPANIA_ARM64_OUTPUT_DIR=%s\n' "$output" >> "$GITHUB_ENV"
+          printf 'HISPANIA_ARM64_ARTIFACT_PATH=%s\n' "$archive" >> "$GITHUB_ENV"
+          pwsh -NoLogo -NoProfile -File tools/publish-platform-only.ps1 -Rid linux-arm64 -OutputDirectory "$output"
+          python3 - "$output/artifact-manifest.json" "$REQUESTED_SHA" <<'PY'
+          import json, pathlib, sys
+          manifest=json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8-sig'))
+          assert manifest.get('gitSha') == sys.argv[2]
+          assert manifest.get('sourceDirty') is False
+          assert manifest.get('sourceBranch') == 'codex/hispania-0.7.0-step2-1-production-readiness'
+          assert manifest.get('targetRid') == 'linux-arm64' and manifest.get('architecture') == 'aarch64'
+          PY
+          tar -czf "$archive" -C "$output" .
+          digest="$(sha256sum "$archive" | cut -d' ' -f1)"
+          printf 'HISPANIA_ARM64_ARTIFACT_SHA256=%s\n' "$digest" >> "$GITHUB_ENV"
+          printf 'HISPANIA_ARM64_ARTIFACT_GIT_SHA=%s\n' "$REQUESTED_SHA" >> "$GITHUB_ENV"
+          printf 'Candidate commit: %s\nArtifact SHA-256: %s\n' "$REQUESTED_SHA" "$digest"
+
+      - name: Run isolated candidate integration smoke
+        shell: bash
+        run: bash .github/scripts/arm64-platform-integration.sh
+
+      - name: Remove candidate build outputs from runner temp
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${HISPANIA_ARM64_ARTIFACT_PATH:-}" && -n "${HISPANIA_ARM64_OUTPUT_DIR:-}" ]] || exit 0
+          archive="$RUNNER_TEMP/hispania-arm64-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.tar.gz"
+          output="$RUNNER_TEMP/hispania-arm64-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          [[ "$HISPANIA_ARM64_ARTIFACT_PATH" == "$archive" ]]
+          [[ "$HISPANIA_ARM64_OUTPUT_DIR" == "$output" ]]
+          [[ "$(realpath -e "$(dirname "$archive")")" == "$(realpath -e "$RUNNER_TEMP")" ]]
+          [[ "$(realpath -e "$(dirname "$output")")" == "$(realpath -e "$RUNNER_TEMP")" ]]
+          [[ "$(basename "$output")" =~ ^hispania-arm64-[0-9]+-[0-9]+$ ]]
+          rm -f -- "$archive"
+          rm -rf -- "$output"
+          for suffix in .manifest.sha256 .build-evidence.json .zip .zip.sha256; do
+            sidecar="$output$suffix"
+            [[ "$(dirname "$sidecar")" == "$RUNNER_TEMP" ]]
+            [[ "$(basename "$sidecar")" == "$(basename "$output")$suffix" ]]
+            rm -f -- "$sidecar"
+          done

@@ -3,21 +3,40 @@ param(
     [Parameter(Mandatory)][ValidateSet('install','start','stop','restart','status','uninstall')][string]$Action,
     [Parameter(Mandatory)][Alias('Home')][string]$InstallationHome,
     [ValidateSet('server','worker')][string]$Role='server',
+    [string]$ServiceName,
     [string]$Account='NT AUTHORITY\LocalService'
 )
 $ErrorActionPreference='Stop'
 if (-not $IsWindows) { throw 'Windows SCM operation requires Windows.' }
 if (-not [IO.Path]::IsPathFullyQualified($InstallationHome) -or $InstallationHome.Contains('"') -or [regex]::IsMatch($InstallationHome, '[\x00-\x1F\x7F]')) { throw 'Provide an absolute installation root without quote or control characters.' }
 $InstallationHome=[IO.Path]::GetFullPath($InstallationHome)
-$name=if ($Role -eq 'server') { 'HispaniaServer' } else { 'HispaniaWorker' }
+$configPath=Join-Path $InstallationHome 'config/production.json'
+if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { throw 'Production configuration is missing.' }
+try { $configuration=Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json } catch { throw 'Production configuration is invalid.' }
+if ($configuration.role -cne $Role) { throw 'Configured role does not match the requested service role.' }
+$configuredName=$configuration.windowsServiceName
+$defaultName=if ($Role -eq 'server') { 'HispaniaServer' } else { 'HispaniaWorker' }
+$name=if ($ServiceName) { $ServiceName } elseif ($configuredName) { [string]$configuredName } else { $defaultName }
+if ($configuredName -and $name -cne $configuredName) { throw 'Requested service name does not match production configuration.' }
+if ($name -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$') { throw 'Invalid Windows SCM service name.' }
+if ($name -match '^Hispania-Test-([0-9a-f]{32})-(Server|Worker)$') {
+    $fixtureLeaf='hispania-phase18 isolated ñ '+$Matches[1]
+    if ([IO.Path]::GetFileName($InstallationHome) -cne $fixtureLeaf -or $Matches[2] -cne $(if($Role -eq 'server'){'Server'}else{'Worker'})) { throw 'Test service name does not belong to this role and fixture run.' }
+}
 $directory=if ($Role -eq 'server') { 'server' } else { 'worker' }
 $assembly=if ($Role -eq 'server') { 'Hispania.Server' } else { 'Hispania.WorkerAgent' }
+$executable=Join-Path $InstallationHome "app/$directory/$assembly.exe"
+$expectedPath='"'+[IO.Path]::GetFullPath($executable)+'" --home "'+$InstallationHome+'"'
+function Assert-OwnedService {
+    $registered=Get-CimInstance Win32_Service -Filter "Name='$name'" -ErrorAction SilentlyContinue
+    if (-not $registered) { throw 'Service is not registered; no lifecycle operation was performed.' }
+    if ($registered.PathName -cne $expectedPath -or $registered.StartName -cne $Account) { throw 'Registered service identity does not match this installation; refusing lifecycle operation.' }
+}
 function Invoke-Sc([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments) { & sc.exe @Arguments; if ($LASTEXITCODE -ne 0) { throw 'SCM operation failed; inspect service identity, privileges and existing registration.' } }
 switch ($Action) {
     install {
         if ($Account -ne 'NT AUTHORITY\LocalService') { throw 'This script supports LocalService; provision custom non-admin accounts and their logon credentials through SCM separately.' }
         if (Get-Service -Name $name -ErrorAction SilentlyContinue) { throw 'Service already registered; existing installation was preserved.' }
-        $executable=Join-Path $InstallationHome "app/$directory/$assembly.exe"
         if (-not (Test-Path -LiteralPath $executable)) { throw 'Missing native apphost; publish win-x64 first.' }
         & icacls.exe $InstallationHome /grant '*S-1-5-19:RX' /Q | Out-Null
         if ($LASTEXITCODE -ne 0) { throw 'Installation root read/traverse permissions could not be applied.' }
@@ -58,9 +77,9 @@ switch ($Action) {
         New-ItemProperty -Path ("HKLM:\SYSTEM\CurrentControlSet\Services\"+$name) -Name Environment -PropertyType MultiString -Value @("DOTNET_ROOT_X64=$runtimeRoot","DOTNET_ENVIRONMENT=Production","PATH=$machinePath") -Force | Out-Null
         Invoke-Sc @('failure',$name,'reset=','86400','actions=','restart/10000/restart/30000/none/0')
     }
-    start { Start-Service -Name $name }
-    stop { Stop-Service -Name $name; (Get-Service $name).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(40)) }
-    restart { Restart-Service -Name $name }
-    status { Get-Service -Name $name }
-    uninstall { Stop-Service -Name $name; (Get-Service $name).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(40)); Invoke-Sc @('delete',$name) }
+    start { Assert-OwnedService; Start-Service -Name $name }
+    stop { Assert-OwnedService; Stop-Service -Name $name; (Get-Service $name).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(40)) }
+    restart { Assert-OwnedService; Restart-Service -Name $name }
+    status { Assert-OwnedService; Get-Service -Name $name }
+    uninstall { Assert-OwnedService; Stop-Service -Name $name; (Get-Service $name).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(40)); Assert-OwnedService; Invoke-Sc @('delete',$name) }
 }

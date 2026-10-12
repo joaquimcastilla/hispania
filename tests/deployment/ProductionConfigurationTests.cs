@@ -13,6 +13,15 @@ namespace Hispania.Deployment.Tests;
 public sealed class ProductionConfigurationTests
 {
     [Fact]
+    public void WindowsServiceNameOverrideIsOptionalAndRestrictedToScmSafeCharacters()
+    {
+        using var fixture = new Fixture("{\"windowsServiceName\":\"Hispania-Test-0123456789abcdef0123456789abcdef-Server\"}");
+        Assert.Equal("Hispania-Test-0123456789abcdef0123456789abcdef-Server", fixture.Load().Configuration.WindowsServiceName);
+        File.WriteAllText(Path.Combine(fixture.Home, "config", "production.json"), "{\"windowsServiceName\":\"Hispania/Test\"}");
+        Assert.Equal(2, Assert.Throws<DeploymentException>(() => fixture.Load()).ExitCode);
+    }
+
+    [Fact]
     public void DefaultsAreSafeAndSeparateFromLegacyConfiguration()
     {
         using var fixture = new Fixture("{}");

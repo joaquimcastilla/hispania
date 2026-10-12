@@ -22,7 +22,9 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
         Assert.Equal("1", Environment.GetEnvironmentVariable("HISPANIA_PHASE18_REQUIRE_SERVICE"));
         // systemd PrivateTmp intentionally hides /tmp; use the runner's explicit service root.
         var root = Environment.GetEnvironmentVariable("HISPANIA_PHASE18_SERVICE_ROOT") ?? throw new InvalidOperationException("Native service gate requires a provisioned service root outside private runner directories and /tmp.");
-        using var fixture = new ArtifactProcessTests.HostFixture(directoryRoot: root);
+        using var fixture = new ArtifactProcessTests.HostFixture(directoryRoot: root, role: role);
+        var serviceName = "Hispania-Test-" + fixture.RunId + (role == "server" ? "-Server" : "-Worker");
+        fixture.WriteConfiguration(new { windowsServiceName = serviceName });
         var canary = "PHASE18_SUPER_SECRET_CANARY_NATIVE_" + Guid.NewGuid().ToString("N");
         var canaryPath = Path.Combine(fixture.Home, "secrets", "NATIVE_CANARY.secret");
         File.WriteAllText(canaryPath, canary); WorkerDeploymentTests.Protect(canaryPath);
@@ -49,19 +51,20 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
             coordinator.MapPost("/internal/worker/v1/native-worker/heartbeat", () => Results.Ok(new { cancelledJobIds = Array.Empty<string>() }));
             coordinator.MapPost("/internal/worker/v1/native-worker/disconnect", () => Results.NoContent());
             await coordinator.StartAsync();
-            fixture.WriteConfiguration(new { role, worker = new { coordinatorUri = $"https://localhost:{fixture.Port}", nodeId = "native-worker", certificateFile = "client.pfx", passwordSecret = "file:NATIVE_CANARY", coordinatorCertificateSha256Pins = new[] { Convert.ToHexString(SHA256.HashData(serverCertificate.RawData)) } } });
+            fixture.WriteConfiguration(new { role, windowsServiceName = serviceName, worker = new { coordinatorUri = $"https://localhost:{fixture.Port}", nodeId = "native-worker", certificateFile = "client.pfx", passwordSecret = "file:NATIVE_CANARY", coordinatorCertificateSha256Pins = new[] { Convert.ToHexString(SHA256.HashData(serverCertificate.RawData)) } } });
         }
         var installed = false;
         try
         {
-            await ServiceAsync("install", fixture.Home, role); installed = true;
+            if (OperatingSystem.IsWindows()) Assert.Equal("MISSING", await TryGetWindowsServiceAsync(serviceName));
+            await ServiceAsync("install", fixture.Home, role, serviceName); installed = true;
             if (OperatingSystem.IsWindows())
             {
-                var name = role == "server" ? "HispaniaServer" : "HispaniaWorker";
-                var definition = await RunAsync("sc.exe", ["qc", name]);
+                var definition = await RunAsync("sc.exe", ["qc", serviceName]);
                 Assert.Contains("NT AUTHORITY\\LocalService", definition, StringComparison.OrdinalIgnoreCase);
-                await RunAsync("sc.exe", ["qfailure", name]);
-                WindowsServiceRecovery.AssertConfigured(name);
+                await RunAsync("sc.exe", ["qfailure", serviceName]);
+                await AssertOwnedWindowsServiceAsync(serviceName, fixture.Home, role);
+                WindowsServiceRecovery.AssertConfigured(serviceName);
                 output.WriteLine("SCM definition: LocalService confirmed; recovery definition validated; crash recovery runtime not exercised.");
             }
             else
@@ -72,24 +75,24 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
                 Assert.NotEqual("0", uid.Trim());
                 output.WriteLine("systemd definition: non-root hispania identity confirmed; app directory read-only for service user.");
             }
-            await ServiceAsync("start", fixture.Home, role); await WaitAsync(1);
+            await ServiceAsync("start", fixture.Home, role, serviceName); await WaitAsync(1);
             await LivenessAsync();
-            await ServiceAsync("status", fixture.Home, role);
-            await ServiceAsync("restart", fixture.Home, role); await WaitAsync(2);
+            await ServiceAsync("status", fixture.Home, role, serviceName);
+            await ServiceAsync("restart", fixture.Home, role, serviceName); await WaitAsync(2);
             await LivenessAsync();
-            var timer = Stopwatch.StartNew(); await ServiceAsync("stop", fixture.Home, role);
+            var timer = Stopwatch.StartNew(); await ServiceAsync("stop", fixture.Home, role, serviceName);
             Assert.True(timer.Elapsed < TimeSpan.FromSeconds(40));
             output.WriteLine("{0} {1}: native start/readiness/restart passed; graceful stop {2:F3}s.", OperatingSystem.IsWindows() ? "SCM" : "systemd", role, timer.Elapsed.TotalSeconds);
             if (OperatingSystem.IsLinux())
-                Assert.DoesNotContain(canary, await NativeOperationAsync("journal", fixture.Home, role, () => RunAsync("sudo", ["journalctl", "--unit=hispania-" + role + ".service", "--no-pager"])), StringComparison.Ordinal);
+                Assert.DoesNotContain(canary, await NativeOperationAsync("journal", fixture.Home, role, serviceName, () => RunAsync("sudo", ["journalctl", "--unit=hispania-" + role + ".service", "--no-pager"])), StringComparison.Ordinal);
             else
                 foreach (var log in Directory.EnumerateFiles(Path.Combine(fixture.Home, "logs"), "*", SearchOption.AllDirectories)) Assert.DoesNotContain(canary, File.ReadAllText(log), StringComparison.Ordinal);
             using (Hispania.Hosting.InstallationOperations.Lock(fixture.Home)) { }
-            await ServiceAsync("uninstall", fixture.Home, role); installed = false;
+            await ServiceAsync("uninstall", fixture.Home, role, serviceName); installed = false;
             Assert.True(File.Exists(Path.Combine(fixture.Home, "config", "production.json")));
             Assert.Equal("retained backup evidence", File.ReadAllText(retainedBackup));
             if (OperatingSystem.IsLinux() || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("HISPANIA_PHASE21_NATIVE_HELPER")))
-                await NativeOperationAsync("retained-secret", fixture.Home, role, () => RunAsync("sudo", ["test", "-f", canaryPath]));
+                await NativeOperationAsync("retained-secret", fixture.Home, role, serviceName, () => RunAsync("sudo", ["test", "-f", canaryPath]));
             else Assert.True(File.Exists(canaryPath));
             if (role == "server") Assert.True(File.Exists(Path.Combine(fixture.Home, "state", "platform", "identity.sqlite")));
         }
@@ -104,11 +107,11 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
         }
         finally
         {
-            if (installed) await ServiceAsync("uninstall", fixture.Home, role);
+            if (installed) await ServiceAsync("uninstall", fixture.Home, role, serviceName);
             if (coordinator is not null) { await coordinator.StopAsync(); await coordinator.DisposeAsync(); }
             if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("HISPANIA_PHASE21_NATIVE_HELPER")))
             {
-                await NativeOperationAsync("reclaim", fixture.Home, role, MissingNativeHelperAsync);
+                await NativeOperationAsync("reclaim", fixture.Home, role, serviceName, MissingNativeHelperAsync);
             }
             else if (OperatingSystem.IsLinux())
             {
@@ -132,7 +135,7 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
                 await Task.Delay(200);
             }
             if (OperatingSystem.IsLinux())
-                output.WriteLine(await NativeOperationAsync("journal", fixture.Home, role, () => RunAsync("sudo", ["journalctl", "--unit=hispania-" + role + ".service", "--no-pager", "--lines=80"])));
+                output.WriteLine(await NativeOperationAsync("journal", fixture.Home, role, serviceName, () => RunAsync("sudo", ["journalctl", "--unit=hispania-" + role + ".service", "--no-pager", "--lines=80"])));
             throw new InvalidOperationException("Native service did not become Ready or negotiate within its startup deadline.");
         }
         async Task LivenessAsync()
@@ -143,16 +146,16 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
         }
     }
 
-    private static async Task ServiceAsync(string action, string home, string role)
+    private static async Task ServiceAsync(string action, string home, string role, string serviceName)
     {
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("HISPANIA_PHASE21_NATIVE_HELPER")))
         {
             if (OperatingSystem.IsLinux() && action == "install") await RunAsync("chmod", ["-R", "a-w", Path.Combine(home, "app")]);
-            await NativeOperationAsync(action, home, role, () => throw new InvalidOperationException("CI native helper required."));
+            await NativeOperationAsync(action, home, role, serviceName, () => throw new InvalidOperationException("CI native helper required."));
             return;
         }
         var operations = Path.Combine(ArtifactProcessTests.Artifact, "operations");
-        if (OperatingSystem.IsWindows()) await RunAsync("pwsh", ["-NoProfile", "-File", Path.Combine(operations, "windows-service.ps1"), "-Action", action, "-Home", home, "-Role", role]);
+        if (OperatingSystem.IsWindows()) await RunAsync("pwsh", ["-NoProfile", "-File", Path.Combine(operations, "windows-service.ps1"), "-Action", action, "-Home", home, "-Role", role, "-ServiceName", serviceName]);
         else
         {
             if (action == "install") await RunAsync("chmod", ["-R", "a-w", Path.Combine(home, "app")]);
@@ -160,14 +163,26 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
         }
     }
 
-    private static Task<string> NativeOperationAsync(string action, string home, string role, Func<Task<string>> fallback)
+    private static Task<string> NativeOperationAsync(string action, string home, string role, string serviceName, Func<Task<string>> fallback)
     {
         var helper = Environment.GetEnvironmentVariable("HISPANIA_PHASE21_NATIVE_HELPER");
         if (string.IsNullOrEmpty(helper)) return fallback();
         return OperatingSystem.IsWindows()
-            ? RunAsync("pwsh", ["-NoProfile", "-File", helper, "-Action", action, "-InstallationHome", home, "-Role", role])
+            ? RunAsync("pwsh", ["-NoProfile", "-File", helper, "-Action", action, "-InstallationHome", home, "-Role", role, "-ServiceName", serviceName])
             : RunAsync("sudo", ["-n", helper, action, home, role]);
     }
+
+    private static async Task AssertOwnedWindowsServiceAsync(string serviceName, string home, string role)
+    {
+        var detail = await RunAsync("pwsh", ["-NoProfile", "-Command", "Get-CimInstance Win32_Service -Filter \"Name='" + serviceName + "'\" | Select-Object Name,PathName,StartName | ConvertTo-Json -Compress"]);
+        Assert.Contains(serviceName, detail, StringComparison.Ordinal);
+        Assert.Contains(Path.GetFullPath(Path.Combine(home, "app", role == "server" ? "server/Hispania.Server.exe" : "worker/Hispania.WorkerAgent.exe")), detail, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("--home", detail, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(Path.GetFullPath(home), detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task<string> TryGetWindowsServiceAsync(string serviceName) =>
+        (await RunAsync("pwsh", ["-NoProfile", "-Command", "if (Get-Service -Name '" + serviceName + "' -ErrorAction SilentlyContinue) { 'FOUND' } else { 'MISSING' }"])).Trim();
 
     private static Task<string> MissingNativeHelperAsync() => throw new InvalidOperationException("CI native helper required.");
 
