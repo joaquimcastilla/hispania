@@ -2,6 +2,11 @@ name: Phase 25 Release Acceptance
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Full SHA of the exact Step 2.1 candidate commit to validate.
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -12,13 +17,15 @@ concurrency:
 
 jobs:
   linux-package:
-    if: github.repository == 'joaquimcastilla/hispania' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release/0.7.0-rc.1-preparation' || github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness')
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
     runs-on: [self-hosted, Linux, X64, hispania, hispania-linux]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
       - name: Initialize Phase 25 diagnostics
         shell: bash
         run: |

@@ -1,6 +1,12 @@
 param([switch]$PostgreSqlOnly)
 $ErrorActionPreference='Stop'
-if ($env:GITHUB_ACTIONS -ne 'true' -or $env:GITHUB_REPOSITORY -ne 'joaquimcastilla/hispania' -or $env:GITHUB_REF -notin @('refs/heads/feature/phase-21-security-operations-hardening','refs/heads/feature/phase-22-retention-reconciliation-capacity','refs/heads/feature/phase-23-e2e-compatibility-upgrades')) { throw 'Only explicitly dispatched trusted Phase21/Phase22/Phase23 CI is supported.' }
+$trustedFeatureBranches=@('refs/heads/feature/phase-21-security-operations-hardening','refs/heads/feature/phase-22-retention-reconciliation-capacity','refs/heads/feature/phase-23-e2e-compatibility-upgrades')
+$candidateBranch='refs/heads/codex/hispania-0.7.0-step2-1-production-readiness'
+$candidateDispatch=$env:GITHUB_REF -ceq $candidateBranch
+if ($env:GITHUB_ACTIONS -cne 'true' -or $env:GITHUB_REPOSITORY -cne 'joaquimcastilla/hispania' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch') { throw 'Only manual dispatch from the official repository is supported.' }
+if ($candidateDispatch) {
+    if ($env:GITHUB_ACTOR -cne 'joaquimcastilla' -or $env:HISPANIA_TRIGGERING_ACTOR -cne 'joaquimcastilla' -or $env:GITHUB_SHA -notmatch '^[0-9a-f]{40}$' -or $env:HISPANIA_CANDIDATE_SHA -cne $env:GITHUB_SHA) { throw 'Candidate validation requires the authorized actor and exact full commit SHA.' }
+} elseif ($env:GITHUB_REF -cnotin $trustedFeatureBranches) { throw 'Only the explicitly allowlisted trusted branches may use this preflight.' }
 if ($IsLinux) {
     # Existing shared /tmp fixture parents can belong to other operators. Do not
     # change their permissions; use the job's own runner-managed temporary root.

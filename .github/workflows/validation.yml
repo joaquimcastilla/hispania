@@ -2,6 +2,11 @@ name: Validation
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Full SHA of the exact Step 2.1 candidate commit to validate.
+        required: true
+        type: string
 
 concurrency:
   group: phase21-self-hosted
@@ -12,12 +17,14 @@ permissions:
 
 jobs:
   validate:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && (github.ref == 'refs/heads/feature/phase-21-security-operations-hardening' || github.ref == 'refs/heads/feature/phase-22-retention-reconciliation-capacity' || github.ref == 'refs/heads/feature/phase-23-e2e-compatibility-upgrades' || github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness')
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
     runs-on: [self-hosted, hispania, hispania-linux]
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
@@ -30,6 +37,9 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - name: Install FFmpeg integration tools
         shell: pwsh
+        env:
+          HISPANIA_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          HISPANIA_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
         run: ./tools/ci/self-hosted-preflight.ps1
       - run: npm ci
         working-directory: apps/web
@@ -87,6 +97,9 @@ jobs:
         run: dotnet build Hispania.Platform.slnf
       - name: Diagnose PostgreSQL server version (dedicated SCRAM-auth CI cluster)
         shell: pwsh
+        env:
+          HISPANIA_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          HISPANIA_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
         run: ./tools/ci/self-hosted-preflight.ps1 -PostgreSqlOnly
       - name: Require Phase 17 backup, process disaster, interruption and mixed-provider restore
         shell: pwsh
@@ -214,12 +227,14 @@ jobs:
         run: ./tools/test-security-canaries.ps1 -EvidenceDirectory .artifacts
 
   validate-windows-launcher:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && (github.ref == 'refs/heads/feature/phase-21-security-operations-hardening' || github.ref == 'refs/heads/feature/phase-22-retention-reconciliation-capacity' || github.ref == 'refs/heads/feature/phase-23-e2e-compatibility-upgrades' || github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness')
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
     runs-on: [self-hosted, hispania, hispania-windows]
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
@@ -227,6 +242,9 @@ jobs:
           DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
       - name: Install FFmpeg integration tools
         shell: pwsh
+        env:
+          HISPANIA_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          HISPANIA_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
         run: ./tools/ci/self-hosted-preflight.ps1
       - uses: actions/setup-node@v7
         with:

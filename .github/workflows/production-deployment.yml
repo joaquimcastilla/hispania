@@ -2,6 +2,11 @@ name: Production Deployment
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Full SHA of the exact Step 2.1 candidate commit to validate.
+        required: true
+        type: string
 
 concurrency:
   group: phase21-self-hosted
@@ -12,7 +17,7 @@ permissions:
 
 jobs:
   linux-production:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && (github.ref == 'refs/heads/feature/phase-21-security-operations-hardening' || github.ref == 'refs/heads/feature/phase-22-retention-reconciliation-capacity' || github.ref == 'refs/heads/feature/phase-23-e2e-compatibility-upgrades' || github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness')
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
     runs-on: [self-hosted, hispania, hispania-linux]
     env:
       HISPANIA_PHASE18_SERVICE_ROOT: /opt/hispania-phase18-ci
@@ -20,7 +25,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
@@ -33,6 +40,9 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - name: Install native Media and offline backup prerequisites
         shell: pwsh
+        env:
+          HISPANIA_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          HISPANIA_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
         run: ./tools/ci/self-hosted-preflight.ps1
       - run: npm ci
         working-directory: apps/web
@@ -79,7 +89,7 @@ jobs:
             .artifacts/phase18/linux-x64.tar.gz*
 
   windows-production:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && (github.ref == 'refs/heads/feature/phase-21-security-operations-hardening' || github.ref == 'refs/heads/feature/phase-22-retention-reconciliation-capacity' || github.ref == 'refs/heads/feature/phase-23-e2e-compatibility-upgrades' || github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness')
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
     runs-on: [self-hosted, hispania, hispania-windows]
     env:
       HISPANIA_PHASE18_SERVICE_ROOT: C:\ProgramData\HispaniaPhase18CI
@@ -87,7 +97,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
@@ -100,6 +112,9 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - name: Install FFmpeg tools
         shell: pwsh
+        env:
+          HISPANIA_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          HISPANIA_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
         run: |
           ./tools/ci/self-hosted-preflight.ps1
       - run: npm ci
