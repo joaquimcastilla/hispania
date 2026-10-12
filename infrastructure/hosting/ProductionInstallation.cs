@@ -267,10 +267,24 @@ public sealed class ProductionInstallation
 
     public static void WriteCheckResult() => Console.WriteLine(JsonSerializer.Serialize(new { status = "configuration_and_dependencies_valid", configurationGeneration = ProductionConfiguration.SchemaGeneration, backupTools = "pg_dump/pg_restore are required only for PostgreSQL backup/restore", readiness = "not_started; connectivity and owner schemas are checked during startup" }));
 
-    public static int ReportFailure(Exception exception)
+    public static int ReportFailure(Exception exception, bool includeDiagnostics = false, TextWriter? error = null)
     {
         var failure = exception as DeploymentException;
-        Console.Error.WriteLine(JsonSerializer.Serialize(new { status = "failed", code = failure?.ExitCode ?? 4, action = failure?.Message ?? "Startup failed; check endpoint availability, provisioned credentials, store compatibility and permissions. Private exception details are suppressed." }));
+        error ??= Console.Error;
+        error.WriteLine(JsonSerializer.Serialize(new { status = "failed", code = failure?.ExitCode ?? 4, action = failure?.Message ?? "Startup failed; check endpoint availability, provisioned credentials, store compatibility and permissions. Private exception details are suppressed." }));
+        if (includeDiagnostics)
+        {
+            // CI may opt in to exception types and stack frames for diagnosis. Never
+            // include exception messages, which can contain credentials or connection data.
+            var chain = new List<object>();
+            for (Exception? current = exception; current is not null && chain.Count < 8; current = current.InnerException)
+            {
+                var stack = current.StackTrace;
+                if (stack is { Length: > 16384 }) stack = stack[..16384];
+                chain.Add(new { type = current.GetType().FullName ?? current.GetType().Name, stack });
+            }
+            error.WriteLine(JsonSerializer.Serialize(new { status = "startup_diagnostic", exceptions = chain }));
+        }
         return failure?.ExitCode ?? 4;
     }
 

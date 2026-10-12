@@ -47,7 +47,8 @@ using Hispania.Platform.Observability.Application;
 try { await RunHostAsync(args); }
 catch (Exception exception) when (ProductionInstallation.IsProduction(args))
 {
-    Environment.ExitCode = ProductionInstallation.ReportFailure(exception);
+    var includeDiagnostics = string.Equals(Environment.GetEnvironmentVariable("HISPANIA_CI_DIAGNOSTICS"), "1", StringComparison.Ordinal);
+    Environment.ExitCode = ProductionInstallation.ReportFailure(exception, includeDiagnostics);
 }
 
 static async Task RunHostAsync(string[] args)

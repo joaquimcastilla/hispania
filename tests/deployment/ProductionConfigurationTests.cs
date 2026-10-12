@@ -13,6 +13,28 @@ namespace Hispania.Deployment.Tests;
 public sealed class ProductionConfigurationTests
 {
     [Fact]
+    public void StartupFailureDiagnosticsAreOptInAndNeverIncludeExceptionMessages()
+    {
+        var exception = CaptureException();
+        using var suppressed = new StringWriter();
+        Assert.Equal(4, ProductionInstallation.ReportFailure(exception, error: suppressed));
+        Assert.DoesNotContain("startup_diagnostic", suppressed.ToString(), StringComparison.Ordinal);
+
+        using var diagnostic = new StringWriter();
+        Assert.Equal(4, ProductionInstallation.ReportFailure(exception, includeDiagnostics: true, error: diagnostic));
+        var output = diagnostic.ToString();
+        Assert.Contains("startup_diagnostic", output, StringComparison.Ordinal);
+        Assert.Contains(nameof(InvalidOperationException), output, StringComparison.Ordinal);
+        Assert.DoesNotContain("diagnostic-secret-canary", output, StringComparison.Ordinal);
+    }
+
+    private static Exception CaptureException()
+    {
+        try { throw new InvalidOperationException("diagnostic-secret-canary"); }
+        catch (Exception exception) { return exception; }
+    }
+
+    [Fact]
     public void WindowsServiceNameOverrideIsOptionalAndRestrictedToScmSafeCharacters()
     {
         using var fixture = new Fixture("{\"windowsServiceName\":\"Hispania-Test-0123456789abcdef0123456789abcdef-Server\"}");
