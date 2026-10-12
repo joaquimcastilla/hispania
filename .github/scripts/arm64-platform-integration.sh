@@ -152,7 +152,7 @@ printf 'artifact_files=%s\nartifact_bytes=%s\nsqlite_sha256=%s\n' \
 start_server() {
   thermal_guard
   if [[ -n "$expected_git_sha" ]]; then
-    dotnet "$package/server/$app_dll" --home "$home" >>"$log" 2>&1 &
+    dotnet "$installed_server" --home "$home" >>"$log" 2>&1 &
   else
     ASPNETCORE_URLS="$base" \
     Platform__DataPath="$run_dir/data" \
