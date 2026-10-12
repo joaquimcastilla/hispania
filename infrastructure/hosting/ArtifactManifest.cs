@@ -51,9 +51,10 @@ public sealed class ArtifactManifest
                 stage = "file link validation: " + relative;
                 ProductionInstallation.RejectLinks(Path.GetDirectoryName(file)!);
                 if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException();
-                stage = "file checksum: " + relative;
                 using var stream = File.OpenRead(file);
-                if (!Convert.ToHexString(SHA256.HashData(stream)).Equals(expected, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException();
+                var actual = Convert.ToHexString(SHA256.HashData(stream));
+                stage = "file checksum: " + relative + " expected=" + expected + " actual=" + actual;
+                if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException();
             }
             var requiredFiles = manifest.DistributionType == "platform-only"
                 ? new[] { "server/Hispania.Platform.Server.dll", "server/Hispania.Platform.Server.deps.json", "server/module-host/Hispania.ModuleHost.dll", "deployment/Hispania.Deployment.dll" }
