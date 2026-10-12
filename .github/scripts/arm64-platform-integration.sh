@@ -194,11 +194,11 @@ start_server() {
   pid=$!
   if [[ -n "$expected_git_sha" ]]; then
     for _ in $(seq 1 20); do
-      [[ ! -r "/proc/$pid/environ" ]] || break
+      if [[ -r "/proc/$pid/comm" ]] && [[ "$(cat "/proc/$pid/comm")" == dotnet ]]; then break; fi
       kill -0 "$pid" 2>/dev/null || break
       sleep 0.05
     done
-    [[ -r "/proc/$pid/environ" ]] || fail 'candidate process exited before environment isolation could be verified'
+    [[ -r "/proc/$pid/comm" && "$(cat "/proc/$pid/comm")" == dotnet ]] || fail 'candidate process did not exec the expected dotnet host'
     tr '\0' '\n' < "/proc/$pid/environ" | grep -Fxq 'HISPANIA_CI_DIAGNOSTICS=1' || fail 'candidate process did not inherit the CI diagnostic flag'
   fi
   start_ms="$(date +%s%3N)"
