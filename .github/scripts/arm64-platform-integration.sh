@@ -7,7 +7,6 @@ expected_git_sha="${HISPANIA_ARM64_ARTIFACT_GIT_SHA:-}"
 readonly data_root=/var/lib/hispania-ci-integration/staging
 readonly report_root=/opt/hispania-ci-integration/tests
 app_dll=Hispania.Platform.Server.dll
-if [[ -n "$expected_git_sha" ]]; then app_dll=server/Hispania.Server.dll; fi
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 thermal_guard() {
@@ -48,6 +47,9 @@ username="arm64-integration-$run_id"
 coordinator_before="$(systemctl is-active hispania-platform.service 2>/dev/null || true)"
 start_ms=0
 ready_ms=0
+started_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'available_memory_kib_at_start=%s\ntemperature_millidegrees_at_start=%s\n' \
+  "$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)" "$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo unavailable)" >> "$metrics"
 
 stop_server() {
   if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
@@ -62,6 +64,7 @@ cleanup() {
   local result=$?
   trap - EXIT TERM INT
   stop_server || result=1
+  if grep -Eiq 'Input/output error|database disk image is malformed|SQLITE_CORRUPT|SQLite Error 11' "$log" 2>/dev/null; then result=1; fi
   {
     printf 'result=%s\nartifact_sha256=%s\n' "$([[ $result -eq 0 ]] && echo PASS || echo FAIL)" "$actual_sha"
     printf 'architecture=%s\nready_ms=%s\n' "$(uname -m)" "$ready_ms"
@@ -69,6 +72,11 @@ cleanup() {
     [[ -f "$metrics" ]] && cat "$metrics"
     printf 'temperature_millidegrees='; cat /sys/class/thermal/thermal_zone0/temp 2>&1 || true
     printf 'throttled='; vcgencmd get_throttled 2>&1 || true
+    if kernel_errors="$(journalctl -k --since "$started_utc" -p err..alert --no-pager 2>/dev/null)"; then
+      printf 'kernel_error_count=%s\n' "$(printf '%s\n' "$kernel_errors" | sed '/^-- No entries --$/d' | wc -l)"
+    else
+      printf 'kernel_error_count=unavailable\n'
+    fi
     printf 'available_memory_kib='; awk '/MemAvailable:/ {print $2}' /proc/meminfo
     printf 'disk_available='; df -h / | awk 'NR==2 {print $4}'
     printf 'error_log_lines='; (grep -Eic '(^|[[:space:]])(fail|error|exception)([[:space:]:]|$)' "$log" || true)
@@ -89,7 +97,11 @@ for entry in $(tar -tzf "$archive"); do
   [[ "$entry" != /* && "/$entry/" != *"/../"* ]] || fail "unsafe archive path: $entry"
 done
 tar -xzf "$archive" --no-same-owner --no-same-permissions -C "$package"
-[[ -s "$package/$app_dll" ]] || fail 'Platform Server publish files missing'
+if [[ -n "$expected_git_sha" ]]; then
+  [[ -s "$package/server/$app_dll" ]] || fail 'candidate Platform Server publish files missing'
+else
+  [[ -s "$package/$app_dll" ]] || fail 'Platform Server publish files missing'
+fi
 if [[ -n "$expected_git_sha" ]]; then
   python3 - "$package/artifact-manifest.json" "$package" "$expected_git_sha" <<'PY'
 import hashlib, json, pathlib, sys
@@ -98,6 +110,8 @@ m = json.loads(manifest_path.read_text(encoding='utf-8-sig'))
 assert m.get('gitSha') == expected and m.get('sourceDirty') is False, 'artifact source commit/cleanliness mismatch'
 assert m.get('sourceBranch') == 'codex/hispania-0.7.0-step2-1-production-readiness', 'artifact source branch mismatch'
 assert m.get('targetRid') == 'linux-arm64' and m.get('architecture') == 'aarch64', 'artifact target mismatch'
+expected_manifest = __import__('os').environ.get('HISPANIA_ARM64_ARTIFACT_MANIFEST_SHA256')
+if expected_manifest: assert hashlib.sha256(manifest_path.read_bytes()).hexdigest() == expected_manifest, 'artifact manifest SHA mismatch'
 files = m.get('files')
 assert isinstance(files, dict) and files, 'manifest file list missing'
 expected_paths = set()
@@ -111,9 +125,9 @@ for relative, digest in files.items():
 actual_paths = {p.resolve() for p in root.rglob('*') if p.is_file() and p != manifest_path}
 assert actual_paths == expected_paths, 'artifact contains unmanifested files or misses manifest files'
 PY
-  [[ -s "$package/server/Hispania.Server.deps.json" ]] || fail 'candidate dependency manifest missing'
+  [[ -s "$package/server/Hispania.Platform.Server.deps.json" ]] || fail 'candidate dependency manifest missing'
   if find "$package" -type f -printf '%f\n' | grep -Eiq 'WindowsServices|Hispania\.(Media|Inventory)|FFmpeg'; then fail 'candidate artifact contains excluded WindowsServices, Media, Inventory or FFmpeg files'; fi
-  if grep -Eiq 'WindowsServices|Hispania\.(Media|Inventory)|FFmpeg' "$package/server/Hispania.Server.deps.json"; then fail 'candidate dependency manifest references excluded components'; fi
+  if grep -Eiq 'WindowsServices|Hispania\.(Media|Inventory)|FFmpeg' "$package/server/Hispania.Platform.Server.deps.json"; then fail 'candidate dependency manifest references excluded components'; fi
 else
   if find "$package" -type f -printf '%f\n' | grep -Eiq 'Hispania\.(Media|Inventory)|FFmpeg'; then fail 'artifact contains Media, Inventory or FFmpeg'; fi
   if grep -Eiq 'Hispania\.(Media|Inventory)|FFmpeg' "$package/Hispania.Platform.Server.deps.json"; then fail 'dependency manifest references Media, Inventory or FFmpeg'; fi
@@ -128,7 +142,7 @@ printf 'artifact_files=%s\nartifact_bytes=%s\nsqlite_sha256=%s\n' \
 start_server() {
   thermal_guard
   if [[ -n "$expected_git_sha" ]]; then
-    dotnet "$package/$app_dll" --home "$home" >>"$log" 2>&1 &
+    dotnet "$package/server/$app_dll" --home "$home" >>"$log" 2>&1 &
   else
     ASPNETCORE_URLS="$base" \
     Platform__DataPath="$run_dir/data" \
@@ -169,7 +183,9 @@ cfg['bootstrapSecret']='env:CI_BOOTSTRAP'; cfg['bootstrapPasswordSecret']='env:C
 p.write_text(json.dumps(cfg, indent=2)+'\n', encoding='utf-8')
 PY
   HISPANIA_SECRET_CI_BOOTSTRAP="$bootstrap_token" HISPANIA_SECRET_CI_PASSWORD="$probe_password" \
-    dotnet "$package/$app_dll" --home "$home" --bootstrap >>"$log" 2>&1 || fail 'candidate administrator bootstrap failed'
+    dotnet "$package/server/$app_dll" --home "$home" --check >>"$log" 2>&1 || fail 'candidate installation --check failed'
+  HISPANIA_SECRET_CI_BOOTSTRAP="$bootstrap_token" HISPANIA_SECRET_CI_PASSWORD="$probe_password" \
+    dotnet "$package/server/$app_dll" --home "$home" --bootstrap >>"$log" 2>&1 || fail 'candidate administrator bootstrap failed'
   python3 - "$home/config/production.json" <<'PY'
 import json, pathlib, sys
 p=pathlib.Path(sys.argv[1]); cfg=json.loads(p.read_text(encoding='utf-8-sig'))
@@ -190,10 +206,16 @@ login_body="$(python3 -c 'import json,sys; print(json.dumps({"username":sys.argv
 expect_status 200 POST /api/identity/login "$login_body"
 session="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sessionToken"])' "$run_dir/response.json")"
 for route in /api/platform/modules /api/platform/jobs/health /api/health/details /api/platform/observability /api/platform/admin/security/endpoints; do expect_status 200 GET "$route" '' "Session $session"; done
+if [[ -n "$expected_git_sha" ]]; then
+  for route in /api/inventory/items /api/v1/media /api/v1/media/00000000-0000-0000-0000-000000000001/stream; do
+    expect_status 404 GET "$route"
+  done
+fi
 db_root="$run_dir/data"
 if [[ -n "$expected_git_sha" ]]; then db_root="$home/state"; fi
 db_count="$(find "$db_root" -type f -name '*.sqlite' | wc -l)"
 [[ "$db_count" -gt 0 ]] || fail 'no isolated SQLite store was created'
+if grep -Eiq 'Input/output error|database disk image is malformed|SQLITE_CORRUPT|SQLite Error 11' "$log"; then fail 'staging log reports storage I/O or SQLite corruption'; fi
 printf 'sqlite_files_before_restart=%s\n' "$db_count" >> "$metrics"
 printf 'sampled_rss_kib=%s\nsampled_cpu_percent=%s\n' "$(awk '/VmRSS:/ {print $2}' "/proc/$pid/status")" "$(ps -p "$pid" -o %cpu= | xargs)" >> "$metrics"
 stop_server || fail 'staging process did not shut down cleanly'
@@ -204,5 +226,15 @@ db_count_after="$(find "$db_root" -type f -name '*.sqlite' | wc -l)"
 [[ "$db_count_after" -ge "$db_count" ]] || fail 'isolated SQLite stores did not persist across restart'
 printf 'sqlite_files_after_restart=%s\n' "$db_count_after" >> "$metrics"
 stop_server || fail 'staging process did not shut down cleanly after restart'
+python3 - "$db_root" <<'PY'
+import pathlib, sqlite3, sys
+files=list(pathlib.Path(sys.argv[1]).rglob('*.sqlite'))
+assert files, 'SQLite stores missing after shutdown'
+for path in files:
+    db=sqlite3.connect(f'file:{path}?mode=ro', uri=True)
+    try: assert db.execute('PRAGMA integrity_check').fetchone()==('ok',), str(path)
+    finally: db.close()
+print(f'sqlite_integrity_check=PASS files={len(files)}')
+PY
 [[ "$(systemctl is-active hispania-platform.service 2>/dev/null || true)" == "$coordinator_before" ]] || fail 'Coordinator service state changed during staging smoke'
 printf 'PASS: isolated ARM64 Platform integration smoke completed\n'

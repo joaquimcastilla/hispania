@@ -226,6 +226,95 @@ jobs:
         shell: pwsh
         run: ./tools/test-security-canaries.ps1 -EvidenceDirectory .artifacts
 
+  postgres16-disposable:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PGPASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-ci-only
+      HISPANIA_POSTGRES_TEST_CONNECTION: Host=127.0.0.1;Port=54329;Database=postgres;Username=postgres;Password=${{ github.run_id }}-${{ github.run_attempt }}-ci-only;Include Error Detail=true
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-ci-only
+          POSTGRES_DB: postgres
+        ports:
+          - 127.0.0.1:54329:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Verify exact candidate dispatch
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.candidate_sha }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = joaquimcastilla/hispania
+          test "$GITHUB_ACTOR" = joaquimcastilla
+          test "$TRIGGERING_ACTOR" = joaquimcastilla
+          test "$GITHUB_REF" = refs/heads/codex/hispania-0.7.0-step2-1-production-readiness
+          test "$GITHUB_SHA" = "$REQUESTED_SHA"
+          echo "::add-mask::$PGPASSWORD"
+
+      - name: Checkout exact candidate source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install PostgreSQL 16 client tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y postgresql-client-16
+          psql --version
+          pg_dump --version
+          pg_restore --version
+          version="$(psql 'host=127.0.0.1 port=54329 dbname=postgres user=postgres' -Atc 'SHOW server_version_num')"
+          [[ "$version" =~ ^16[0-9]{4}$ ]]
+          printf 'PostgreSQL server_version_num=%s\n' "$version"
+
+      - name: Prepare .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+
+      - name: Run Phase 17 portable and mixed PostgreSQL backup restore gates
+        shell: pwsh
+        run: ./tools/test-phase17-backup-restore.ps1 -ResultsDirectory .artifacts/postgres16-phase17 -RequirePostgreSql
+
+      - name: Run Phase 16 historical PostgreSQL migration gate
+        shell: pwsh
+        run: ./tools/test-phase16-historical-upgrades.ps1 -ResultsDirectory .artifacts/postgres16-phase16 -RequirePostgreSql
+
+      - name: Run PostgreSQL migration, rollback and connection recovery integration
+        shell: pwsh
+        run: |
+          dotnet test tests/library-persistence/Hispania.Library.Persistence.Sqlite.Tests.csproj --filter 'Category=Phase16PostgreSqlHistoricalUpgrade' --results-directory .artifacts/postgres16-migrations --logger 'trx;LogFileName=postgresql-migrations.trx'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $trx = [xml](Get-Content -Raw .artifacts/postgres16-migrations/postgresql-migrations.trx)
+          $results = @($trx.TestRun.Results.UnitTestResult)
+          if ($results.Count -ne 1 -or $results[0].outcome -ne 'Passed') { throw 'The PostgreSQL migration, rollback and recovery test must execute and pass.' }
+
+      - name: Preserve disposable PostgreSQL evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: postgres16-disposable-${{ github.sha }}
+          include-hidden-files: true
+          path: |
+            .artifacts/postgres16-phase17
+            .artifacts/postgres16-phase16
+            .artifacts/postgres16-migrations
+
   validate-windows-launcher:
     if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
     runs-on: [self-hosted, hispania, hispania-windows]

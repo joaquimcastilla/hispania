@@ -6,7 +6,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Phase 17 backup/restore failed.' }
     $trx = [xml](Get-Content -LiteralPath (Join-Path $ResultsDirectory 'backup-restore.trx') -Raw)
     $cases = @($trx.TestRun.Results.UnitTestResult)
-    if ($cases.Count -ne 45 -or @($cases | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'All 45 portable Phase 17 cases must execute and pass without skips.' }
+    if ($cases.Count -ne 46 -or @($cases | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'All 46 portable Phase 17 cases must execute and pass without skips.' }
     if ($RequirePostgreSql) {
         if ([string]::IsNullOrWhiteSpace($env:HISPANIA_POSTGRES_TEST_CONNECTION)) { throw 'Mixed-provider disaster configuration is mandatory.' }
         foreach ($tool in @('pg_dump', 'pg_restore', 'psql')) { Get-Command $tool -ErrorAction Stop | Out-Null }

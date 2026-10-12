@@ -129,14 +129,27 @@ jobs:
             @{ source = './tools/ci/windows-native-service-helper.ps1'; installed = $env:HISPANIA_PHASE21_NATIVE_HELPER },
             @{ source = './deployment/windows-service.ps1'; installed = Join-Path $helperDirectory 'windows-service.ps1' }
           )
+          $mismatch = $false
           foreach ($pair in $pairs) {
             $expected = (Get-Content -LiteralPath $pair.source -Raw).Replace("`r`n", "`n")
             $actual = (Get-Content -LiteralPath $pair.installed -Raw).Replace("`r`n", "`n")
+            $encoding = [Text.UTF8Encoding]::new($false)
+            $expectedHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($encoding.GetBytes($expected))).ToLowerInvariant()
+            $actualHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($encoding.GetBytes($actual))).ToLowerInvariant()
+            "Helper $($pair.source) candidate_sha256=$expectedHash protected_sha256=$actualHash" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
             if ($actual -cne $expected) {
-              "enabled=false" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
-              "Windows SCM BLOCKED: administrator-owned helper snapshot differs from the exact candidate source; no SCM operation was attempted." | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
-              return
+              $changes = @(Compare-Object -ReferenceObject @($expected -split "`n") -DifferenceObject @($actual -split "`n") -IncludeEqual:$false | Select-Object -First 40)
+              if ($changes.Count -gt 0) {
+                "First changed lines for $($pair.source) (SideIndicator: <= candidate, => protected):" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+                foreach ($change in $changes) { "- $($change.SideIndicator) $($change.InputObject)" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY }
+              }
+              $mismatch = $true
             }
+          }
+          if ($mismatch) {
+            "enabled=false" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+            "Windows SCM BLOCKED: administrator-owned helper snapshots differ from the exact candidate source; no SCM operation was attempted." | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+            return
           }
           try {
             ./tools/ci/self-hosted-preflight.ps1
