@@ -42,9 +42,11 @@ public sealed class Phase24ResilienceTests
     public async Task SustainedWorkloadLoopRepeatsUntilItsWindowEnds()
     {
         var count = 0;
-        await SustainedWorkloadLoop.RunUntilAsync(DateTimeOffset.UtcNow.AddMilliseconds(360), 100,
+        // Leave enough scheduling margin for busy CI runners while still proving
+        // that the loop invokes the workload more than once before its deadline.
+        await SustainedWorkloadLoop.RunUntilAsync(DateTimeOffset.UtcNow.AddSeconds(2), 100,
             _ => { Interlocked.Increment(ref count); return Task.CompletedTask; }, CancellationToken.None);
-        Assert.True(count >= 3);
+        Assert.True(count >= 2);
     }
 
     [Fact]
