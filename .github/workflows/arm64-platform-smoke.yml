@@ -50,3 +50,33 @@ jobs:
         env:
           HISPANIA_ARTIFACT_SHA256: FC47A9AA2F928EB290FD40CED1B9B6A173F6FFE87E60F13BA5EAC467B5A24C3D
         run: bash /opt/hispania-ci/scripts/arm64-platform-smoke.sh
+
+      - name: Record Pi 3B+ thermal, frequency, memory and throttling state
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          printf 'runner=%s\narchitecture=%s\n' "$RUNNER_NAME" "$(uname -m)"
+          printf 'temperature_millidegrees='; cat /sys/class/thermal/thermal_zone0/temp 2>&1 || true
+          printf 'arm_scaling_frequency_khz='; cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>&1 || true
+          printf 'memory_available='; awk '/MemAvailable:/ {print $2 " KiB"}' /proc/meminfo
+          if command -v vcgencmd >/dev/null 2>&1; then
+            throttling="$(vcgencmd get_throttled 2>&1 || true)"
+            printf 'throttling_raw=%s\n' "$throttling"
+            python3 - "$throttling" <<'PY'
+          import re, sys
+          match = re.search(r"0x([0-9a-fA-F]+)", sys.argv[1])
+          if not match:
+              print("throttling_decode=unavailable")
+          else:
+              bits = int(match.group(1), 16)
+              names = ("under_voltage", "arm_frequency_capped", "throttled", "soft_temperature_limit")
+              for index, name in enumerate(names):
+                  print(f"{name}_active={bool(bits & (1 << index))}")
+                  print(f"{name}_historic={bool(bits & (1 << (index + 16)))}")
+          PY
+            printf 'core_voltage='; vcgencmd measure_volts core 2>&1 || true
+            printf 'arm_clock='; vcgencmd measure_clock arm 2>&1 || true
+          else
+            printf 'throttling=unavailable (vcgencmd missing)\ncore_voltage=unavailable\narm_clock=unavailable\n'
+          fi
