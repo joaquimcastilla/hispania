@@ -256,9 +256,30 @@ jobs:
           printf 'HISPANIA_ARM64_ARTIFACT_MANIFEST_SHA256=%s\n' "$EXPECTED_MANIFEST_SHA256" >> "$GITHUB_ENV"
           printf 'Candidate commit: %s\nArtifact SHA-256: %s\nManifest SHA-256: %s\n' "$REQUESTED_SHA" "$EXPECTED_ARTIFACT_SHA256" "$EXPECTED_MANIFEST_SHA256"
 
+      - name: Record Pi 4B runner memory limits
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'runner_mem_available_kib=%s\n' "$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)"
+          for name in memory.max memory.current memory.events; do
+            path="/sys/fs/cgroup/$name"
+            if [[ -r "$path" ]]; then printf '%s=' "$name"; tr '\n' ' ' < "$path"; printf '\n'; fi
+          done
+
       - name: Run isolated candidate integration smoke
         shell: bash
         run: bash .github/scripts/arm64-platform-integration.sh
+
+      - name: Record Pi 4B memory after candidate smoke
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'runner_mem_available_kib=%s\n' "$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)"
+          for name in memory.max memory.current memory.events; do
+            path="/sys/fs/cgroup/$name"
+            if [[ -r "$path" ]]; then printf '%s=' "$name"; tr '\n' ' ' < "$path"; printf '\n'; fi
+          done
 
       - name: Remove candidate build outputs from runner temp
         if: always()

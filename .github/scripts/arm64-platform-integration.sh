@@ -109,6 +109,19 @@ cleanup() {
   fi
   exit "$result"
 }
+resource_sample() {
+  local stage="$1" current max rss cpu temp
+  current="$(cat /sys/fs/cgroup/memory.current 2>/dev/null || echo unavailable)"
+  max="$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo unavailable)"
+  rss='unavailable'; cpu='unavailable'
+  if [[ -n "$pid" ]]; then
+    rss="$(awk '/VmRSS:/ {print $2}' "/proc/$pid/status" 2>/dev/null || echo unavailable)"
+    cpu="$(ps -p "$pid" -o %cpu= 2>/dev/null | xargs || echo unavailable)"
+  fi
+  temp="$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo unavailable)"
+  printf 'resource_sample stage=%s available_kib=%s cgroup_current=%s cgroup_max=%s rss_kib=%s cpu_percent=%s temperature_millidegrees=%s\n' \
+    "$stage" "$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)" "$current" "$max" "$rss" "$cpu" "$temp"
+}
 trap cleanup EXIT TERM INT
 
 for entry in $(tar -tzf "$archive"); do
@@ -176,7 +189,7 @@ start_server() {
     thermal_guard
     kill -0 "$pid" 2>/dev/null || fail 'staging HISPANIA exited before readiness'
     code="$(curl --silent --output /dev/null --max-time 1 --write-out '%{http_code}' "$base/readyz" || true)"
-    if [[ "$code" == 200 ]]; then ready_ms=$(( $(date +%s%3N) - start_ms )); return; fi
+    if [[ "$code" == 200 ]]; then ready_ms=$(( $(date +%s%3N) - start_ms )); resource_sample server-ready; return; fi
     sleep 0.5
   done
   fail 'staging HISPANIA did not become ready within 45 seconds'
@@ -189,6 +202,7 @@ expect_status() {
   [[ -z "$body" ]] || args+=(-H 'Content-Type: application/json' --data "$body")
   actual="$(curl "${args[@]}" "$base$path")" || fail "request failed: $method $path"
   [[ "$actual" == "$expected" ]] || fail "$method $path returned HTTP $actual, expected $expected"
+  resource_sample "${method}-${path}"
 }
 
 if [[ -n "$expected_git_sha" ]]; then
