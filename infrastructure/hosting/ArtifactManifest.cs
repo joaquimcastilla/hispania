@@ -62,7 +62,12 @@ public sealed class ArtifactManifest
             foreach (var required in requiredFiles)
             {
                 stage = "required file: " + required;
-                if (!manifest.Files.ContainsKey(required)) throw new InvalidDataException();
+                if (!manifest.Files.ContainsKey(required))
+                {
+                    var similar = manifest.Files.Keys.Where(file => file.Contains(Path.GetFileName(required), StringComparison.OrdinalIgnoreCase)).ToArray();
+                    stage += "; related manifest paths=" + string.Join(",", similar);
+                    throw new InvalidDataException();
+                }
             }
             if (manifest.DistributionType == "platform-only")
             {
