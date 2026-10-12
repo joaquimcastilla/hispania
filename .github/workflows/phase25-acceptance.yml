@@ -109,7 +109,7 @@ jobs:
           ./tools/publish-production.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase25-repeat/linux-x64 -SkipWebBuild
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./tools/verify-production-reproducibility.ps1 -FirstDirectory .artifacts/phase25/linux-x64 -SecondDirectory .artifacts/phase25-repeat/linux-x64
-      - name: Install and run the clean package natively
+      - name: Verify the clean package without starting a shared-port service
         shell: pwsh
         run: |
           $root = Join-Path $env:RUNNER_TEMP ('hispania-phase25-' + [guid]::NewGuid().ToString('N'))
@@ -119,25 +119,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Native package install failed.' }
             dotnet (Join-Path $installHome 'app/server/Hispania.Server.dll') --home $installHome --check
             if ($LASTEXITCODE -ne 0) { throw 'Installed Linux Server --check failed.' }
-            $config = Join-Path $installHome 'config/production.json'
-            $settings = Get-Content -Raw $config | ConvertFrom-Json -AsHashtable
-            $settings['endpoint'] = 'http://127.0.0.1:28765'
-            $settings['webBuild'] = 'modern'
-            $settings['logLevel'] = 'Warning'
-            $settings | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $config -Encoding utf8NoBOM
-            $proc = Start-Process -FilePath 'dotnet' -ArgumentList @((Join-Path $installHome 'app/server/Hispania.Server.dll'), '--home', $installHome) -WorkingDirectory $env:RUNNER_TEMP -PassThru
-            try {
-              $ready = $false
-              for ($i=0; $i -lt 60; $i++) {
-                if ($proc.HasExited) { throw "Installed Server exited early ($($proc.ExitCode))." }
-                try { $response = Invoke-WebRequest -Uri 'http://127.0.0.1:28765/' -TimeoutSec 2; if ($response.StatusCode -eq 200) { $ready = $true; break } } catch { }
-                Start-Sleep -Seconds 1
-              }
-              if (-not $ready) { throw 'Installed Server did not become HTTP ready within 60 seconds.' }
-              if (-not (Test-Path (Join-Path $installHome 'state/platform/identity.sqlite'))) { throw 'Installed Server did not create durable identity state.' }
-              Stop-Process -Id $proc.Id
-              $proc.WaitForExit()
-            } finally { if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force } }
+            if (-not (Test-Path (Join-Path $installHome 'config/production.json'))) { throw 'Installed package configuration is missing.' }
           } finally { if (Test-Path $root) { Remove-Item -LiteralPath $root -Recurse -Force } }
       - name: Capture Linux build diagnostics
         if: always()

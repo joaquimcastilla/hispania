@@ -2,8 +2,14 @@ name: ARM64 Platform-only smoke
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Full SHA of the exact Step 2.1 candidate commit to validate.
+        required: true
+        type: string
 
-permissions: {}
+permissions:
+  contents: read
 
 concurrency:
   group: hispania-arm64-platform-smoke
@@ -11,20 +17,33 @@ concurrency:
 
 jobs:
   platform-smoke:
-    if: github.actor == 'joaquimcastilla' && github.ref == 'refs/heads/main'
+    if: github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
     runs-on: [self-hosted, Linux, ARM64, hispania-arm64]
     timeout-minutes: 15
     steps:
       - name: Verify runner, runtime and provisioned smoke script
         shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.candidate_sha }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
         run: |
           set -euo pipefail
-          test "${GITHUB_REF}" = refs/heads/main
+          test "$GITHUB_REPOSITORY" = joaquimcastilla/hispania
+          test "$GITHUB_ACTOR" = joaquimcastilla
+          test "$TRIGGERING_ACTOR" = joaquimcastilla
+          test "$GITHUB_REF" = refs/heads/codex/hispania-0.7.0-step2-1-production-readiness
+          test "$REQUESTED_SHA" = "$GITHUB_SHA"
           test "$(uname -m)" = aarch64
           dotnet --list-runtimes | grep -q '^Microsoft.AspNetCore.App 10\.'
           test -r /opt/hispania-ci/artifacts/hispania-platform-linux-arm64-step2-working-tree-20261011.tar.gz
           test -r /opt/hispania-ci/scripts/arm64-platform-smoke.sh
           test "$(sha256sum /opt/hispania-ci/scripts/arm64-platform-smoke.sh | cut -d' ' -f1)" = b3e3d0d74be88e22992cdd3885a5afe6d3f434b6c3d5cd3dbb709b0c2dbc35ec
+      - name: Checkout exact candidate commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Run isolated native smoke
         shell: bash
