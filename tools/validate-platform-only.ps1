@@ -72,7 +72,27 @@ try {
     $start.RedirectStandardError = $true
     $start.ArgumentList.Add((Join-Path $debugOutput 'Hispania.Platform.Server.dll'))
     $start.Environment['ASPNETCORE_URLS'] = "http://127.0.0.1:$port"
-    $start.Environment['Platform__DataPath'] = Join-Path $dataRoot 'platform'
+    $isolatedPaths = [ordered]@{
+        'Platform__DataPath' = Join-Path $dataRoot 'platform'
+        'Platform__Events__Path' = Join-Path $dataRoot 'platform/events.sqlite'
+        'Platform__Assets__ContentPath' = Join-Path $dataRoot 'storage'
+        'Platform__Jobs__Path' = Join-Path $dataRoot 'platform/jobs.sqlite'
+        'Platform__Maintenance__Path' = Join-Path $dataRoot 'platform/maintenance.sqlite'
+        'Platform__Assets__MetadataPath' = Join-Path $dataRoot 'platform/assets.sqlite'
+        'Platform__Audit__Path' = Join-Path $dataRoot 'platform/audit.sqlite'
+        'Identity__Sqlite__Path' = Join-Path $dataRoot 'platform/identity.sqlite'
+        'DistributedWorkers__StatePath' = Join-Path $dataRoot 'platform/distributed-coordinator.sqlite'
+        'DistributedWorkers__TransferPath' = Join-Path $dataRoot 'distributed-transfers'
+        'Modules__ExtensionsPath' = Join-Path $dataRoot 'extensions'
+    }
+    $dataRootFull = [IO.Path]::GetFullPath($dataRoot).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    foreach ($entry in $isolatedPaths.GetEnumerator()) {
+        $path = [IO.Path]::GetFullPath($entry.Value)
+        if (-not $path.StartsWith($dataRootFull, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Isolated runtime path '$($entry.Key)' escapes the temporary test root."
+        }
+        $start.Environment[$entry.Key] = $path
+    }
     $start.Environment['Identity__Bootstrap__Token'] = $bootstrapToken
     $start.Environment['Modules__AdminToken'] = $adminToken
     $start.Environment['Testing__ShutdownToken'] = $shutdownToken
