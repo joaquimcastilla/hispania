@@ -31,7 +31,7 @@ try {
         $cases=@($trx.TestRun.Results.UnitTestResult)
         if ($cases.Count -ne $Expected -or @($cases | Where-Object outcome -ne Passed).Count -ne 0) { throw "$Name must discover and pass all $Expected cases without skips." }
     }
-    Test-Suite 'tests/deployment/Hispania.Deployment.Tests.csproj' 'Category=Phase18ProductionDeployment' 'configuration-secrets' 29
+    Test-Suite 'tests/deployment/Hispania.Deployment.Tests.csproj' 'Category=Phase18ProductionDeployment' 'configuration-secrets' 30
     Test-Suite 'tests/deployment-process/Hispania.Deployment.ProcessTests.csproj' 'Category=Phase18ProductionDeployment' 'published-processes' 10
     Test-Suite 'tests/deployment-process/Hispania.Deployment.ProcessTests.csproj' 'Category=Phase19PackageDistribution' 'package-distribution-upgrade' 2
     if ($WebPredecessorDirectory) {
@@ -47,6 +47,6 @@ try {
         $env:HISPANIA_PHASE18_REQUIRE_SERVICE='1'
         Test-Suite 'tests/deployment-process/Hispania.Deployment.ProcessTests.csproj' 'Category=Phase18NativeService' 'native-services' 2
     }
-    [ordered]@{ configurationCases=29;publishedProcessCases=10;packageDistributionCases=2;nativeServices=if ($RequireNativeService) {'actually_installed_started_restarted_stopped_uninstalled'} else {'not_executed_requires_privileged_runner'};postgreSql=if ($RequirePostgreSql) {'password_rotation_and_disaster_live'} else {'not_executed_requires_password_auth_server'} } |
+    [ordered]@{ configurationCases=30;publishedProcessCases=10;packageDistributionCases=2;nativeServices=if ($RequireNativeService) {'actually_installed_started_restarted_stopped_uninstalled'} else {'not_executed_requires_privileged_runner'};postgreSql=if ($RequirePostgreSql) {'password_rotation_and_disaster_live'} else {'not_executed_requires_password_auth_server'} } |
         ConvertTo-Json | Set-Content -LiteralPath (Join-Path $results 'evidence.json') -Encoding utf8NoBOM
 } finally { Pop-Location }

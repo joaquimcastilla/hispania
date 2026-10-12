@@ -169,11 +169,15 @@ jobs:
       - name: Provision fake secret classes and verify production logger redaction
         shell: pwsh
         run: dotnet test tests/deployment/Hispania.Deployment.Tests.csproj --filter FullyQualifiedName~Phase21SecretCanary --results-directory .artifacts/phase18/evidence --logger "trx;LogFileName=secret-canaries.trx"
-      - name: Archive and checksum win-x64 artifact
+      - name: Verify publisher archive and checksum for win-x64 artifact
         shell: pwsh
         run: |
-          Compress-Archive -Path .artifacts/phase18/win-x64/* -DestinationPath .artifacts/phase18/win-x64.zip
-          (Get-FileHash .artifacts/phase18/win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content .artifacts/phase18/win-x64.zip.sha256
+          $archive = '.artifacts/phase18/win-x64.zip'
+          $checksum = "$archive.sha256"
+          if (-not (Test-Path -LiteralPath $archive -PathType Leaf) -or -not (Test-Path -LiteralPath $checksum -PathType Leaf)) { throw 'The production publisher did not create its archive and checksum.' }
+          $expected = (Get-Content -LiteralPath $checksum -Raw).Trim()
+          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($expected -cne $actual) { throw 'Production archive checksum does not match the publisher sidecar.' }
       - name: Publish exact archived Phase 17 predecessor
         shell: pwsh
         run: ./tools/publish-phase17-predecessor.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase18/predecessor-win-x64
