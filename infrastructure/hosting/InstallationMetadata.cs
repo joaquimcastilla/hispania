@@ -28,7 +28,10 @@ internal static class InstallationMetadata
         {
             var app = Path.Combine(home, "app");
             var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-            if (!Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory).Equals(Path.Combine(app, role == "server" ? "server" : "worker"), comparison)) throw new InvalidDataException();
+            var actualBase = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
+            var expectedBase = Path.Combine(app, role == "server" ? "server" : "worker");
+            stage = $"application directory binding actual='{actualBase}' expected='{expectedBase}'";
+            if (!actualBase.Equals(expectedBase, comparison)) throw new InvalidDataException();
             stage = "installation record parsing";
             var record = JsonSerializer.Deserialize<Record>(File.ReadAllText(PathFor(home)), ProductionConfiguration.Json) ?? throw new InvalidDataException();
             stage = "artifact manifest parsing";
