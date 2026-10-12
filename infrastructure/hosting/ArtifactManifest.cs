@@ -60,15 +60,23 @@ public sealed class ArtifactManifest
                 ? new[] { "server/Hispania.Platform.Server.dll", "server/Hispania.Platform.Server.deps.json", "server/module-host/Hispania.ModuleHost.dll", "deployment/Hispania.Deployment.dll" }
                 : new[] { "server/Hispania.Server.dll", "server/module-host/Hispania.ModuleHost.dll", "server/ffmpeg-worker/Hispania.FFmpeg.Worker.dll", "server/wwwroot/modern/index.html", "server/wwwroot/classic/index.html", "worker/Hispania.WorkerAgent.dll", "worker/module-host/Hispania.ModuleHost.dll" };
             foreach (var required in requiredFiles)
+            {
+                stage = "required file: " + required;
                 if (!manifest.Files.ContainsKey(required)) throw new InvalidDataException();
+            }
             if (manifest.DistributionType == "platform-only")
             {
+                stage = "platform architecture metadata";
                 if (manifest.TargetRid == "win-x64" && manifest.Architecture is not ("x86_64" or "")) throw new InvalidDataException();
                 if (manifest.TargetRid == "linux-x64" && manifest.Architecture is not ("x86_64" or "")) throw new InvalidDataException();
                 if (manifest.TargetRid == "linux-arm64" && manifest.Architecture is not ("aarch64" or "")) throw new InvalidDataException();
-                if (files.Any(file => System.Text.RegularExpressions.Regex.IsMatch(file, @"Hispania\.(Media|Inventory|Library|Playback|Transcoding|Metadata|FFmpeg)|WindowsServices|ServiceController", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant))) throw new InvalidDataException();
+                stage = "platform-only filename exclusion";
+                var excludedFile = files.FirstOrDefault(file => System.Text.RegularExpressions.Regex.IsMatch(file, @"Hispania\.(Media|Inventory|Library|Playback|Transcoding|Metadata|FFmpeg)|WindowsServices|ServiceController", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant));
+                if (excludedFile is not null) { stage += ": " + excludedFile; throw new InvalidDataException(); }
+                stage = "platform-only dependency exclusion: server/Hispania.Platform.Server.deps.json";
                 var deps = File.ReadAllText(Path.Combine(artifact, "server", "Hispania.Platform.Server.deps.json"));
-                if (System.Text.RegularExpressions.Regex.IsMatch(deps, @"Hispania\.(Media|Inventory|Library|Playback|Transcoding|Metadata|FFmpeg)|WindowsServices|ServiceController", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)) throw new InvalidDataException();
+                var excludedDependency = System.Text.RegularExpressions.Regex.Match(deps, @"Hispania\.(Media|Inventory|Library|Playback|Transcoding|Metadata|FFmpeg)|WindowsServices|ServiceController", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+                if (excludedDependency.Success) { stage += ": " + excludedDependency.Value; throw new InvalidDataException(); }
             }
             return manifest;
         }
