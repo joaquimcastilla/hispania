@@ -10,6 +10,7 @@ $outputRoot = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $outputRoot) { throw 'Output must be a fresh directory; previous artifacts are never overwritten.' }
 if (-not $Rid) { $Rid = if ($IsWindows) { 'win-x64' } else { 'linux-x64' } }
 Push-Location $repoRoot
+$stage = 'web build and publication prerequisites'
 try {
     if (-not $SkipWebBuild) {
         Push-Location (Join-Path $repoRoot 'apps/web')
@@ -26,6 +27,7 @@ try {
         @{ Project='apps/deployment/Hispania.Deployment.csproj'; Path='deployment' }
     )
     foreach ($publication in $publications) {
+        $stage = "publish $($publication.Project)"
         & dotnet publish $publication.Project -c Release -r $Rid --self-contained false -p:UseAppHost=true -p:ProductionPublication=true ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot $publication.Path)
         if ($LASTEXITCODE -ne 0) { throw "Publication failed: $($publication.Project)" }
     }
@@ -39,6 +41,7 @@ try {
     New-Item -ItemType Directory -Path (Join-Path $outputRoot 'operations') | Out-Null
     Copy-Item -LiteralPath 'deployment/windows-service.ps1','deployment/hispania.service.in','deployment/install-systemd.sh' -Destination (Join-Path $outputRoot 'operations')
     Copy-Item -LiteralPath 'LICENSE.md' -Destination (Join-Path $outputRoot 'LICENSE.md')
+    $stage = 'source commit metadata'
     $sourceShaOutput = & git rev-parse HEAD
     if ($LASTEXITCODE -ne 0) { throw 'Source SHA command failed.' }
     $sourceSha = ([string]$sourceShaOutput).Trim()
@@ -58,6 +61,7 @@ try {
         if ($sourceCommitEpoch -notmatch '^\d+$') { throw 'Clean-source commit timestamp unavailable or malformed.' }
         [DateTimeOffset]::FromUnixTimeSeconds([long]$sourceCommitEpoch)
     }
+    $stage = 'artifact inventory and checksums'
     $files = [ordered]@{}
     foreach ($file in (Get-ChildItem -LiteralPath $outputRoot -File -Recurse -Force | Sort-Object FullName)) {
         $relative = [IO.Path]::GetRelativePath($outputRoot,$file.FullName).Replace('\','/')
@@ -74,10 +78,12 @@ try {
         buildConfiguration='Release'; dotnetSdkVersion=$sdkVersion
         runtimePrerequisite='ASP.NET Core Runtime 10.0 (x64)'; buildUtc=$buildUtc.ToUniversalTime().ToString('O'); files=$files
     }
+    $stage = 'manifest generation'
     $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outputRoot 'artifact-manifest.json') -Encoding utf8NoBOM
     # The dirty flag is evidence alongside the artifact, never silently claimed as exact-commit output.
     [ordered]@{ sourceDirty=$sourceDirty; sourceSha=$sourceSha; sourceBranch=$sourceBranch; targetRid=$Rid; architecture='x86_64'; distributionType='complete'; publishProfile='complete-production'; note='A dirty artifact is local verification evidence, not a reproducible release.' } | ConvertTo-Json | Set-Content -LiteralPath ($outputRoot + '.build-evidence.json') -Encoding utf8NoBOM
     (Get-FileHash -LiteralPath (Join-Path $outputRoot 'artifact-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content -LiteralPath ($outputRoot + '.manifest.sha256') -Encoding ascii
+    $stage = 'artifact integrity verification'
     & dotnet (Join-Path $outputRoot 'deployment/Hispania.Deployment.dll') verify $outputRoot
     if ($LASTEXITCODE -ne 0) { throw 'Published artifact verification failed.' }
     $packagePath = $outputRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + '.zip'
@@ -86,5 +92,10 @@ try {
     Write-Host "Published $Rid artifact: $outputRoot"
     Write-Host "Package: $packagePath"
     Write-Host "Package SHA-256: $((Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant())"
+}
+catch {
+    $position = $_.InvocationInfo.PositionMessage
+    Write-Host "Production publication failed during '$stage': $($_.Exception.Message)`n$position" -ForegroundColor Red
+    throw
 }
 finally { Pop-Location }
