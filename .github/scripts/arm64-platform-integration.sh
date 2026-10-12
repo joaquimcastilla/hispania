@@ -185,6 +185,9 @@ expect_status() {
 
 if [[ -n "$expected_git_sha" ]]; then
   dotnet "$package/deployment/Hispania.Deployment.dll" install "$package" "$home" server >>"$log" 2>&1 || fail 'candidate artifact staging installation failed'
+  installed_server="$(realpath -e "$run_dir/home/app/server/$app_dll")"
+  [[ "$installed_server" == "$run_dir/home/app/server/$app_dll" ]] || fail 'installed server path resolves outside HOME/app/server'
+  printf 'installed_server_path=%s\n' "$installed_server" >> "$metrics"
   python3 - "$home/config/production.json" "$base" "$username" <<'PY'
 import json, pathlib, sys
 p=pathlib.Path(sys.argv[1]); cfg=json.loads(p.read_text(encoding='utf-8-sig'))
@@ -193,9 +196,9 @@ cfg['bootstrapSecret']='env:CI_BOOTSTRAP'; cfg['bootstrapPasswordSecret']='env:C
 p.write_text(json.dumps(cfg, indent=2)+'\n', encoding='utf-8')
 PY
   if HISPANIA_SECRET_CI_BOOTSTRAP="$bootstrap_token" HISPANIA_SECRET_CI_PASSWORD="$probe_password" \
-    dotnet "$home/app/server/$app_dll" --home "$home" --check >>"$log" 2>&1; then :; else check_exit=$?; fail "candidate installation --check failed (exit=$check_exit)"; fi
+    dotnet "$installed_server" --home "$home" --check >>"$log" 2>&1; then :; else check_exit=$?; fail "candidate installation --check failed (exit=$check_exit)"; fi
   HISPANIA_SECRET_CI_BOOTSTRAP="$bootstrap_token" HISPANIA_SECRET_CI_PASSWORD="$probe_password" \
-    dotnet "$home/app/server/$app_dll" --home "$home" --bootstrap >>"$log" 2>&1 || fail 'candidate administrator bootstrap failed'
+    dotnet "$installed_server" --home "$home" --bootstrap >>"$log" 2>&1 || fail 'candidate administrator bootstrap failed'
   python3 - "$home/config/production.json" <<'PY'
 import json, pathlib, sys
 p=pathlib.Path(sys.argv[1]); cfg=json.loads(p.read_text(encoding='utf-8-sig'))
