@@ -68,9 +68,31 @@ jobs:
           test "$(id -un)" = hispania-integration-runner
           test "$(uname -m)" = aarch64
           dotnet --list-runtimes | grep -q '^Microsoft.AspNetCore.App 10\.'
-          command -v pwsh >/dev/null
           command -v tar >/dev/null
           command -v sha256sum >/dev/null
+
+      - name: Prepare pinned PowerShell in runner temporary storage when absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v pwsh >/dev/null; then
+            pwsh --version
+            exit 0
+          fi
+          readonly version=7.6.6
+          readonly expected_sha256=924829e54c983648f6f1419a2dc7f9433c861b2fb5bd57736ff096c24f133729
+          readonly directory="$RUNNER_TEMP/hispania-pwsh-$version-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          readonly archive="$RUNNER_TEMP/hispania-pwsh-$version-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.tar.gz"
+          test "$(realpath -e "$RUNNER_TEMP")" = "$RUNNER_TEMP"
+          test ! -e "$directory" && test ! -e "$archive"
+          curl --fail --location --retry 3 --output "$archive" "https://github.com/PowerShell/PowerShell/releases/download/v$version/powershell-$version-linux-arm64.tar.gz"
+          echo "$expected_sha256  $archive" | sha256sum --check --status
+          mkdir -m 700 -- "$directory"
+          tar -xzf "$archive" --no-same-owner --no-same-permissions -C "$directory"
+          chmod 700 "$directory/pwsh"
+          "$directory/pwsh" --version
+          printf '%s\n' "$directory" >> "$GITHUB_PATH"
+          rm -f -- "$archive"
 
       - name: Checkout exact candidate commit
         uses: actions/checkout@v7
