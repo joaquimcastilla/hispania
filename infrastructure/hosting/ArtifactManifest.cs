@@ -45,11 +45,13 @@ public sealed class ArtifactManifest
             if (!files.SequenceEqual(manifest.Files.Keys.Order(StringComparer.Ordinal))) throw new InvalidDataException();
             foreach (var (relative, expected) in manifest.Files)
             {
-                stage = "file checksum or path safety";
+                stage = "file path validation";
                 if (Path.IsPathFullyQualified(relative) || relative.Split('/').Any(part => part is ".." or ".")) throw new InvalidDataException();
                 var file = Path.Combine(artifact, relative);
+                stage = "file link validation: " + relative;
                 ProductionInstallation.RejectLinks(Path.GetDirectoryName(file)!);
                 if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException();
+                stage = "file checksum: " + relative;
                 using var stream = File.OpenRead(file);
                 if (!Convert.ToHexString(SHA256.HashData(stream)).Equals(expected, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException();
             }
