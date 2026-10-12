@@ -190,9 +190,14 @@ jobs:
           HISPANIA_NATIVE_SCM_ENABLED: ${{ steps.windows-scm.outputs.enabled }}
         run: |
           New-Item -ItemType Directory -Path $env:HISPANIA_PHASE18_SERVICE_ROOT -Force | Out-Null
-          $arguments = @('-ArtifactDirectory','.artifacts/phase18/win-x64','-PredecessorDirectory','.artifacts/phase18/predecessor-win-x64','-WebPredecessorDirectory','.artifacts/phase20/predecessor-win-x64','-ResultsDirectory','.artifacts/phase18/evidence')
-          if ($env:HISPANIA_NATIVE_SCM_ENABLED -eq 'true') { $arguments += '-RequireNativeService' }
-          & ./tools/test-phase18-production-deployment.ps1 @arguments 2>&1 | Tee-Object -FilePath .artifacts/phase18/production-gate.log
+          $phase18Arguments = @{
+            ArtifactDirectory = '.artifacts/phase18/win-x64'
+            PredecessorDirectory = '.artifacts/phase18/predecessor-win-x64'
+            WebPredecessorDirectory = '.artifacts/phase20/predecessor-win-x64'
+            ResultsDirectory = '.artifacts/phase18/evidence'
+          }
+          if ($env:HISPANIA_NATIVE_SCM_ENABLED -eq 'true') { $phase18Arguments.RequireNativeService = $true }
+          & ./tools/test-phase18-production-deployment.ps1 @phase18Arguments 2>&1 | Tee-Object -FilePath .artifacts/phase18/production-gate.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Scan production artifacts and captured local outputs for secret canaries
         if: always()
