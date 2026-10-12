@@ -17,21 +17,20 @@ public sealed class ProductionConfigurationTests
     {
         var exception = CaptureException();
         using var suppressed = new StringWriter();
-        Assert.Equal(4, ProductionInstallation.ReportFailure(exception, error: suppressed));
+        Assert.Equal(2, ProductionInstallation.ReportFailure(exception, error: suppressed));
         Assert.DoesNotContain("startup_diagnostic", suppressed.ToString(), StringComparison.Ordinal);
 
         using var diagnostic = new StringWriter();
-        Assert.Equal(4, ProductionInstallation.ReportFailure(exception, includeDiagnostics: true, error: diagnostic));
+        Assert.Equal(2, ProductionInstallation.ReportFailure(exception, includeDiagnostics: true, error: diagnostic));
         var output = diagnostic.ToString();
         Assert.Contains("startup_diagnostic", output, StringComparison.Ordinal);
-        Assert.Contains(nameof(InvalidOperationException), output, StringComparison.Ordinal);
+        Assert.Contains(nameof(JsonException), output, StringComparison.Ordinal);
         Assert.DoesNotContain("diagnostic-secret-canary", output, StringComparison.Ordinal);
     }
 
-    private static Exception CaptureException()
+    private static DeploymentException CaptureException()
     {
-        try { throw new InvalidOperationException("diagnostic-secret-canary"); }
-        catch (Exception exception) { return exception; }
+        return new DeploymentException(2, "safe failure", new JsonException("diagnostic-secret-canary"));
     }
 
     [Fact]

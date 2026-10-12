@@ -129,7 +129,7 @@ public sealed class ProductionConfiguration
         }
         catch (DeploymentException) { throw; }
         catch (Exception exception) when (exception is JsonException or InvalidOperationException or IOException or UnauthorizedAccessException)
-        { throw new DeploymentException(2, "Invalid configuration: config/production.json; check file access, known field names and JSON types."); }
+        { throw new DeploymentException(2, "Invalid configuration: config/production.json; check file access, known field names and JSON types.", exception); }
     }
 
     private static void Merge(JsonObject target, JsonObject source)
@@ -187,7 +187,7 @@ public sealed class MaintenanceConfiguration
     public string? BackupArchiveRoot { get; set; }
 }
 
-public sealed class DeploymentException(int exitCode, string message) : Exception(message)
+public sealed class DeploymentException(int exitCode, string message, Exception? innerException = null) : Exception(message, innerException)
 {
     public int ExitCode { get; } = exitCode;
 }

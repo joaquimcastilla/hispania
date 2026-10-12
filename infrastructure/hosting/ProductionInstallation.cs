@@ -281,7 +281,16 @@ public sealed class ProductionInstallation
             {
                 var stack = current.StackTrace;
                 if (stack is { Length: > 16384 }) stack = stack[..16384];
-                chain.Add(new { type = current.GetType().FullName ?? current.GetType().Name, stack });
+                var json = current as JsonException;
+                chain.Add(new
+                {
+                    type = current.GetType().FullName ?? current.GetType().Name,
+                    stack,
+                    jsonPath = json?.Path,
+                    jsonLine = json?.LineNumber,
+                    jsonBytePosition = json?.BytePositionInLine,
+                    hResult = current is IOException ? current.HResult : (int?)null
+                });
             }
             error.WriteLine(JsonSerializer.Serialize(new { status = "startup_diagnostic", exceptions = chain }));
         }
