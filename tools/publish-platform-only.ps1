@@ -11,16 +11,26 @@ if (Test-Path -LiteralPath $outputRoot) { throw 'Output must be a fresh director
 
 Push-Location $repoRoot
 try {
-    $sourceSha = (& git rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0 -or $sourceSha -notmatch '^[0-9a-fA-F]{40}$') { throw 'Source commit SHA unavailable.' }
-    $branch = (& git branch --show-current).Trim()
-    if (-not $branch -and $env:GITHUB_REF_NAME) { $branch = $env:GITHUB_REF_NAME }
-    if (-not $branch) { throw 'Source branch/tag is unavailable; set GITHUB_REF_NAME for detached builds.' }
-    $sourceDirty = @(& git status --porcelain --untracked-files=normal).Count -ne 0
+    if ($env:GITHUB_ACTIONS -ceq 'true') {
+        $sourceSha = $env:GITHUB_SHA
+        $branch = $env:GITHUB_REF_NAME
+        $epoch = $env:HISPANIA_SOURCE_COMMIT_EPOCH
+        if ($sourceSha -notmatch '^[0-9a-fA-F]{40}$' -or $branch -cne 'codex/hispania-0.7.0-step2-1-production-readiness' -or $epoch -notmatch '^\d+$') { throw 'Exact GitHub candidate identity or commit timestamp is unavailable.' }
+        # actions/checkout falls back to a source archive when Git is absent. That archive
+        # represents the exact commit and has no local modifications by construction.
+        $sourceDirty = $false
+    } else {
+        $sourceSha = (& git rev-parse HEAD).Trim()
+        if ($LASTEXITCODE -ne 0 -or $sourceSha -notmatch '^[0-9a-fA-F]{40}$') { throw 'Source commit SHA unavailable.' }
+        $branch = (& git branch --show-current).Trim()
+        if (-not $branch -and $env:GITHUB_REF_NAME) { $branch = $env:GITHUB_REF_NAME }
+        if (-not $branch) { throw 'Source branch/tag is unavailable; set GITHUB_REF_NAME for detached builds.' }
+        $sourceDirty = @(& git status --porcelain --untracked-files=normal).Count -ne 0
+        $epoch = if (-not $sourceDirty) { (& git show -s --format=%ct $sourceSha).Trim() } else { $null }
+    }
     $version = (Get-Content -LiteralPath 'version.json' -Raw | ConvertFrom-Json).distributionVersion
     $buildUtc = if ($sourceDirty) { [DateTimeOffset]::UtcNow } else {
-        $epoch = (& git show -s --format=%ct $sourceSha).Trim()
-        if ($LASTEXITCODE -ne 0 -or $epoch -notmatch '^\d+$') { throw 'Clean commit timestamp unavailable.' }
+        if ($epoch -notmatch '^\d+$') { throw 'Clean commit timestamp unavailable.' }
         [DateTimeOffset]::FromUnixTimeSeconds([long]$epoch)
     }
     $architecture = if ($Rid -eq 'linux-arm64') { 'aarch64' } else { 'x86_64' }

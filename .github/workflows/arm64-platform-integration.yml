@@ -101,14 +101,31 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
+      - name: Resolve exact candidate commit timestamp
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          test "$REQUESTED_SHA" = "$GITHUB_SHA"
+          epoch="$(curl --fail --location --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/commits/$REQUESTED_SHA" \
+            | python3 -c 'import datetime,json,sys; value=json.load(sys.stdin)["commit"]["committer"]["date"]; print(int(datetime.datetime.fromisoformat(value.replace("Z","+00:00")).timestamp()))')"
+          [[ "$epoch" =~ ^[0-9]+$ ]]
+          printf 'HISPANIA_SOURCE_COMMIT_EPOCH=%s\n' "$epoch" >> "$GITHUB_ENV"
+
       - name: Build and verify candidate artifact on Pi 4B
         shell: bash
         env:
           REQUESTED_SHA: ${{ inputs.candidate_sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
-          test -z "$(git status --porcelain --untracked-files=normal)"
+          test "$GITHUB_SHA" = "$REQUESTED_SHA"
+          test "$GITHUB_REF_NAME" = codex/hispania-0.7.0-step2-1-production-readiness
           output="$RUNNER_TEMP/hispania-arm64-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           archive="$RUNNER_TEMP/hispania-arm64-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.tar.gz"
           printf 'HISPANIA_ARM64_OUTPUT_DIR=%s\n' "$output" >> "$GITHUB_ENV"
