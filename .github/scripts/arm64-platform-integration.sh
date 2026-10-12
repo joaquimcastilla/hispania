@@ -26,6 +26,14 @@ candidate_env() {
   done < <(env)
   if ((${#unset_args[@]})); then env "${unset_args[@]}" "$@"; else env "$@"; fi
 }
+candidate_env_exec() {
+  local name value
+  local -a unset_args=()
+  while IFS='=' read -r name value; do
+    case "$name" in HISPANIA__*|ASPNETCORE_URLS|ASPNETCORE_ENVIRONMENT|DOTNET_ENVIRONMENT) unset_args+=(-u "$name");; esac
+  done < <(env)
+  if ((${#unset_args[@]})); then exec env "${unset_args[@]}" "$@"; else exec env "$@"; fi
+}
 fail() { printf 'FAIL: %s\n' "$*" >&2; safe_log_tail >&2; exit 1; }
 thermal_guard() {
   local temp available
@@ -173,7 +181,7 @@ printf 'artifact_files=%s\nartifact_bytes=%s\nsqlite_sha256=%s\n' \
 start_server() {
   thermal_guard
   if [[ -n "$expected_git_sha" ]]; then
-    candidate_env HISPANIA_CI_DIAGNOSTICS=1 dotnet "$installed_server" --home "$home" >>"$log" 2>&1 &
+    candidate_env_exec HISPANIA_CI_DIAGNOSTICS=1 dotnet "$installed_server" --home "$home" >>"$log" 2>&1 &
   else
     ASPNETCORE_URLS="$base" \
     Platform__DataPath="$run_dir/data" \
@@ -184,6 +192,15 @@ start_server() {
       dotnet "$package/$app_dll" >>"$log" 2>&1 &
   fi
   pid=$!
+  if [[ -n "$expected_git_sha" ]]; then
+    for _ in $(seq 1 20); do
+      [[ ! -r "/proc/$pid/environ" ]] || break
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.05
+    done
+    [[ -r "/proc/$pid/environ" ]] || fail 'candidate process exited before environment isolation could be verified'
+    tr '\0' '\n' < "/proc/$pid/environ" | grep -Fxq 'HISPANIA_CI_DIAGNOSTICS=1' || fail 'candidate process did not inherit the CI diagnostic flag'
+  fi
   start_ms="$(date +%s%3N)"
   for _ in $(seq 1 90); do
     thermal_guard
