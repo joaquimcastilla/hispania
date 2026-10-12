@@ -209,7 +209,21 @@ if [[ -n "$expected_git_sha" ]]; then
   dotnet "$package/deployment/Hispania.Deployment.dll" install "$package" "$home" server >>"$log" 2>&1 || fail 'candidate artifact staging installation failed'
   installed_server="$(realpath -e "$run_dir/home/app/server/$app_dll")"
   [[ "$installed_server" == "$run_dir/home/app/server/$app_dll" ]] || fail 'installed server path resolves outside HOME/app/server'
+  for file in "$app_dll" Hispania.Hosting.dll; do
+    package_sha="$(sha256sum "$package/server/$file" | awk '{print $1}')"
+    installed_sha="$(sha256sum "$home/app/server/$file" | awk '{print $1}')"
+    [[ "$package_sha" == "$installed_sha" ]] || fail "installed assembly differs from verified package: $file"
+    printf 'installed_%s_sha256=%s\n' "${file%.dll}" "$installed_sha" >> "$metrics"
+  done
   printf 'installed_server_path=%s\n' "$installed_server" >> "$metrics"
+  if diagnostic_output="$(candidate_env HISPANIA_CI_DIAGNOSTICS=1 dotnet "$installed_server" --home "$run_dir/diagnostic-probe-missing" 2>&1)"; then
+    fail 'invalid-home diagnostic probe unexpectedly succeeded'
+  else
+    diagnostic_exit=$?
+  fi
+  printf '%s\n' "$diagnostic_output"
+  [[ "$diagnostic_output" == *'"status":"startup_diagnostic"'* ]] || fail 'opt-in startup diagnostics did not reach the candidate process'
+  printf 'diagnostic_probe_exit=%s\n' "$diagnostic_exit" >> "$metrics"
   python3 - "$home/config/production.json" "$base" "$username" <<'PY'
 import json, pathlib, sys
 p=pathlib.Path(sys.argv[1]); cfg=json.loads(p.read_text(encoding='utf-8-sig'))
