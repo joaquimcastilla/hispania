@@ -83,7 +83,30 @@ public sealed partial class ServerProcessRestartTests
     private static Process StartManagedServer(string dll, string output, string root, string library, string admin, string bootstrap, string shutdown, int port)
     {
         var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true, WorkingDirectory = output };
-        foreach (var argument in new[] { dll, $"--urls=http://127.0.0.1:{port}", $"--Backup:ManagedRoot={root}", "--Library:Roots:0:Key=demo", $"--Library:Roots:0:Path={library}", "--Ffprobe:ExecutablePath=ffprobe", "--Ffmpeg:ExecutablePath=ffmpeg", $"--Modules:AdminToken={admin}", $"--Testing:ShutdownToken={shutdown}", "--Platform:Assets:MaximumBytes=1048576" }) start.ArgumentList.Add(argument);
+        var state = Path.Combine(root, "platform");
+        foreach (var argument in new[]
+        {
+            dll, $"--urls=http://127.0.0.1:{port}", $"--Backup:ManagedRoot={root}",
+            $"--Platform:DataPath={state}", $"--Inventory:Sqlite:Path={Path.Combine(root, "inventory.sqlite")}",
+            $"--DistributedWorkers:StatePath={Path.Combine(root, "coordinator.sqlite")}", $"--DistributedWorkers:TransferPath={Path.Combine(root, "transfers")}",
+            $"--Persistence:Sqlite:Path={Path.Combine(root, "media.sqlite")}", $"--Storage:Providers:Filesystem:Root={Path.Combine(root, "storage")}",
+            $"--Playback:TranscodeCachePath={Path.Combine(root, "cache")}", $"--PlaybackExperiments:StatePath={Path.Combine(root, "playback.json")}",
+            $"--Ffmpeg:CachePath={Path.Combine(root, "ffmpeg-cache")}", $"--Metadata:InventoryPath={Path.Combine(root, "metadata-index.json")}", $"--Modules:ExtensionsPath={Path.Combine(root, "extensions")}",
+            "--Library:Roots:0:Key=demo", $"--Library:Roots:0:Path={library}", "--Ffprobe:ExecutablePath=ffprobe", "--Ffmpeg:ExecutablePath=ffmpeg",
+            $"--Modules:AdminToken={admin}", $"--Testing:ShutdownToken={shutdown}", "--Platform:Assets:MaximumBytes=1048576"
+        }) start.ArgumentList.Add(argument);
+        var isolatedProfile = Path.Combine(Path.GetDirectoryName(root)!, ".profile");
+        start.Environment["USERPROFILE"] = isolatedProfile;
+        start.Environment["HOME"] = isolatedProfile;
+        start.Environment["LOCALAPPDATA"] = Path.Combine(isolatedProfile, "AppData", "Local");
+        start.Environment["APPDATA"] = Path.Combine(isolatedProfile, "AppData", "Roaming");
+        start.Environment["DOTNET_CLI_HOME"] = Path.Combine(isolatedProfile, ".dotnet");
+        start.Environment["TEMP"] = Path.Combine(isolatedProfile, "Temp");
+        start.Environment["TMP"] = Path.Combine(isolatedProfile, "Temp");
+        Directory.CreateDirectory(start.Environment["LOCALAPPDATA"]!);
+        Directory.CreateDirectory(start.Environment["APPDATA"]!);
+        Directory.CreateDirectory(start.Environment["DOTNET_CLI_HOME"]!);
+        Directory.CreateDirectory(start.Environment["TEMP"]!);
         start.Environment["Identity__Bootstrap__Token"] = bootstrap;
         var process = Process.Start(start)!; _ = process.StandardOutput.ReadToEndAsync(); _ = process.StandardError.ReadToEndAsync(); return process;
     }

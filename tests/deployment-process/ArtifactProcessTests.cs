@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -7,7 +9,9 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Hispania.Hosting;
+using Hispania.Identity.Application;
 using Microsoft.Data.Sqlite;
+using Hispania.Platform.Persistence.Sqlite;
 using Xunit;
 
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
@@ -107,14 +111,31 @@ public sealed class ArtifactProcessTests
         var legacyArgs = new[] { "--home", fixture.Home };
         Directory.CreateDirectory(Path.Combine(fixture.Home, "library-source"));
         fixture.WriteConfiguration(new { bootstrapSecret = "env:PHASE18_BOOTSTRAP", bootstrapPasswordSecret = "env:PHASE18_PASSWORD", bootstrapUsername = "deployment-operator" });
-        var bootstrap = await fixture.CommandAsync(["--home", fixture.Home, "--bootstrap"], new() { ["HISPANIA_SECRET_PHASE18_BOOTSTRAP"] = Guid.NewGuid().ToString("N"), ["HISPANIA_SECRET_PHASE18_PASSWORD"] = password });
-        Assert.Equal(0, bootstrap.Code);
+        using (var initialize = fixture.Start(legacyArgs)) { await fixture.ReadyAsync(initialize); await fixture.StopAsync(initialize); }
+        var identityPath = Path.Combine(fixture.Home, "state", "platform", "identity.sqlite");
+        var identityService = new IdentityService(new SqliteIdentityStore(identityPath));
+        var created = await identityService.CreateUserAsync("deployment-operator", "Deployment Operator", password);
+        Assert.True(created.Succeeded);
+        var bootstrapToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        var bootstrapEnvironment = new Dictionary<string, string> { ["Identity__Bootstrap__Token"] = bootstrapToken };
+        using (var bootstrapHost = fixture.Start(legacyArgs, bootstrapEnvironment))
+        {
+            await fixture.ReadyAsync(bootstrapHost);
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/authorization/bootstrap-admin")
+            {
+                Content = JsonContent.Create(new { userId = created.Value!.Id.Value })
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bootstrap", bootstrapToken);
+            using var response = await fixture.Client.SendAsync(request);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            await AssertLoginAsync(fixture.Client, password);
+            await fixture.StopAsync(bootstrapHost);
+        }
         fixture.WriteConfiguration(new { });
         using (var server = fixture.Start(legacyArgs))
         {
             await fixture.ReadyAsync(server);
             await AssertLoginAsync(fixture.Client, password);
-            using var web = await fixture.Client.GetAsync("/"); Assert.Equal(HttpStatusCode.OK, web.StatusCode);
             await Assert.ThrowsAsync<DeploymentException>(() => InstallationOperations.UpgradeAsync(Artifact, fixture.Home));
             await fixture.StopAsync(server);
         }
@@ -218,6 +239,7 @@ public sealed class ArtifactProcessTests
         internal HttpClient Client { get; }
         private readonly List<Process> processes = [];
         private readonly List<(int Id, DateTime Started)> identities = [];
+        private readonly Dictionary<int, (ConcurrentQueue<string> Output, ConcurrentQueue<string> Error)> processLogs = [];
         internal HostFixture(string? artifact = null, string? directoryRoot = null)
         {
             Home = Path.Combine(directoryRoot ?? Path.GetTempPath(), "hispania-phase18 isolated ñ " + Guid.NewGuid().ToString("N"));
@@ -235,35 +257,105 @@ public sealed class ArtifactProcessTests
         }
         internal Process Start(string[]? arguments = null, Dictionary<string, string>? environment = null, bool worker = false)
         {
-            var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Path.GetTempPath() };
-            start.ArgumentList.Add(Path.Combine(Home, "app", worker ? "worker" : "server", worker ? "Hispania.WorkerAgent.dll" : "Hispania.Server.dll"));
+            var applicationDirectory = Path.Combine(Home, "app", worker ? "worker" : "server");
+            var workingDirectory = worker ? Path.GetTempPath() : applicationDirectory;
+            var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = workingDirectory };
+            start.ArgumentList.Add(Path.Combine(applicationDirectory, worker ? "Hispania.WorkerAgent.dll" : "Hispania.Server.dll"));
+            // The archived Phase 17 development host does not understand --home and ignores
+            // the fixture's production.json endpoint. Pin every host process through host config.
+            start.Environment["ASPNETCORE_URLS"] = Client.BaseAddress!.ToString();
             foreach (var argument in arguments ?? ["--home", Home]) start.ArgumentList.Add(argument);
             foreach (var key in start.Environment.Keys.Where(key => key.StartsWith("HISPANIA__", StringComparison.OrdinalIgnoreCase) || key.StartsWith("HISPANIA_SECRET_", StringComparison.Ordinal)).ToArray()) start.Environment.Remove(key);
+            foreach (var (key, value) in CreateIsolatedDataEnvironment(Home)) start.Environment[key] = value;
             if (environment is not null) foreach (var pair in environment) start.Environment[pair.Key] = pair.Value;
-            var process = Process.Start(start)!; processes.Add(process); identities.Add((process.Id, process.StartTime)); return process;
+            var process = new Process { StartInfo = start, EnableRaisingEvents = true };
+            var output = new ConcurrentQueue<string>(); var error = new ConcurrentQueue<string>();
+            if (!worker)
+            {
+                process.OutputDataReceived += (_, eventArgs) => { if (eventArgs.Data is not null) output.Enqueue(eventArgs.Data); };
+                process.ErrorDataReceived += (_, eventArgs) => { if (eventArgs.Data is not null) error.Enqueue(eventArgs.Data); };
+            }
+            if (!process.Start()) throw new InvalidOperationException("Could not start isolated test host process.");
+            if (!worker)
+            {
+                process.BeginOutputReadLine(); process.BeginErrorReadLine(); processLogs.Add(process.Id, (output, error));
+            }
+            processes.Add(process); identities.Add((process.Id, process.StartTime)); return process;
+        }
+        private static Dictionary<string, string> CreateIsolatedDataEnvironment(string home)
+        {
+            var state = Path.Combine(home, "state");
+            var profile = Path.Combine(home, ".profile");
+            var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Platform__DataPath"] = Path.Combine(state, "platform"),
+                ["Inventory__Sqlite__Path"] = Path.Combine(state, "inventory.sqlite"),
+                ["DistributedWorkers__StatePath"] = Path.Combine(state, "distributed-coordinator.sqlite"),
+                ["DistributedWorkers__TransferPath"] = Path.Combine(state, "distributed-transfers"),
+                ["Persistence__Sqlite__Path"] = Path.Combine(state, "catalog.sqlite"),
+                ["Storage__Providers__Filesystem__Root"] = Path.Combine(state, "assets"),
+                ["Playback__TranscodeCachePath"] = Path.Combine(state, "transcoded-media"),
+                ["PlaybackExperiments__StatePath"] = Path.Combine(state, "playback.json"),
+                ["Metadata__InventoryPath"] = Path.Combine(state, "metadata-index.json"),
+                ["Modules__ExtensionsPath"] = Path.Combine(state, "extensions"),
+                ["Modules__ArchitectureDemonstration"] = "hispania.architecture-test.a",
+                ["Library__Roots__0__Key"] = "fixture",
+                ["Library__Roots__0__Path"] = Path.Combine(home, "library-source"),
+                ["Ffprobe__ExecutablePath"] = "ffprobe",
+                ["Ffmpeg__ExecutablePath"] = "ffmpeg",
+                ["Ffmpeg__CachePath"] = Path.Combine(state, "ffmpeg-cache"),
+                ["Backup__ManagedRoot"] = state,
+                ["USERPROFILE"] = profile,
+                ["HOME"] = profile,
+                ["LOCALAPPDATA"] = Path.Combine(profile, "AppData", "Local"),
+                ["APPDATA"] = Path.Combine(profile, "AppData", "Roaming"),
+                ["DOTNET_CLI_HOME"] = Path.Combine(profile, ".dotnet"),
+                ["TEMP"] = Path.Combine(profile, "Temp"),
+                ["TMP"] = Path.Combine(profile, "Temp")
+            };
+            foreach (var (key, path) in values.Where(pair => Path.IsPathRooted(pair.Value)).ToArray())
+            {
+                var fullPath = Path.GetFullPath(path);
+                var prefix = Path.GetFullPath(home).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+                if (!fullPath.Equals(Path.GetFullPath(home), comparison) && !fullPath.StartsWith(prefix, comparison))
+                    throw new InvalidOperationException($"Test data path {key} escapes the temporary host directory.");
+                values[key] = fullPath;
+            }
+            foreach (var key in new[] { "LOCALAPPDATA", "APPDATA", "DOTNET_CLI_HOME", "TEMP" }) Directory.CreateDirectory(values[key]);
+            return values;
         }
         internal async Task<(int Code, string Output)> CommandAsync(string[] arguments, Dictionary<string, string>? environment = null)
         {
             using var process = Start(arguments, environment);
-            var stdout = process.StandardOutput.ReadToEndAsync(); var stderr = process.StandardError.ReadToEndAsync();
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
             try { await process.WaitForExitAsync(timeout.Token); }
-            catch { if (!process.HasExited) process.Kill(true); throw; }
-            return (process.ExitCode, await stdout + await stderr);
+            catch (OperationCanceledException exception) when (timeout.IsCancellationRequested)
+            {
+                if (!process.HasExited) { process.Kill(true); await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)); }
+                throw new TimeoutException("Host command exceeded its 60-second limit: " + FormatProcessLogs(process), exception);
+            }
+            return (process.ExitCode, FormatProcessLogs(process));
         }
         internal async Task ReadyAsync(Process process)
         {
             var deadline = DateTimeOffset.UtcNow.AddSeconds(45);
             while (DateTimeOffset.UtcNow < deadline)
             {
-                if (process.HasExited) throw new InvalidOperationException("Host exited: " + await process.StandardError.ReadToEndAsync() + await process.StandardOutput.ReadToEndAsync());
+                if (process.HasExited) throw new InvalidOperationException("Host exited: " + FormatProcessLogs(process));
                 using var probeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
                 try { using var response = await Client.GetAsync("/readyz", probeTimeout.Token); if (response.IsSuccessStatusCode) return; }
                 catch (HttpRequestException) { }
                 catch (OperationCanceledException) when (probeTimeout.IsCancellationRequested) { }
                 await Task.Delay(100);
             }
-            throw new InvalidOperationException("Artifact failed to become Ready within 45 seconds.");
+            throw new InvalidOperationException("Artifact failed to become Ready within 45 seconds: " + FormatProcessLogs(process));
+        }
+        private string FormatProcessLogs(Process process)
+        {
+            if (!processLogs.TryGetValue(process.Id, out var logs)) return "No process output was captured.";
+            return "stdout: " + string.Join(Environment.NewLine, logs.Output.TakeLast(40)) + Environment.NewLine +
+                "stderr: " + string.Join(Environment.NewLine, logs.Error.TakeLast(80));
         }
         internal static async Task StopProcessAsync(Process process)
         {

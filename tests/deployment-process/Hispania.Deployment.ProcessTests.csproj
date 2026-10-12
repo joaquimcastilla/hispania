@@ -3,6 +3,8 @@
   <ItemGroup>
     <Compile Include="../web-contribution-fixtures/WebPackageFixture.cs" Link="WebPackageFixture.cs" />
     <ProjectReference Include="../../infrastructure/hosting/Hispania.Hosting.csproj" />
+    <ProjectReference Include="../../application/identity/Hispania.Identity.Application.csproj" />
+    <ProjectReference Include="../../infrastructure/platform/persistence-sqlite/Hispania.Platform.Persistence.Sqlite.csproj" />
     <ProjectReference Include="../../core/runtime/Hispania.Runtime.csproj" />
     <ProjectReference Include="../../modules/extension-demo/Hispania.ExtensionDemo.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />

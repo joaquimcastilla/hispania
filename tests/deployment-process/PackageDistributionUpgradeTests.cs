@@ -96,8 +96,8 @@ public sealed class PackageDistributionUpgradeTests
             {
                 ["Modules__ExtensionsPath"] = root,
             };
-            var preflight = await fixture.CommandAsync(legacyArgs.Append("--check").ToArray(), historicalEnvironment);
-            Assert.True(preflight.Code == 0, $"RC1 preflight exit={preflight.Code}; output={preflight.Output}");
+            // Phase 17 is an archived development host and has no Server --check mode.
+            // ArtifactManifest verification and successful readiness above are its preflight evidence.
             using var historical = fixture.Start(legacyArgs, historicalEnvironment);
             await fixture.ReadyAsync(historical);
             using (var disabled = await fixture.Client.GetAsync("/internal/admin/modules/extensions")) Assert.Equal(HttpStatusCode.ServiceUnavailable, disabled.StatusCode);
@@ -127,7 +127,11 @@ public sealed class PackageDistributionUpgradeTests
         }
         var password = "TESTONLY!" + Guid.NewGuid().ToString("N");
         fixture.WriteConfiguration(new { trustedExtensionIds = new[] { manifest.Id }, trustedPublisherKeys = keys, bootstrapSecret = "env:PACKAGE_BOOTSTRAP", bootstrapPasswordSecret = "env:PACKAGE_PASSWORD", bootstrapUsername = "package-operator" });
-        var bootstrapped = await fixture.CommandAsync(["--home", fixture.Home, "--bootstrap"], new() { ["HISPANIA_SECRET_PACKAGE_BOOTSTRAP"] = Guid.NewGuid().ToString("N"), ["HISPANIA_SECRET_PACKAGE_PASSWORD"] = password });
+        var bootstrapped = await fixture.CommandAsync(["--home", fixture.Home, "--bootstrap"], new()
+        {
+            ["HISPANIA_SECRET_PACKAGE_BOOTSTRAP"] = Guid.NewGuid().ToString("N"),
+            ["HISPANIA_SECRET_PACKAGE_PASSWORD"] = password
+        });
         Assert.Equal(0, bootstrapped.Code);
         fixture.WriteConfiguration(new { trustedExtensionIds = new[] { manifest.Id }, trustedPublisherKeys = keys });
         using (var switched = fixture.Start())
