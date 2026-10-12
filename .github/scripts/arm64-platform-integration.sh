@@ -193,9 +193,9 @@ cfg['bootstrapSecret']='env:CI_BOOTSTRAP'; cfg['bootstrapPasswordSecret']='env:C
 p.write_text(json.dumps(cfg, indent=2)+'\n', encoding='utf-8')
 PY
   if HISPANIA_SECRET_CI_BOOTSTRAP="$bootstrap_token" HISPANIA_SECRET_CI_PASSWORD="$probe_password" \
-    dotnet "$package/server/$app_dll" --home "$home" --check >>"$log" 2>&1; then :; else check_exit=$?; fail "candidate installation --check failed (exit=$check_exit)"; fi
+    dotnet "$home/app/server/$app_dll" --home "$home" --check >>"$log" 2>&1; then :; else check_exit=$?; fail "candidate installation --check failed (exit=$check_exit)"; fi
   HISPANIA_SECRET_CI_BOOTSTRAP="$bootstrap_token" HISPANIA_SECRET_CI_PASSWORD="$probe_password" \
-    dotnet "$package/server/$app_dll" --home "$home" --bootstrap >>"$log" 2>&1 || fail 'candidate administrator bootstrap failed'
+    dotnet "$home/app/server/$app_dll" --home "$home" --bootstrap >>"$log" 2>&1 || fail 'candidate administrator bootstrap failed'
   python3 - "$home/config/production.json" <<'PY'
 import json, pathlib, sys
 p=pathlib.Path(sys.argv[1]); cfg=json.loads(p.read_text(encoding='utf-8-sig'))
