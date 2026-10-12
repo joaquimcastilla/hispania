@@ -93,7 +93,6 @@ jobs:
     runs-on: [self-hosted, hispania, hispania-windows]
     env:
       HISPANIA_PHASE18_SERVICE_ROOT: C:\ProgramData\HispaniaPhase18CI
-      HISPANIA_PHASE21_NATIVE_HELPER: C:\ProgramData\HispaniaPhase21CI\windows-native-service-helper.ps1
     steps:
       - uses: actions/checkout@v7
         with:
@@ -117,6 +116,35 @@ jobs:
           HISPANIA_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
         run: |
           ./tools/ci/self-hosted-preflight.ps1
+      - name: Check protected Windows SCM helper and isolation
+        id: windows-scm
+        shell: pwsh
+        env:
+          HISPANIA_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          HISPANIA_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          HISPANIA_PHASE21_NATIVE_HELPER: C:\ProgramData\HispaniaPhase21CI\windows-native-service-helper.ps1
+        run: |
+          $helperDirectory = Split-Path $env:HISPANIA_PHASE21_NATIVE_HELPER
+          $pairs = @(
+            @{ source = './tools/ci/windows-native-service-helper.ps1'; installed = $env:HISPANIA_PHASE21_NATIVE_HELPER },
+            @{ source = './deployment/windows-service.ps1'; installed = Join-Path $helperDirectory 'windows-service.ps1' }
+          )
+          foreach ($pair in $pairs) {
+            $expected = (Get-Content -LiteralPath $pair.source -Raw).Replace("`r`n", "`n")
+            $actual = (Get-Content -LiteralPath $pair.installed -Raw).Replace("`r`n", "`n")
+            if ($actual -cne $expected) {
+              "enabled=false" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+              "Windows SCM BLOCKED: administrator-owned helper snapshot differs from the exact candidate source; no SCM operation was attempted." | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+              return
+            }
+          }
+          try {
+            ./tools/ci/self-hosted-preflight.ps1
+            "enabled=true" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+          } catch {
+            "enabled=false" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+            "Windows SCM BLOCKED: protected helper preflight did not pass; no SCM operation was attempted." | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          }
       - run: npm ci
         working-directory: apps/web
       - name: Audit current production dependencies
@@ -141,9 +169,14 @@ jobs:
         run: ./tools/publish-phase19-predecessor.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase20/predecessor-win-x64
       - name: Require clean-host, real SCM Server and Worker, upgrade and disaster recovery
         shell: pwsh
+        env:
+          HISPANIA_NATIVE_SCM_ENABLED: ${{ steps.windows-scm.outputs.enabled }}
         run: |
           New-Item -ItemType Directory -Path $env:HISPANIA_PHASE18_SERVICE_ROOT -Force | Out-Null
-          ./tools/test-phase18-production-deployment.ps1 -ArtifactDirectory .artifacts/phase18/win-x64 -PredecessorDirectory .artifacts/phase18/predecessor-win-x64 -WebPredecessorDirectory .artifacts/phase20/predecessor-win-x64 -ResultsDirectory .artifacts/phase18/evidence -RequireNativeService 2>&1 | Tee-Object -FilePath .artifacts/phase18/production-gate.log
+          $arguments = @('-ArtifactDirectory','.artifacts/phase18/win-x64','-PredecessorDirectory','.artifacts/phase18/predecessor-win-x64','-WebPredecessorDirectory','.artifacts/phase20/predecessor-win-x64','-ResultsDirectory','.artifacts/phase18/evidence')
+          if ($env:HISPANIA_NATIVE_SCM_ENABLED -eq 'true') { $arguments += '-RequireNativeService' }
+          & ./tools/test-phase18-production-deployment.ps1 @arguments 2>&1 | Tee-Object -FilePath .artifacts/phase18/production-gate.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Scan production artifacts and captured local outputs for secret canaries
         if: always()
         shell: pwsh
