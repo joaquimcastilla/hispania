@@ -197,10 +197,11 @@ public sealed class ArtifactProcessTests
         {
             ["HISPANIA_SECRET_PHASE21V_BOOTSTRAP"] = bootstrapSecret,
             ["HISPANIA_SECRET_PHASE21V_PASSWORD"] = password,
-            // Migration acceptance does not exercise media processing. Keep the fixture
-            // independent from optional FFmpeg binaries on hosted CI runners.
-            ["Ffprobe__ExecutablePath"] = "",
-            ["Ffmpeg__ExecutablePath"] = ""
+            // Complete RC1 validates these required media dependencies at bootstrap.
+            // The workflow supplies absolute paths after installing FFmpeg; local runs
+            // resolve the same executables from PATH.
+            ["Ffprobe__ExecutablePath"] = ResolveExecutablePath("HISPANIA_TEST_FFPROBE_PATH", "ffprobe"),
+            ["Ffmpeg__ExecutablePath"] = ResolveExecutablePath("HISPANIA_TEST_FFMPEG_PATH", "ffmpeg")
         };
         try
         {
@@ -521,6 +522,23 @@ public sealed class ArtifactProcessTests
         try { await process.WaitForExitAsync(timeout.Token); }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested) { if (!process.HasExited) process.Kill(true); throw new TimeoutException("Candidate Deployment CLI exceeded 90 seconds."); }
         return (process.ExitCode, (await stdout) + (await stderr));
+    }
+    private static string ResolveExecutablePath(string environmentVariable, string executableName)
+    {
+        var configured = Environment.GetEnvironmentVariable(environmentVariable);
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            if (Path.IsPathFullyQualified(configured) && File.Exists(configured)) return configured;
+            throw new InvalidOperationException($"{environmentVariable} must name an existing absolute executable path.");
+        }
+        var suffixes = OperatingSystem.IsWindows() ? new[] { ".exe", "" } : new[] { "" };
+        foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+            foreach (var suffix in suffixes)
+            {
+                var candidate = Path.GetFullPath(Path.Combine(directory, executableName + suffix));
+                if (File.Exists(candidate)) return candidate;
+            }
+        throw new InvalidOperationException($"Could not locate required {executableName} executable for the Complete RC1 fixture.");
     }
 
     internal sealed class HostFixture : IDisposable

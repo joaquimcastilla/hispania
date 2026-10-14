@@ -35,6 +35,31 @@ jobs:
           $epoch = (git show -s --format=%ct $env:GITHUB_SHA).Trim()
           if ($LASTEXITCODE -ne 0 -or $epoch -notmatch '^\d+$') { throw 'Could not determine the checked-out commit timestamp.' }
           "HISPANIA_SOURCE_COMMIT_EPOCH=$epoch" >> $env:GITHUB_ENV
+      - name: Install and verify Complete RC1 media prerequisites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($IsWindows) {
+            choco install ffmpeg --version=9.0.2 --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Pinned FFmpeg installation failed.' }
+            $ffprobe = (Get-Command ffprobe.exe -ErrorAction Stop).Source
+            $ffmpeg = (Get-Command ffmpeg.exe -ErrorAction Stop).Source
+          } else {
+            sudo apt-get update
+            if ($LASTEXITCODE -ne 0) { throw 'Could not update the Ubuntu package index for the RC1 prerequisite.' }
+            sudo apt-get install --yes ffmpeg
+            if ($LASTEXITCODE -ne 0) { throw 'FFmpeg installation failed.' }
+            $ffprobe = (Get-Command ffprobe -ErrorAction Stop).Source
+            $ffmpeg = (Get-Command ffmpeg -ErrorAction Stop).Source
+          }
+          foreach ($tool in @(@{Name='ffprobe';Path=$ffprobe}, @{Name='ffmpeg';Path=$ffmpeg})) {
+            if (-not [IO.Path]::IsPathFullyQualified($tool.Path) -or -not (Test-Path -LiteralPath $tool.Path -PathType Leaf)) { throw "Invalid $($tool.Name) executable path." }
+            $version = & $tool.Path -version 2>&1 | Select-Object -First 1
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace([string]$version)) { throw "$($tool.Name) did not execute successfully." }
+            "- $($tool.Name): $version ($($tool.Path))" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          }
+          "HISPANIA_TEST_FFPROBE_PATH=$ffprobe" >> $env:GITHUB_ENV
+          "HISPANIA_TEST_FFMPEG_PATH=$ffmpeg" >> $env:GITHUB_ENV
       - name: Execute pinned RC1 migration acceptance and preserve evidence
         shell: pwsh
         run: ./tools/test-phase21v2-migration.ps1 -ResultsDirectory .artifacts/phase21v2-${{ runner.os }}
