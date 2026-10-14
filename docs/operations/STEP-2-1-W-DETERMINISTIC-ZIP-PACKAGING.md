@@ -1,6 +1,6 @@
 # Step 2.1-W — Deterministic ZIP Packaging
 
-**Status: PARTIAL; hosted acceptance found two build-input reproducibility issues, now corrected locally and awaiting a rerun.** This record is scoped to the Step 2.1-W candidate and does not change the Step 2.1 final acceptance decision.
+**Status: PASS for Step 2.1-W.** This result is scoped to deterministic ZIP packaging and does not change the overall Step 2.1 final acceptance decision.
 
 ## Scope
 
@@ -34,11 +34,23 @@ The second run produced `linux-x64` ZIP hashes `67da6f233e806dacc6526428d021fae7
 
 The full publisher now accepts `linux-arm64` as well as `win-x64` and `linux-x64`; ARM64 manifests identify `aarch64` and the ASP.NET Core 10 ARM64 runtime prerequisite. This is cross-publication/package validation only; it does not claim native Complete ARM64 runtime or WindowsServices support.
 
-## Local evidence
+## Validation and accepted hosted evidence
 
-`dotnet test tests/deterministic-zip/Hispania.DeterministicZip.Tests.csproj --configuration Release` passed 12/12 tests on Windows with .NET SDK 10.0.401. The tests prove equal archive bytes for same file trees with different creation order and modification times; fixed entry ordering, DOS timestamp, Store method, empty directories and Unix modes; UTF-8 names; unsafe/absolute/traversal/reserved paths; known temp/editor residue; output containment; and link rejection. Case-collision behavior is exercised on Linux because Windows filesystems cannot create case-only sibling names.
+Local validation on Windows with .NET SDK 10.0.401 passed 13/13 deterministic ZIP tests, a Release build of the packer with 0 warnings and 0 errors, `actionlint`, PowerShell parser checks, and `git diff --check`. Hosted jobs also ran all 13 tests on each target OS.
 
-The hosted Phase 25 matrix is enabled through `deterministic_zip_only: true` and uses:
+The accepted Phase 25 run is [38643530263](https://github.com/joaquimcastilla/hispania/actions/runs/38643530263), source commit `4f8ae676d7ad1203ec90014d356feb2530352160`. It used `.NET SDK 10.0.401`, Node 24.19.0, independent clean checkouts, locked npm restores, separate output trees, deterministic publication and the same hosted OS for both builds per RID.
+
+| RID / runner | Files compared | Manifest SHA-256 A/B | ZIP A SHA-256 | ZIP B SHA-256 | ZIP size each | Result |
+|---|---:|---|---|---|---:|---|
+| `linux-x64` / `ubuntu-24.04` | 186 | `db9eedd924a71ef4e9f323bae28b6e69af58f3a7854dac6b1d024895340c60e0` | `bab00e7630adf76aef358968270f79ccf5d170bec8dc7fbcd635bd2cc0f33411` | same | 18,080,876 bytes | **PASS** |
+| `win-x64` / `windows-2025` | 187 | `b7e5545cb0db5b0616179c8d96f84aa84f7943c7d0d2fe98df512f496d6c6c3b` | `e833a3b75180dd6ebe8560cd30ff08887c3c9212407900194320702d7cd77686` | same | 19,440,649 bytes | **PASS** |
+| `linux-arm64` / `ubuntu-24.04` | 186 | `55e9c9b0eb3bd79e87b162652780f45e7789efe9c89c6d270673f2c91295f8ff` | `1b10801757ce2a3f229c50b405b607c0380c12957bd30308fdda706bcad39bc6` | same | 18,138,631 bytes | **PASS** |
+
+Each accepted package pair also had identical ZIP entry metadata and order; 200 entries for Linux RIDs and 201 for Windows. The two extracted trees per build matched the publication trees byte for byte. Manifest hashes A/B matched and each sidecar was verified.
+
+Compatibility acceptance passed for fresh ZIP-extracted installation, `ArtifactManifest` verification, and Server `--check` on `linux-x64` and `win-x64`. Linux unzip preserved the `operations/install-systemd.sh` executable bit. For `linux-arm64`, the manifest and architecture metadata were checked and the extracted artifact passed verification through a host-native Deployment CLI; this does not claim that ARM64 application code was executed or that Complete ARM64 is a supported runtime target.
+
+The workflow uses `deterministic_zip_only: true` and these GitHub-hosted runners:
 
 | RID | Hosted runner | Acceptance |
 |---|---|---|
@@ -46,14 +58,18 @@ The hosted Phase 25 matrix is enabled through `deterministic_zip_only: true` and
 | `linux-x64` | `ubuntu-24.04` | Two clean independent checkouts/builds, tree and ZIP SHA comparison, metadata, install/`--check`, execute-bit check |
 | `linux-arm64` | `ubuntu-24.04` | Two clean independent cross-publishes, tree and ZIP SHA comparison, ARM64 manifest, host-native Deployment CLI verifies target artifact, execute-bit check |
 
-The deterministic-only input skips Phase 25's pre-existing self-hosted Linux job. Workflow access remains limited to the existing authorized repository, actor, candidate branch, `workflow_dispatch`, and exact candidate SHA checks; permissions remain `contents: read`, checkout credentials are not persisted, and no production secrets are used.
+The deterministic-only input skipped Phase 25's pre-existing self-hosted Linux job. Workflow access remains limited to the existing authorized repository, actor, candidate branch, `workflow_dispatch`, and exact candidate SHA checks; permissions remain `contents: read`, checkout credentials are not persisted, and no production secrets are used. The three A/B ZIPs, sidecars, manifests and build evidence are retained as workflow artifacts.
 
-The workflow uploads each RID's first ZIP and checksums/manifest/build evidence. The job summary records runner OS, RID, source SHA, SDK version and hashes. Hosted results are pending; no local result should be represented as cross-platform acceptance.
+The two earlier runs, [38641818353](https://github.com/joaquimcastilla/hispania/actions/runs/38641818353) and [38642765016](https://github.com/joaquimcastilla/hispania/actions/runs/38642765016), were correctly rejected while identifying the PE timestamp and static asset `Last-Modified` sources described above. Their failed ZIP hashes are retained in the diagnostic record; they are not acceptance evidence.
 
 ## Open limitations
 
-- The no-compression ZIP increases archive size substantially relative to `Optimal`; record actual matrix sizes before deciding whether to retain it.
+- ZIP Store yields 18.1–19.4 MB archives. The historical Linux ZIP was about 7.2 MB with `Optimal`, so this is roughly 2.5 times larger for Linux x64; the size increase is the tradeoff for removing compressor variance.
 - The independent hosted builds use the same host OS for a given RID. They prove byte reproducibility on the designated hosted runner for each target, not byte equality of a single RID produced on different host OSes.
 - `.tar.gz` reproducibility is not established by this ticket.
 - Complete publication includes `Microsoft.Extensions.Hosting.WindowsServices` 10.0.0 through `infrastructure/hosting/Hispania.Hosting.csproj`; Platform-only builds suppress that package with `PlatformOnly=true`. This is existing behavior and is not changed here. Complete ARM64 cross-publishing does not establish WindowsServices behavior or general application runtime acceptance on ARM64.
 - Windows SCM installation still requires the complete Windows host and an elevated operator context. Platform-only has no Windows SCM service installation. Module contribution execution and production mTLS setup remain subject to the documented module authorization and deployment configuration contracts; this packaging change does not create or validate those capabilities.
+
+## Decision
+
+**Step 2.1-W: PASS.** The required SHA-256 equality, byte-identical extracted trees, equal manifests, package integrity, Linux execute permissions and applicable install checks passed on all three requested RIDs. The accepted evidence applies to implementation SHA `4f8ae676d7ad1203ec90014d356feb2530352160`; the current branch may add this evidence document as a documentation-only commit. Overall Step 2.1 remains governed by its separate final acceptance record. Step 2.1-X and Step 3 were not started or authorized by this packaging result.
