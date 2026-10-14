@@ -196,7 +196,11 @@ public sealed class ArtifactProcessTests
         var provisioningEnvironment = new Dictionary<string, string>
         {
             ["HISPANIA_SECRET_PHASE21V_BOOTSTRAP"] = bootstrapSecret,
-            ["HISPANIA_SECRET_PHASE21V_PASSWORD"] = password
+            ["HISPANIA_SECRET_PHASE21V_PASSWORD"] = password,
+            // Migration acceptance does not exercise media processing. Keep the fixture
+            // independent from optional FFmpeg binaries on hosted CI runners.
+            ["Ffprobe__ExecutablePath"] = "",
+            ["Ffmpeg__ExecutablePath"] = ""
         };
         try
         {
