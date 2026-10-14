@@ -85,7 +85,7 @@ try {
     }
 
     $stage = 'fixture-file-integrity'
-    foreach ($item in Get-ChildItem -LiteralPath $home -Force -Recurse) {
+    foreach ($item in Get-ChildItem -LiteralPath $home -Force -Recurse -ErrorAction SilentlyContinue) {
         if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Fixture contains a reparse point.' }
         if (-not $item.PSIsContainer) {
             $handle = [HispaniaHostedScmNative]::OpenMetadata($item.FullName)
@@ -153,6 +153,7 @@ try {
         if (-not $acl.AreAccessRulesProtected -or $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544') { throw 'Retained fixture secret ownership/ACL is unexpected.' }
     } elseif ($Action -eq 'reclaim') {
         $stage = 'fixture-acl-reclaim'
+        if (-not (Test-Path -LiteralPath (Join-Path $home 'secrets') -PathType Container)) { throw 'Fixture secret directory is missing.' }
         & icacls.exe (Join-Path $home 'secrets') /reset /T /Q | Out-Null
         if ($LASTEXITCODE -ne 0) { throw 'Fixture-only secret ACL reclaim failed.' }
     } else {
