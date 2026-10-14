@@ -73,20 +73,20 @@ try {
     $programDataPrefix = [IO.Path]::GetFullPath($env:ProgramData).TrimEnd('\') + '\'
     if (-not $root.StartsWith($programDataPrefix,[StringComparison]::OrdinalIgnoreCase)) { throw 'Service root escapes the ephemeral VM ProgramData fixture boundary.' }
     if (-not [IO.Path]::IsPathFullyQualified($InstallationHome) -or $InstallationHome.Contains('"') -or [regex]::IsMatch($InstallationHome,'[\x00-\x1f\x7f]')) { throw 'Fixture home must be a clean absolute path.' }
-    $home = [IO.Path]::GetFullPath($InstallationHome)
-    if ([IO.Path]::GetDirectoryName($home) -ine $root -or [IO.Path]::GetFileName($home) -cnotmatch '^hispania-phase18 isolated ñ ([0-9a-f]{32})$') { throw 'Fixture home is not a unique direct child of the job-scoped root.' }
-    $fixtureId = [regex]::Match([IO.Path]::GetFileName($home),'^hispania-phase18 isolated ñ ([0-9a-f]{32})$').Groups[1].Value
+    $fixtureHome = [IO.Path]::GetFullPath($InstallationHome)
+    if ([IO.Path]::GetDirectoryName($fixtureHome) -ine $root -or [IO.Path]::GetFileName($fixtureHome) -cnotmatch '^hispania-phase18 isolated ñ ([0-9a-f]{32})$') { throw 'Fixture home is not a unique direct child of the job-scoped root.' }
+    $fixtureId = [regex]::Match([IO.Path]::GetFileName($fixtureHome),'^hispania-phase18 isolated ñ ([0-9a-f]{32})$').Groups[1].Value
     $expectedSuffix = if ($Role -eq 'server') { '-Server' } else { '-Worker' }
     $expectedService = 'Hispania-Test-' + $fixtureId + $expectedSuffix
     if ($ServiceName -cne $expectedService) { throw 'Service name is not bound to this fixture GUID and role.' }
-    if (-not (Test-Path -LiteralPath $home -PathType Container) -or -not (Test-Path -LiteralPath $root -PathType Container)) { throw 'Fixture home or root does not exist.' }
-    foreach ($path in @($root,$home)) {
+    if (-not (Test-Path -LiteralPath $fixtureHome -PathType Container) -or -not (Test-Path -LiteralPath $root -PathType Container)) { throw 'Fixture home or root does not exist.' }
+    foreach ($path in @($root,$fixtureHome)) {
         if ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Fixture root/home is a reparse point.' }
     }
 
     if ($Action -eq 'reclaim') {
         $stage = 'fixture-acl-reclaim'
-        $secretsDirectory = Join-Path $home 'secrets'
+        $secretsDirectory = Join-Path $fixtureHome 'secrets'
         if (-not (Test-Path -LiteralPath $secretsDirectory -PathType Container)) { throw 'Fixture secret directory is missing.' }
         foreach ($item in @(Get-Item -LiteralPath $secretsDirectory -Force) + @(Get-ChildItem -LiteralPath $secretsDirectory -Force -Recurse -ErrorAction Stop)) {
             if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing fixture ACL reclaim through a reparse point.' }
@@ -97,7 +97,7 @@ try {
     }
 
     $stage = 'fixture-file-integrity'
-    foreach ($item in Get-ChildItem -LiteralPath $home -Force -Recurse -ErrorAction SilentlyContinue) {
+    foreach ($item in Get-ChildItem -LiteralPath $fixtureHome -Force -Recurse -ErrorAction SilentlyContinue) {
         if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Fixture contains a reparse point.' }
         if (-not $item.PSIsContainer) {
             $handle = [HispaniaHostedScmNative]::OpenMetadata($item.FullName)
@@ -120,7 +120,7 @@ try {
     $operationText = (Get-Content -LiteralPath $operations -Raw).Replace("`r`n","`n")
     $sourceText = (Get-Content -LiteralPath $sourceOperations -Raw).Replace("`r`n","`n")
     if ($operationText -cne $sourceText) { throw 'Packaged SCM operations do not match the reviewed checkout script.' }
-    $configurationPath = Join-Path $home 'config/production.json'
+    $configurationPath = Join-Path $fixtureHome 'config/production.json'
     if (-not (Test-Path -LiteralPath $configurationPath -PathType Leaf)) { throw 'Fixture production configuration is missing.' }
     $configuration = Get-Content -LiteralPath $configurationPath -Raw | ConvertFrom-Json
     if ($configuration.role -cne $Role -or $configuration.windowsServiceName -cne $expectedService) { throw 'Fixture configuration does not match the requested role/service.' }
@@ -128,15 +128,15 @@ try {
     $service = Get-CimInstance Win32_Service -Filter "Name='$expectedService'" -ErrorAction SilentlyContinue
     $serviceDirectory = if ($Role -eq 'server') { 'server' } else { 'worker' }
     $assembly = if ($Role -eq 'server') { 'Hispania.Server' } else { 'Hispania.WorkerAgent' }
-    $executable = [IO.Path]::GetFullPath((Join-Path $home "app/$serviceDirectory/$assembly.exe"))
-    $expectedPath = '"' + $executable + '" --home "' + $home + '"'
+    $executable = [IO.Path]::GetFullPath((Join-Path $fixtureHome "app/$serviceDirectory/$assembly.exe"))
+    $expectedPath = '"' + $executable + '" --home "' + $fixtureHome + '"'
     $processId = 0
 
     if ($Action -eq 'install') {
         $stage = 'install-ownership-check'
         if ($service) { throw 'Unique fixture service already exists; install refused.' }
         if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw 'Published fixture apphost is missing.' }
-        foreach ($privateItem in @(Get-Item -LiteralPath (Join-Path $home 'secrets')) + @(Get-ChildItem -LiteralPath (Join-Path $home 'secrets') -Force -Recurse -ErrorAction Stop)) {
+        foreach ($privateItem in @(Get-Item -LiteralPath (Join-Path $fixtureHome 'secrets')) + @(Get-ChildItem -LiteralPath (Join-Path $fixtureHome 'secrets') -Force -Recurse -ErrorAction Stop)) {
             if ($privateItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Secret fixture contains a reparse point.' }
             if (-not $privateItem.PSIsContainer) {
                 $handle = [HispaniaHostedScmNative]::OpenMetadata($privateItem.FullName)
@@ -170,13 +170,13 @@ try {
         Write-Output ('Controlled fixture process termination requested at {0:o}; pid={1}.' -f [DateTimeOffset]::UtcNow,$processId)
     } elseif ($Action -eq 'retained-secret') {
         $stage = 'retained-secret-check'
-        $secret = Join-Path $home 'secrets/NATIVE_CANARY.secret'
+        $secret = Join-Path $fixtureHome 'secrets/NATIVE_CANARY.secret'
         if (-not (Test-Path -LiteralPath $secret -PathType Leaf)) { throw 'Fixture secret was not retained.' }
         $acl = Get-Acl -LiteralPath $secret
         if (-not $acl.AreAccessRulesProtected -or $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544') { throw 'Retained fixture secret ownership/ACL is unexpected.' }
     } else {
         $stage = 'fixed-scm-operation'
-        & $operations -Action $Action -InstallationHome $home -Role $Role -ServiceName $expectedService
+        & $operations -Action $Action -InstallationHome $fixtureHome -Role $Role -ServiceName $expectedService
     }
     exit 0
 } catch {

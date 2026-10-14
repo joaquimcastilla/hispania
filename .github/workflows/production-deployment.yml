@@ -392,6 +392,18 @@ jobs:
           ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
           "HISPANIA_PHASE21_NATIVE_HELPER=$helper" | Add-Content -LiteralPath $env:GITHUB_ENV
           'HISPANIA_PHASE21_HOSTED_SCM=true' | Add-Content -LiteralPath $env:GITHUB_ENV
+      - name: Install and verify pinned FFmpeg prerequisites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          choco install ffmpeg --version=9.0.2 --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned FFmpeg installation failed.' }
+          foreach ($toolName in @('ffmpeg.exe','ffprobe.exe')) {
+            $tool = Get-Command $toolName -ErrorAction Stop
+            $versionOutput = & $tool.Source -version 2>&1 | Select-Object -First 1
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace([string]$versionOutput)) { throw "$toolName did not execute successfully." }
+            "- $toolName`: $versionOutput ($($tool.Source))" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          }
       - name: Build and publish exact win-x64 fixture artifact
         shell: pwsh
         run: |
@@ -426,12 +438,12 @@ jobs:
               $role = if ($service.Name.EndsWith('-Server')) { 'server' } else { 'worker' }
               $id = [regex]::Match($service.Name,'^Hispania-Test-([0-9a-f]{32})-(Server|Worker)$').Groups[1].Value
               $leaf = 'hispania-phase18 isolated ñ ' + $id
-              $home = Join-Path $root $leaf
+              $fixtureHome = Join-Path $root $leaf
               $assembly = if ($role -eq 'server') { 'Hispania.Server' } else { 'Hispania.WorkerAgent' }
               $directory = if ($role -eq 'server') { 'server' } else { 'worker' }
-              $expected = '"' + [IO.Path]::GetFullPath((Join-Path $home "app/$directory/$assembly.exe")) + '" --home "' + $home + '"'
-              if ($service.PathName -cne $expected -or $service.StartName -cne 'NT AUTHORITY\LocalService' -or [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($home)) -ine $root) { throw "Refusing to clean service not proven owned by the current fixture: $($service.Name)" }
-              & ./deployment/windows-service.ps1 -Action uninstall -InstallationHome $home -Role $role -ServiceName $service.Name
+              $expected = '"' + [IO.Path]::GetFullPath((Join-Path $fixtureHome "app/$directory/$assembly.exe")) + '" --home "' + $fixtureHome + '"'
+              if ($service.PathName -cne $expected -or $service.StartName -cne 'NT AUTHORITY\LocalService' -or [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($fixtureHome)) -ine $root) { throw "Refusing to clean service not proven owned by the current fixture: $($service.Name)" }
+              & ./deployment/windows-service.ps1 -Action uninstall -InstallationHome $fixtureHome -Role $role -ServiceName $service.Name
             }
             $remaining = @(Get-CimInstance Win32_Service | Where-Object { $_.Name -match '^Hispania-Test-[0-9a-f]{32}-(Server|Worker)$' })
             if ($remaining.Count -gt 0) { throw 'Hispania fixture service remains after cleanup.' }
