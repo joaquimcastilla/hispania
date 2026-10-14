@@ -10,6 +10,7 @@ if (-not $Server) {
         $writer.WriteLine((@{action=$Action;home=$InstallationHome;role=$Role;serviceName=$ServiceName} | ConvertTo-Json -Compress))
         $response = $reader.ReadLine() | ConvertFrom-Json
         if (-not $response.ok) { throw ('Restricted SCM helper rejected or failed the operation; operation={0}; stage={1}; win32={2}; hresult={3}.' -f $response.operation,$response.stage,$response.win32,$response.hresult) }
+        if ($response.operation -eq 'crash-test') { Write-Output ('Controlled fixture process termination requested at {0:o}; pid={1}.' -f [DateTime]::UtcNow,[uint32]$response.processId) }
     } finally { $pipe.Dispose() }
     exit 0
 }
@@ -18,6 +19,7 @@ Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 using System.IO.Pipes;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 public static class HispaniaCiFileLinks {
     [StructLayout(LayoutKind.Sequential)]
@@ -44,7 +46,49 @@ public static class HispaniaCiFileLinks {
         return handle;
     }
 }
+public static class HispaniaCiProcess {
+    [DllImport("kernel32.dll", SetLastError=true)]
+    private static extern SafeFileHandle OpenProcess(uint access, bool inherit, uint processId);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryFullProcessImageName(SafeFileHandle process, uint flags, StringBuilder imageName, ref uint size);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool TerminateProcess(SafeFileHandle process, uint exitCode);
+    public static bool TerminateIfImageMatches(uint processId, string expectedImage, out int error) {
+        // Keep this verified process handle open through termination so a PID cannot
+        // be recycled between checking its image and applying the test-only failure.
+        using (SafeFileHandle process = OpenProcess(0x0001 | 0x1000, false, processId)) {
+            if (process.IsInvalid) { error = Marshal.GetLastWin32Error(); return false; }
+            StringBuilder actualImage = new StringBuilder(32768);
+            uint size = (uint)actualImage.Capacity;
+            if (!QueryFullProcessImageName(process, 0, actualImage, ref size)) { error = Marshal.GetLastWin32Error(); return false; }
+            if (!String.Equals(System.IO.Path.GetFullPath(actualImage.ToString()), System.IO.Path.GetFullPath(expectedImage), StringComparison.OrdinalIgnoreCase)) { error = 87; return false; }
+            if (!TerminateProcess(process, 0xE2)) { error = Marshal.GetLastWin32Error(); return false; }
+            error = 0;
+            return true;
+        }
+    }
+}
 '@
+if ($Server) {
+    $brokerIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $brokerPrincipal = [Security.Principal.WindowsPrincipal]::new($brokerIdentity)
+    if (-not $brokerPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Privileged helper server must run in an elevated administrator token.' }
+    $approvedSha = [string]$env:HISPANIA_PHASE21_APPROVED_GIT_SHA
+    $approvalId = [string]$env:HISPANIA_PHASE21_APPROVAL_ID
+    $approvedNativeHash = [string]$env:HISPANIA_PHASE21_APPROVED_NATIVE_SHA256
+    $approvedServiceHash = [string]$env:HISPANIA_PHASE21_APPROVED_SERVICE_SHA256
+    if ($approvedSha -cnotmatch '^[0-9a-f]{40}$' -or $approvalId -cnotmatch '^[A-Za-z0-9._/-]{1,80}$' -or $approvedNativeHash -cnotmatch '^[0-9a-f]{64}$' -or $approvedServiceHash -cnotmatch '^[0-9a-f]{64}$') { throw 'Privileged helper startup requires complete SHA-bound independent approval metadata.' }
+    $nativeText = (Get-Content -LiteralPath $PSCommandPath -Raw).Replace("`r`n", "`n")
+    $servicePath = Join-Path $PSScriptRoot 'windows-service.ps1'
+    $serviceText = (Get-Content -LiteralPath $servicePath -Raw).Replace("`r`n", "`n")
+    $encoding = [Text.UTF8Encoding]::new($false)
+    $nativeHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($encoding.GetBytes($nativeText))).ToLowerInvariant()
+    $serviceHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($encoding.GetBytes($serviceText))).ToLowerInvariant()
+    if ($nativeHash -cne $approvedNativeHash -or $serviceHash -cne $approvedServiceHash) { throw 'Privileged helper generation does not match the approved source hashes.' }
+    ('{0:o} kind=broker-start; pid={1}; user_sid={2}; elevated_admin=true; source_sha={3}; approval_id={4}; native_sha256={5}; service_sha256={6}' -f [DateTime]::UtcNow,$PID,$brokerIdentity.User.Value,$approvedSha,$approvalId,$nativeHash,$serviceHash) | Add-Content -LiteralPath (Join-Path $PSScriptRoot 'broker.log')
+}
 $acl = [IO.Pipes.PipeSecurity]::new()
 foreach ($sid in @('S-1-5-20','S-1-5-18','S-1-5-32-544')) {
     $rights = if ($sid -eq 'S-1-5-20') { [IO.Pipes.PipeAccessRights]::ReadWrite } else { [IO.Pipes.PipeAccessRights]::FullControl }
@@ -61,11 +105,12 @@ while ([DateTime]::UtcNow -lt $deadline) {
         $writer = [IO.StreamWriter]::new($pipe); $writer.AutoFlush=$true
         $ok=$false
         $operation='validation'; $stage='request'; $win32=0; $hresult=0
+        $processId=0
         try {
             $line = $reader.ReadLine()
             if (-not $line -or $line.Length -gt 2048) { throw 'Request bound' }
             $request = $line | ConvertFrom-Json
-            if ($request.action -notin @('install','start','stop','restart','status','uninstall','reclaim','retained-secret') -or $request.role -notin @('server','worker') -or [string]$request.serviceName -cnotmatch '^Hispania-Test-[0-9a-f]{32}-(Server|Worker)$') { throw 'Operation rejected' }
+            if ($request.action -notin @('install','start','stop','restart','status','uninstall','reclaim','retained-secret','crash-test') -or $request.role -notin @('server','worker') -or [string]$request.serviceName -cnotmatch '^Hispania-Test-[0-9a-f]{32}-(Server|Worker)$') { throw 'Operation rejected' }
             if (($request.role -eq 'server' -and -not [string]$request.serviceName.EndsWith('-Server')) -or ($request.role -eq 'worker' -and -not [string]$request.serviceName.EndsWith('-Worker'))) { throw 'Service role mismatch' }
             $operation=$request.action; $stage='fixture-validation'
             $fixtureHome = [IO.Path]::GetFullPath([string]$request.home)
@@ -109,6 +154,28 @@ while ([DateTime]::UtcNow -lt $deadline) {
                 $stage='acl-reclaim'
                 & icacls.exe (Join-Path $fixtureHome 'secrets') /reset /T /Q | Out-Null
                 if ($LASTEXITCODE -ne 0) { throw 'ACL reclaim failed' }
+            } elseif ($request.action -eq 'crash-test') {
+                $stage='crash-service-ownership'
+                $directory=if ($request.role -eq 'server') { 'server' } else { 'worker' }
+                $assembly=if ($request.role -eq 'server') { 'Hispania.Server' } else { 'Hispania.WorkerAgent' }
+                $expectedExecutable=[IO.Path]::GetFullPath((Join-Path $fixtureHome "app/$directory/$assembly.exe"))
+                $expectedServicePath='"'+$expectedExecutable+'" --home "'+$fixtureHome+'"'
+                $registered=Get-CimInstance Win32_Service -Filter "Name='$($request.serviceName)'" -ErrorAction SilentlyContinue
+                if (-not $registered -or $registered.State -ne 'Running' -or [uint32]$registered.ProcessId -eq 0 -or $registered.PathName -cne $expectedServicePath -or $registered.StartName -cne 'NT AUTHORITY\LocalService') { throw 'Crash test requires the running LocalService owned by this exact fixture.' }
+                $ownedProcessId=[uint32]$registered.ProcessId
+                $process=Get-CimInstance Win32_Process -Filter "ProcessId=$ownedProcessId" -ErrorAction SilentlyContinue
+                if (-not $process -or [IO.Path]::GetFullPath([string]$process.ExecutablePath) -cne $expectedExecutable) { throw 'Crash test process image does not match the owned fixture executable.' }
+                # Re-read SCM registration and process identity immediately before opening
+                # the process handle; abort if either changed during validation.
+                $registeredAgain=Get-CimInstance Win32_Service -Filter "Name='$($request.serviceName)'" -ErrorAction SilentlyContinue
+                $processAgain=Get-CimInstance Win32_Process -Filter "ProcessId=$ownedProcessId" -ErrorAction SilentlyContinue
+                if (-not $registeredAgain -or $registeredAgain.State -ne 'Running' -or [uint32]$registeredAgain.ProcessId -ne $ownedProcessId -or $registeredAgain.PathName -cne $expectedServicePath -or $registeredAgain.StartName -cne 'NT AUTHORITY\LocalService' -or -not $processAgain -or [IO.Path]::GetFullPath([string]$processAgain.ExecutablePath) -cne $expectedExecutable) { throw 'Service or process identity changed; controlled crash aborted.' }
+                $stage='controlled-process-termination'
+                $nativeError=0
+                if (-not [HispaniaCiProcess]::TerminateIfImageMatches($ownedProcessId,$expectedExecutable,[ref]$nativeError)) { throw [ComponentModel.Win32Exception]::new($nativeError,'Could not terminate the verified fixture service process.') }
+                $processId=$ownedProcessId
+                $stage='crash-audit-record'
+                ('{0:o} operation=crash-test; run={1}; service={2}; pid={3}; result=terminated-verified-fixture-image' -f [DateTime]::UtcNow,$fixtureRunId,$request.serviceName,$processId) | Add-Content (Join-Path $PSScriptRoot 'broker.log')
             } else {
                 $stage='scm-helper'
                 & (Join-Path $PSScriptRoot 'windows-service.ps1') -Action $request.action -InstallationHome $fixtureHome -Role $request.role -ServiceName $request.serviceName | Out-Null
@@ -121,7 +188,7 @@ while ([DateTime]::UtcNow -lt $deadline) {
             # Fixed categories and numeric codes only; never serialize exception text or stderr.
             ('{0:o} operation={1}; stage={2}; win32={3}; hresult={4}' -f [DateTime]::UtcNow,$operation,$stage,$win32,$hresult) | Add-Content (Join-Path $PSScriptRoot 'broker.log')
         }
-        $writer.WriteLine((@{ok=$ok;operation=$operation;stage=$stage;win32=$win32;hresult=$hresult} | ConvertTo-Json -Compress))
+        $writer.WriteLine((@{ok=$ok;operation=$operation;stage=$stage;win32=$win32;hresult=$hresult;processId=$processId} | ConvertTo-Json -Compress))
     } catch [IO.IOException] {
         # A client disconnect must not terminate the privileged broker listener.
     } finally { $pipe.Dispose() }

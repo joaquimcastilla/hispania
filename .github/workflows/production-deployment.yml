@@ -90,7 +90,7 @@ jobs:
 
   windows-production:
     if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
-    runs-on: [self-hosted, hispania, hispania-windows]
+    runs-on: [self-hosted, hispania, hispania-windows, hispania-windows-scm-isolated]
     env:
       HISPANIA_PHASE18_SERVICE_ROOT: C:\ProgramData\HispaniaPhase18CI
     steps:
@@ -122,41 +122,117 @@ jobs:
         env:
           HISPANIA_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           HISPANIA_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
-          HISPANIA_PHASE21_NATIVE_HELPER: C:\ProgramData\HispaniaPhase21CI\windows-native-service-helper.ps1
+          HISPANIA_PHASE21_APPROVAL_MANIFEST: C:\ProgramData\HispaniaPhase21CI\active-approval.json
         run: |
-          $helperDirectory = Split-Path $env:HISPANIA_PHASE21_NATIVE_HELPER
-          $pairs = @(
-            @{ source = './tools/ci/windows-native-service-helper.ps1'; installed = $env:HISPANIA_PHASE21_NATIVE_HELPER },
-            @{ source = './deployment/windows-service.ps1'; installed = Join-Path $helperDirectory 'windows-service.ps1' }
-          )
-          $mismatch = $false
-          foreach ($pair in $pairs) {
-            $expected = (Get-Content -LiteralPath $pair.source -Raw).Replace("`r`n", "`n")
-            $actual = (Get-Content -LiteralPath $pair.installed -Raw).Replace("`r`n", "`n")
-            $encoding = [Text.UTF8Encoding]::new($false)
-            $expectedHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($encoding.GetBytes($expected))).ToLowerInvariant()
-            $actualHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($encoding.GetBytes($actual))).ToLowerInvariant()
-            "Helper $($pair.source) candidate_sha256=$expectedHash protected_sha256=$actualHash" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
-            if ($actual -cne $expected) {
-              $changes = @(Compare-Object -ReferenceObject @($expected -split "`n") -DifferenceObject @($actual -split "`n") -IncludeEqual:$false | Select-Object -First 40)
-              if ($changes.Count -gt 0) {
-                "First changed lines for $($pair.source) (SideIndicator: <= candidate, => protected):" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
-                foreach ($change in $changes) { "- $($change.SideIndicator) $($change.InputObject)" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY }
-              }
-              $mismatch = $true
-            }
-          }
-          if ($mismatch) {
-            "enabled=false" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
-            "Windows SCM BLOCKED: administrator-owned helper snapshots differ from the exact candidate source; no SCM operation was attempted." | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
-            return
-          }
+          $ErrorActionPreference = 'Stop'
+          "enabled=false" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
           try {
+            $protectedRoot = 'C:\ProgramData\HispaniaPhase21CI'
+            if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-20') { throw 'Windows runner identity is not the expected NetworkService account.' }
+            $candidateNative = (Get-Content -LiteralPath './tools/ci/windows-native-service-helper.ps1' -Raw).Replace("`r`n", "`n")
+            $candidateService = (Get-Content -LiteralPath './deployment/windows-service.ps1' -Raw).Replace("`r`n", "`n")
+            $encoding = [Text.UTF8Encoding]::new($false)
+            $nativeHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($encoding.GetBytes($candidateNative))).ToLowerInvariant()
+            $serviceHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($encoding.GetBytes($candidateService))).ToLowerInvariant()
+            $manifestPath = [IO.Path]::GetFullPath($env:HISPANIA_PHASE21_APPROVAL_MANIFEST)
+            $generationRoot = Join-Path (Join-Path $protectedRoot 'approved') $env:HISPANIA_CANDIDATE_SHA
+            $nativePath = Join-Path $generationRoot 'windows-native-service-helper.ps1'
+            $servicePath = Join-Path $generationRoot 'windows-service.ps1'
+            $writeMask = [Security.AccessControl.FileSystemRights]::Write -bor [Security.AccessControl.FileSystemRights]::Modify -bor [Security.AccessControl.FileSystemRights]::FullControl -bor [Security.AccessControl.FileSystemRights]::CreateFiles -bor [Security.AccessControl.FileSystemRights]::CreateDirectories -bor [Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor [Security.AccessControl.FileSystemRights]::ChangePermissions -bor [Security.AccessControl.FileSystemRights]::TakeOwnership
+            $privilegedWriteSids = @('S-1-5-18','S-1-5-32-544')
+            function Assert-ApprovedProtectedPath([string]$Path, [switch]$Directory) {
+              $item = Get-Item -LiteralPath $Path -Force
+              if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or ($Directory -and -not $item.PSIsContainer) -or (-not $Directory -and $item.PSIsContainer)) { throw "Protected path has an unexpected type or reparse point: $Path" }
+              $ancestor = [IO.Path]::GetFullPath($Path)
+              while ($ancestor) {
+                if (Test-Path -LiteralPath $ancestor) {
+                  $ancestorItem = Get-Item -LiteralPath $ancestor -Force
+                  if ($ancestorItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Protected path traverses a reparse point: $ancestor" }
+                }
+                if ($ancestor -eq [IO.Path]::GetPathRoot($ancestor).TrimEnd('\')) { break }
+                $ancestor = [IO.Path]::GetDirectoryName($ancestor)
+              }
+              $acl = Get-Acl -LiteralPath $Path
+              $ownerSid = ([Security.Principal.NTAccount]::new($acl.Owner)).Translate([Security.Principal.SecurityIdentifier]).Value
+              if ($ownerSid -notin @('S-1-5-18','S-1-5-32-544')) { throw "Protected path owner is not SYSTEM or Administrators: $Path" }
+              if (-not $acl.AreAccessRulesProtected) { throw "Protected path DACL inherits from an unpinned parent: $Path" }
+              foreach ($rule in $acl.Access) {
+                if ($rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow) { continue }
+                $sid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+                $rights = [Security.AccessControl.FileSystemRights]$rule.FileSystemRights
+                if (($rights -band $writeMask) -ne 0 -and $sid -notin $privilegedWriteSids) { throw "Protected path grants write access outside SYSTEM/Administrators: $Path" }
+              }
+              return $acl
+            }
+
+            $null = Assert-ApprovedProtectedPath $protectedRoot -Directory
+            $null = Assert-ApprovedProtectedPath (Join-Path $protectedRoot 'approved') -Directory
+            $null = Assert-ApprovedProtectedPath $generationRoot -Directory
+            $null = Assert-ApprovedProtectedPath $manifestPath
+            $null = Assert-ApprovedProtectedPath $nativePath
+            $null = Assert-ApprovedProtectedPath $servicePath
+
+            # Lock the manifest and both executable snapshots before hashing. A
+            # read-only handle denies write/delete opens until the always-cleanup step.
+            $readyFile = Join-Path $env:RUNNER_TEMP ("hispania-scm-lock-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT.json")
+            $lockScript = (Resolve-Path './tools/ci/hold-windows-scm-generation.ps1').Path
+            $pwshPath = (Get-Command pwsh -ErrorAction Stop).Source
+            $quote = { param([string]$Value) '"' + $Value.Replace('"','""') + '"' }
+            $arguments = @('-NoProfile','-NonInteractive','-File',(& $quote $lockScript),'-ReadyFile',(& $quote $readyFile),'-Path',(& $quote $manifestPath),'-Path',(& $quote $nativePath),'-Path',(& $quote $servicePath)) -join ' '
+            $locker = Start-Process -FilePath $pwshPath -ArgumentList $arguments -PassThru -WindowStyle Hidden
+            "HISPANIA_PHASE21_LOCKER_PID=$($locker.Id)" | Add-Content -LiteralPath $env:GITHUB_ENV
+            "HISPANIA_PHASE21_LOCKER_READY_FILE=$readyFile" | Add-Content -LiteralPath $env:GITHUB_ENV
+            $lockDeadline = [DateTime]::UtcNow.AddSeconds(15)
+            while (-not (Test-Path -LiteralPath $readyFile) -and [DateTime]::UtcNow -lt $lockDeadline) {
+              if ($locker.HasExited) { throw 'Protected helper generation lock process exited before acquiring all locks.' }
+              Start-Sleep -Milliseconds 200
+            }
+            if (-not (Test-Path -LiteralPath $readyFile)) { throw 'Timed out acquiring protected helper generation locks.' }
+            $lockRecord = Get-Content -LiteralPath $readyFile -Raw | ConvertFrom-Json
+            if ([int]$lockRecord.processId -ne $locker.Id -or $lockRecord.runId -cne $env:GITHUB_RUN_ID -or $lockRecord.runAttempt -cne $env:GITHUB_RUN_ATTEMPT) { throw 'Protected generation lock ownership record does not match this workflow run.' }
+            $manifestLockedHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+            if ($manifest.schemaVersion -ne 1 -or $manifest.repository -cne 'joaquimcastilla/hispania' -or $manifest.sourceSha -cne $env:HISPANIA_CANDIDATE_SHA -or $manifest.sourceSha -cnotmatch '^[0-9a-f]{40}$') { throw 'Protected approval manifest does not authorize this exact repository and candidate SHA.' }
+            if ($manifest.approvalId -cnotmatch '^[A-Za-z0-9._/-]{1,80}$' -or [string]::IsNullOrWhiteSpace([string]$manifest.approvalReference) -or [string]::IsNullOrWhiteSpace([string]$manifest.approvedByWindows) -or [string]::IsNullOrWhiteSpace([string]$manifest.approvedByGitHub)) { throw 'Independent approval metadata is incomplete.' }
+            if ($manifest.approvedByGitHub -cnotmatch '^[A-Za-z0-9-]{1,39}$' -or [string]::IsNullOrWhiteSpace([string]$manifest.brokerOwnerSid)) { throw 'Approval identity metadata is malformed.' }
+            if ($manifest.approvedByGitHub -ieq $env:HISPANIA_TRIGGERING_ACTOR) { throw 'Helper approval must come from a different GitHub identity than the workflow actor.' }
+            if ($manifest.hostIsolationVerified -ne $true -or $manifest.runnerHost -ine $env:COMPUTERNAME -or [string]::IsNullOrWhiteSpace([string]$manifest.hostIsolationEvidence)) { throw 'This runner host is not recorded as independently verified and isolated.' }
+            $approvalTime = [DateTimeOffset]::Parse([string]$manifest.approvedAtUtc).ToUniversalTime()
+            if ($approvalTime -gt [DateTimeOffset]::UtcNow.AddMinutes(5) -or $approvalTime -lt [DateTimeOffset]::UtcNow.AddDays(-30)) { throw 'Helper approval timestamp is invalid, future-dated, or older than 30 days.' }
+            if ($manifest.nativeHelperSha256 -cne $nativeHash -or $manifest.windowsServiceSha256 -cne $serviceHash) { throw 'Approval manifest hashes do not match the candidate source.' }
+            $null = Assert-ApprovedProtectedPath $protectedRoot -Directory
+            $null = Assert-ApprovedProtectedPath (Join-Path $protectedRoot 'approved') -Directory
+            $null = Assert-ApprovedProtectedPath $generationRoot -Directory
+            $null = Assert-ApprovedProtectedPath $manifestPath
+            $null = Assert-ApprovedProtectedPath $nativePath
+            $null = Assert-ApprovedProtectedPath $servicePath
+
+            $protectedNative = (Get-Content -LiteralPath $nativePath -Raw).Replace("`r`n", "`n")
+            $protectedService = (Get-Content -LiteralPath $servicePath -Raw).Replace("`r`n", "`n")
+            $protectedNativeHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($encoding.GetBytes($protectedNative))).ToLowerInvariant()
+            $protectedServiceHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($encoding.GetBytes($protectedService))).ToLowerInvariant()
+            if ($protectedNativeHash -cne $nativeHash -or $protectedServiceHash -cne $serviceHash) { throw 'Protected helper generation differs from the approved candidate source.' }
+
+            $brokerProcesses = @(Get-CimInstance Win32_Process -Filter "Name='pwsh.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($nativePath,[StringComparison]::OrdinalIgnoreCase) -ge 0 -and $_.CommandLine -match '(?i)(?:^|\s)-Server(?:\s|$)' })
+            if ($brokerProcesses.Count -ne 1) { throw "Expected one active elevated broker from the approved immutable helper generation; found $($brokerProcesses.Count)." }
+            $broker = $brokerProcesses[0]
+            $brokerOwner = Invoke-CimMethod -InputObject $broker -MethodName GetOwnerSid -ErrorAction Stop
+            if ($brokerOwner.ReturnValue -ne 0 -or $brokerOwner.Sid -cne $manifest.brokerOwnerSid -or $brokerOwner.Sid -eq 'S-1-5-20') { throw 'Active broker owner does not match the independently approved administrator identity.' }
+            $brokerLog = Join-Path $generationRoot 'broker.log'
+            $null = Assert-ApprovedProtectedPath $brokerLog
+            $brokerRecord = @(Get-Content -LiteralPath $brokerLog -Tail 500 | Where-Object { $_ -match "kind=broker-start; pid=$($broker.ProcessId);" } | Select-Object -Last 1)
+            if ($brokerRecord.Count -ne 1 -or $brokerRecord[0] -notmatch 'elevated_admin=true' -or $brokerRecord[0] -notmatch "user_sid=$([regex]::Escape($manifest.brokerOwnerSid))" -or $brokerRecord[0] -notmatch "source_sha=$($env:HISPANIA_CANDIDATE_SHA)" -or $brokerRecord[0] -notmatch "approval_id=$([regex]::Escape($manifest.approvalId))" -or $brokerRecord[0] -notmatch "native_sha256=$nativeHash" -or $brokerRecord[0] -notmatch "service_sha256=$serviceHash") { throw 'Active broker startup audit record is missing or does not match the approved generation.' }
+
+            $manifestHash = $manifestLockedHash
+            "SCM approval id=$($manifest.approvalId); approved_by=$($manifest.approvedByGitHub); source_sha=$($manifest.sourceSha); manifest_sha256=$manifestHash" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+            "SCM protected helper hashes: native=$nativeHash; service=$serviceHash; runner=$env:COMPUTERNAME; broker_pid=$($broker.ProcessId); runner_identity=NetworkService" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
             ./tools/ci/self-hosted-preflight.ps1
+            "HISPANIA_PHASE21_NATIVE_HELPER=$nativePath" | Add-Content -LiteralPath $env:GITHUB_ENV
+            "HISPANIA_PHASE21_APPROVAL_ID=$($manifest.approvalId)" | Add-Content -LiteralPath $env:GITHUB_ENV
             "enabled=true" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
           } catch {
             "enabled=false" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
-            "Windows SCM BLOCKED: protected helper preflight did not pass; no SCM operation was attempted." | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+            "Windows SCM BLOCKED before any SCM operation: $($_.Exception.Message)" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
           }
       - run: npm ci
         working-directory: apps/web
@@ -215,3 +291,25 @@ jobs:
             .artifacts/phase18/win-x64/artifact-manifest.json
             .artifacts/phase18/*.npm-audit.json
             .artifacts/phase18/win-x64.zip*
+      - name: Release protected SCM helper generation lock
+        if: always()
+        shell: pwsh
+        run: |
+          $lockPid = $env:HISPANIA_PHASE21_LOCKER_PID
+          $readyFile = $env:HISPANIA_PHASE21_LOCKER_READY_FILE
+          if (-not $lockPid -or -not $readyFile) { Write-Output 'No protected SCM generation lock was started.'; exit 0 }
+          $lockScript = [IO.Path]::GetFullPath((Join-Path $PWD 'tools/ci/hold-windows-scm-generation.ps1'))
+          $process = Get-CimInstance Win32_Process -Filter "ProcessId=$lockPid" -ErrorAction SilentlyContinue
+          if ($process) {
+            if ($process.Name -notmatch '^(?i:pwsh)\.exe$' -or -not $process.CommandLine.Contains($lockScript,[StringComparison]::OrdinalIgnoreCase) -or -not $process.CommandLine.Contains($readyFile,[StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing to stop a process that is not this run''s exact lock holder.' }
+            Stop-Process -Id ([int]$lockPid) -Force
+            $deadline = [DateTime]::UtcNow.AddSeconds(10)
+            while ((Get-Process -Id ([int]$lockPid) -ErrorAction SilentlyContinue) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 200 }
+            if (Get-Process -Id ([int]$lockPid) -ErrorAction SilentlyContinue) { throw 'Protected SCM generation lock process did not exit.' }
+          }
+          if (Test-Path -LiteralPath $readyFile) {
+            $record = Get-Content -LiteralPath $readyFile -Raw | ConvertFrom-Json
+            if ($record.runId -cne $env:GITHUB_RUN_ID -or $record.runAttempt -cne $env:GITHUB_RUN_ATTEMPT -or [int]$record.processId -ne [int]$lockPid) { throw 'Refusing to remove a lock marker not owned by this workflow run.' }
+            Remove-Item -LiteralPath $readyFile -Force
+          }
+          Write-Output 'Protected SCM helper generation lock released.'

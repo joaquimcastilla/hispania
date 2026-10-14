@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -28,9 +29,19 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
         var canary = "PHASE18_SUPER_SECRET_CANARY_NATIVE_" + Guid.NewGuid().ToString("N");
         var canaryPath = Path.Combine(fixture.Home, "secrets", "NATIVE_CANARY.secret");
         File.WriteAllText(canaryPath, canary); WorkerDeploymentTests.Protect(canaryPath);
+        var adminPassword = "Native!" + Guid.NewGuid().ToString("N");
+        if (role == "server")
+        {
+            fixture.WriteConfiguration(new { role, windowsServiceName = serviceName, bootstrapSecret = "file:NATIVE_CANARY", bootstrapPasswordSecret = "env:PHASE18_NATIVE_ADMIN_PASSWORD", bootstrapUsername = "deployment-operator" });
+            var bootstrap = await fixture.CommandAsync(["--home", fixture.Home, "--bootstrap"], new() { ["HISPANIA_SECRET_PHASE18_NATIVE_ADMIN_PASSWORD"] = adminPassword });
+            Assert.Equal(0, bootstrap.Code);
+            Assert.DoesNotContain(canary, bootstrap.Output, StringComparison.Ordinal);
+            Assert.DoesNotContain(adminPassword, bootstrap.Output, StringComparison.Ordinal);
+            // Remove bootstrap references before the service is installed or started.
+            fixture.WriteConfiguration(new { role, windowsServiceName = serviceName });
+        }
         var retainedBackup = Path.Combine(fixture.Home, "backups", "native-retain.txt");
         File.WriteAllText(retainedBackup, "retained backup evidence");
-        fixture.WriteConfiguration(new { bootstrapSecret = "file:NATIVE_CANARY" });
         using var serverCertificate = WorkerDeploymentTests.Certificate("native-coordinator");
         using var clientCertificate = WorkerDeploymentTests.Certificate("native-worker");
         WebApplication? coordinator = null;
@@ -65,7 +76,7 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
                 await RunAsync("sc.exe", ["qfailure", serviceName]);
                 await AssertOwnedWindowsServiceAsync(serviceName, fixture.Home, role);
                 WindowsServiceRecovery.AssertConfigured(serviceName);
-                output.WriteLine("SCM definition: LocalService confirmed; recovery definition validated; crash recovery runtime not exercised.");
+                output.WriteLine("SCM definition: LocalService confirmed; recovery actions validated; controlled crash will be checked after readiness.");
             }
             else
             {
@@ -77,8 +88,45 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
             }
             await ServiceAsync("start", fixture.Home, role, serviceName); await WaitAsync(1);
             await LivenessAsync();
+            if (OperatingSystem.IsWindows())
+            {
+                Assert.False(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("HISPANIA_PHASE21_NATIVE_HELPER")), "Real SCM recovery requires the approved restricted privileged helper.");
+                if (role == "server")
+                {
+                    using var initialLoginBody = new StringContent(JsonSerializer.Serialize(new { username = "deployment-operator", password = adminPassword }), System.Text.Encoding.UTF8, "application/json");
+                    using var initialLogin = await fixture.Client.PostAsync("/api/identity/login", initialLoginBody);
+                    Assert.Equal(System.Net.HttpStatusCode.OK, initialLogin.StatusCode);
+                }
+                var beforeCrash = await ReadWindowsServiceAsync(serviceName);
+                Assert.Equal("Running", beforeCrash.State);
+                Assert.True(beforeCrash.ProcessId > 0);
+                var crashStarted = DateTimeOffset.UtcNow;
+                var crashResult = await NativeOperationAsync("crash-test", fixture.Home, role, serviceName, MissingNativeHelperAsync);
+                var pidMatch = System.Text.RegularExpressions.Regex.Match(crashResult, @"pid=(\d+)");
+                Assert.True(pidMatch.Success, "Restricted helper did not return the verified fixture PID.");
+                var crashedPid = int.Parse(pidMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+                Assert.Equal(beforeCrash.ProcessId, crashedPid);
+                output.WriteLine("SCM controlled crash requested: UTC={0:o}; service={1}; verified PID={2}; state before=Running.", crashStarted, serviceName, crashedPid);
+
+                var recovered = await WaitForWindowsScmRecoveryAsync(serviceName, crashedPid, TimeSpan.FromSeconds(90));
+                output.WriteLine("SCM recovery observed: UTC={0:o}; service={1}; previous PID={2}; new PID={3}; state={4}.", DateTimeOffset.UtcNow, serviceName, crashedPid, recovered.ProcessId, recovered.State);
+                if (role == "worker") await WaitAsync(2);
+                else
+                {
+                    await WaitAsync(1);
+                    using var loginBody = new StringContent(JsonSerializer.Serialize(new { username = "deployment-operator", password = adminPassword }), System.Text.Encoding.UTF8, "application/json");
+                    using var login = await fixture.Client.PostAsync("/api/identity/login", loginBody);
+                    Assert.Equal(System.Net.HttpStatusCode.OK, login.StatusCode);
+                    Assert.True(File.Exists(Path.Combine(fixture.Home, "state", "platform", "identity.sqlite")));
+                }
+                await LivenessAsync();
+                Assert.Equal("retained backup evidence", File.ReadAllText(retainedBackup));
+                var crashEvents = await ReadWindowsScmCrashEventsAsync(serviceName, crashStarted.AddSeconds(-2));
+                Assert.Contains("7031", crashEvents, StringComparison.Ordinal);
+                output.WriteLine("SCM failure event observed: {0}", crashEvents);
+            }
             await ServiceAsync("status", fixture.Home, role, serviceName);
-            await ServiceAsync("restart", fixture.Home, role, serviceName); await WaitAsync(2);
+            await ServiceAsync("restart", fixture.Home, role, serviceName); await WaitAsync(OperatingSystem.IsWindows() && role == "worker" ? 3 : 2);
             await LivenessAsync();
             var timer = Stopwatch.StartNew(); await ServiceAsync("stop", fixture.Home, role, serviceName);
             Assert.True(timer.Elapsed < TimeSpan.FromSeconds(40));
@@ -101,7 +149,8 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
             if (OperatingSystem.IsWindows())
             {
                 foreach (var log in Directory.EnumerateFiles(Path.Combine(fixture.Home, "logs"), "*", SearchOption.AllDirectories)) output.WriteLine(File.ReadAllText(log));
-                output.WriteLine(await RunAsync("pwsh", ["-NoProfile", "-Command", "Get-WinEvent -FilterHashtable @{LogName='System';ProviderName='Service Control Manager';StartTime=(Get-Date).AddMinutes(-5)} -ErrorAction SilentlyContinue | Select-Object -First 12 TimeCreated,Id,Message | Format-List | Out-String; exit 0"]));
+                var eventCommand = "Get-WinEvent -FilterHashtable @{LogName='System';ProviderName='Service Control Manager';StartTime=(Get-Date).AddMinutes(-5)} -ErrorAction SilentlyContinue | Where-Object { $_.Message -like '*" + serviceName + "*' } | Select-Object -First 12 TimeCreated,Id,Message | Format-List | Out-String; exit 0";
+                output.WriteLine(await RunAsync("pwsh", ["-NoProfile", "-Command", eventCommand]));
             }
             throw;
         }
@@ -144,6 +193,40 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
             using var response = await fixture.Client.GetAsync("/healthz");
             Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
         }
+        async Task<(string State, int ProcessId)> WaitForWindowsScmRecoveryAsync(string name, int failedPid, TimeSpan timeout)
+        {
+            var deadline = DateTimeOffset.UtcNow + timeout;
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                var current = await ReadWindowsServiceAsync(name);
+                if (current.State == "Running" && current.ProcessId > 0 && current.ProcessId != failedPid) return current;
+                await Task.Delay(500);
+            }
+            var last = await ReadWindowsServiceAsync(name);
+            throw new InvalidOperationException($"SCM did not recover owned service {name}; previous PID={failedPid}; last state={last.State}; PID={last.ProcessId}.");
+        }
+        async Task<string> ReadWindowsScmCrashEventsAsync(string name, DateTimeOffset since)
+        {
+            var start = since.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture);
+            var command = "$since=[datetime]::Parse('" + start + "').ToLocalTime(); $events=@(Get-WinEvent -FilterHashtable @{LogName='System';ProviderName='Service Control Manager';StartTime=$since} -ErrorAction SilentlyContinue | Where-Object { $_.Id -in @(7031,7034) -and $_.Message -like '*" + name + "*' } | Select-Object Id,@{Name='TimeUtc';Expression={$_.TimeCreated.ToUniversalTime().ToString('o')}}); $events | ConvertTo-Json -Compress";
+            var deadline = DateTimeOffset.UtcNow.AddSeconds(20);
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                var result = await RunAsync("pwsh", ["-NoProfile", "-Command", command]);
+                if (!string.IsNullOrWhiteSpace(result) && result.Contains("7031", StringComparison.Ordinal)) return result;
+                await Task.Delay(500);
+            }
+            return await RunAsync("pwsh", ["-NoProfile", "-Command", command]);
+        }
+    }
+
+    private static async Task<(string State, int ProcessId)> ReadWindowsServiceAsync(string serviceName)
+    {
+        var command = "$service=Get-CimInstance Win32_Service -Filter \"Name='" + serviceName + "'\"; if($service){$service.State+'|'+$service.ProcessId}";
+        var result = (await RunAsync("pwsh", ["-NoProfile", "-Command", command])).Trim();
+        var values = result.Split('|');
+        Assert.Equal(2, values.Length);
+        return (values[0], int.Parse(values[1], CultureInfo.InvariantCulture));
     }
 
     private static async Task ServiceAsync(string action, string home, string role, string serviceName)

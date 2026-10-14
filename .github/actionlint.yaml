@@ -7,4 +7,5 @@ self-hosted-runner:
     - hispania-win-ci
     - hispania-arm64
     - hispania-arm64-integration
+    - hispania-windows-scm-isolated
 config-variables: null

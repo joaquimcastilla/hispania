@@ -28,6 +28,7 @@ try {
     if(-not $actual.AreAccessRulesProtected -or @($actual.Access).Count -ne 1 -or $actual.Access[0].IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-20') {throw 'Private-file regression requires NetworkService-only access'}
     # No test service is installed yet: reaching SCM proves metadata validation passed.
     Require-Rejection status $fixture 'scm-helper'
+    Require-Rejection 'crash-test' $fixture 'crash-service-ownership'
     if((Get-Acl $secret).Sddl -cne $before) {throw 'Metadata query changed private ACL'}
     New-Item -ItemType HardLink -Path (Join-Path $fixture 'linked.txt') -Value $secret | Out-Null
     Require-Rejection reclaim $fixture 'metadata-query'
