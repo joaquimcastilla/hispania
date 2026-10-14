@@ -124,6 +124,17 @@ try {
         $stage = 'install-ownership-check'
         if ($service) { throw 'Unique fixture service already exists; install refused.' }
         if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw 'Published fixture apphost is missing.' }
+        foreach ($privateItem in @(Get-Item -LiteralPath (Join-Path $home 'secrets')) + @(Get-ChildItem -LiteralPath (Join-Path $home 'secrets') -Force -Recurse -ErrorAction Stop)) {
+            if ($privateItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Secret fixture contains a reparse point.' }
+            if (-not $privateItem.PSIsContainer) {
+                $handle = [HispaniaHostedScmNative]::OpenMetadata($privateItem.FullName)
+                try {
+                    if ($handle.IsInvalid) { throw 'Could not safely inspect a protected secret file.' }
+                    $info = [HispaniaHostedScmNative+FileInformation]::new()
+                    if (-not [HispaniaHostedScmNative]::GetFileInformationByHandle($handle,[ref]$info) -or $info.Links -ne 1 -or ($info.Attributes -band 0x400)) { throw 'Protected secret hardlink/reparse validation failed.' }
+                } finally { $handle.Dispose() }
+            }
+        }
     } elseif ($Action -notin @('reclaim') -and $Action -ne 'retained-secret') {
         $stage = 'service-ownership-check'
         if (-not $service -or $service.PathName -cne $expectedPath -or $service.StartName -cne 'NT AUTHORITY\LocalService') { throw 'SCM registration does not belong to this exact fixture; operation refused.' }
