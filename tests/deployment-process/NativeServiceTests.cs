@@ -274,10 +274,13 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
     private static async Task AssertOwnedWindowsServiceAsync(string serviceName, string home, string role)
     {
         var detail = await RunAsync("pwsh", ["-NoProfile", "-Command", "Get-CimInstance Win32_Service -Filter \"Name='" + serviceName + "'\" | Select-Object Name,PathName,StartName | ConvertTo-Json -Compress"]);
-        Assert.Contains(serviceName, detail, StringComparison.Ordinal);
-        Assert.Contains(Path.GetFullPath(Path.Combine(home, "app", role == "server" ? "server/Hispania.Server.exe" : "worker/Hispania.WorkerAgent.exe")), detail, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("--home", detail, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(Path.GetFullPath(home), detail, StringComparison.OrdinalIgnoreCase);
+        using var document = JsonDocument.Parse(detail);
+        var service = document.RootElement;
+        Assert.Equal(serviceName, service.GetProperty("Name").GetString());
+        var expectedExecutable = Path.GetFullPath(Path.Combine(home, "app", role == "server" ? "server/Hispania.Server.exe" : "worker/Hispania.WorkerAgent.exe"));
+        var expectedPath = $"\"{expectedExecutable}\" --home \"{Path.GetFullPath(home)}\"";
+        Assert.Equal(expectedPath, service.GetProperty("PathName").GetString(), ignoreCase: true);
+        Assert.Equal("NT AUTHORITY\\LocalService", service.GetProperty("StartName").GetString(), ignoreCase: true);
     }
 
     private static async Task<string> TryGetWindowsServiceAsync(string serviceName) =>
