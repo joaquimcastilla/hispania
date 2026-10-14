@@ -53,4 +53,19 @@ internal static class InstallationMetadata
         catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
         { throw new DeploymentException(6, $"Installed artifact and durable installation metadata differ ({stage}); inspect verified upgrade/recovery evidence before starting. Run the host from HOME/app."); }
     }
+
+    internal static void ValidateManifestBinding(string home)
+    {
+        try
+        {
+            var app = Path.Combine(home, "app");
+            var artifact = ArtifactManifest.Verify(app);
+            var record = JsonSerializer.Deserialize<Record>(File.ReadAllText(PathFor(home)), ProductionConfiguration.Json) ?? throw new InvalidDataException();
+            if (record.DistributionVersion != artifact.DistributionVersion || record.GitSha != artifact.GitSha ||
+                record.TargetRid != artifact.TargetRid || record.ManifestSha256 != Digest(app) || record.InstalledUtc == default)
+                throw new InvalidDataException();
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
+        { throw new DeploymentException(6, "Installed artifact and durable installation metadata differ; inspect verified upgrade/recovery evidence before migration.", exception); }
+    }
 }
