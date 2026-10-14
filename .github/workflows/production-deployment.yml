@@ -7,9 +7,14 @@ on:
         description: Full SHA of the exact Step 2.1 candidate commit to validate.
         required: true
         type: string
+      hosted_scm_acceptance:
+        description: Run only the isolated GitHub-hosted Windows SCM acceptance job.
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
-  group: phase21-self-hosted
+  group: ${{ inputs.hosted_scm_acceptance && 'phase21-hosted-windows-scm' || 'phase21-self-hosted' }}
   cancel-in-progress: false
 
 permissions:
@@ -17,7 +22,7 @@ permissions:
 
 jobs:
   linux-production:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha && inputs.hosted_scm_acceptance != true
     runs-on: [self-hosted, hispania, hispania-linux]
     env:
       HISPANIA_PHASE18_SERVICE_ROOT: /opt/hispania-phase18-ci
@@ -89,7 +94,7 @@ jobs:
             .artifacts/phase18/linux-x64.tar.gz*
 
   windows-production:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha && inputs.hosted_scm_acceptance != true
     runs-on: [self-hosted, hispania, hispania-windows, hispania-windows-scm-isolated]
     env:
       HISPANIA_PHASE18_SERVICE_ROOT: C:\ProgramData\HispaniaPhase18CI
@@ -313,3 +318,136 @@ jobs:
             Remove-Item -LiteralPath $readyFile -Force
           }
           Write-Output 'Protected SCM helper generation lock released.'
+
+  windows-scm-hosted-acceptance:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha && inputs.hosted_scm_acceptance == true
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      HISPANIA_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+      HISPANIA_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+      - name: Verify GitHub-hosted Windows isolation and SCM privilege
+        shell: pwsh
+        env:
+          HISPANIA_RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_ACTIONS -cne 'true' -or $env:HISPANIA_RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64') { throw 'This acceptance job must run on an ephemeral GitHub-hosted Windows x64 VM.' }
+          if ($env:GITHUB_REPOSITORY -cne 'joaquimcastilla/hispania' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch' -or $env:GITHUB_REF -cne 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' -or $env:GITHUB_ACTOR -cne 'joaquimcastilla' -or $env:HISPANIA_TRIGGERING_ACTOR -cne 'joaquimcastilla' -or $env:HISPANIA_CANDIDATE_SHA -cne $env:GITHUB_SHA) { throw 'Hosted SCM acceptance is not authorized for this exact repository, actor, branch, and SHA.' }
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'GitHub-hosted runner token is not a member of Administrators; SCM gate stopped before creating a service.' }
+          $integrity = @(whoami.exe /groups /fo csv | ConvertFrom-Csv | Where-Object { $_.SID -eq 'S-1-16-12288' -or $_.'Nombre conocido' -match 'High Mandatory|Nivel obligatorio alto' })
+          if ($integrity.Count -eq 0) { throw 'GitHub-hosted runner process is not high-integrity/elevated; SCM gate stopped before creating a service.' }
+          $os = Get-CimInstance Win32_OperatingSystem
+          if ($os.Caption -notmatch 'Windows Server 2025') { throw "Expected Windows Server 2025, found $($os.Caption)." }
+          $sdk = (& dotnet --list-sdks) -join "`n"
+          if ($LASTEXITCODE -ne 0 -or $sdk -notmatch '(?m)^10\.0\.') { throw '.NET 10 SDK is unavailable on the hosted runner.' }
+          $existing = @(Get-CimInstance Win32_Service | Where-Object { $_.Name -match '^Hispania-Test-[0-9a-f]{32}-(Server|Worker)$' })
+          if ($existing.Count -gt 0) { throw 'Unexpected pre-existing Hispania test service found; refusing to use SCM.' }
+          foreach ($productionName in @('HispaniaServer','HispaniaWorker')) {
+            if (Get-Service -Name $productionName -ErrorAction SilentlyContinue) { throw "Unexpected pre-existing $productionName service found; refusing to use SCM." }
+          }
+          $baseRoot = [IO.Path]::GetFullPath((Join-Path $env:ProgramData 'HispaniaPhase18CI'))
+          if ((Test-Path -LiteralPath $baseRoot) -and ((Get-Item -LiteralPath $baseRoot -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Hispania fixture base is a reparse point.' }
+          $root = [IO.Path]::GetFullPath((Join-Path $baseRoot "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"))
+          $programDataPrefix = [IO.Path]::GetFullPath($env:ProgramData).TrimEnd('\') + '\'
+          if (-not $root.StartsWith($programDataPrefix,[StringComparison]::OrdinalIgnoreCase) -or (Test-Path -LiteralPath $root)) { throw 'Per-run fixture root is unsafe or already exists on this ephemeral VM.' }
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          if ((Get-Item -LiteralPath $root -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Fixture root is a reparse point.' }
+          & icacls.exe $root /grant '*S-1-5-19:(OI)(CI)RX' /Q | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not grant LocalService fixture-root traversal/read access.' }
+          "HISPANIA_PHASE18_SERVICE_ROOT=$root" | Add-Content -LiteralPath $env:GITHUB_ENV
+          "HISPANIA_RUNNER_ENVIRONMENT=$env:HISPANIA_RUNNER_ENVIRONMENT" | Add-Content -LiteralPath $env:GITHUB_ENV
+          $helper = (Resolve-Path './tools/ci/windows-hosted-scm-helper.ps1').Path
+          $hashText = (Get-Content -LiteralPath $helper -Raw).Replace("`r`n","`n")
+          $helperHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.UTF8Encoding]::new($false).GetBytes($hashText))).ToLowerInvariant()
+          $serviceText = (Get-Content -LiteralPath './deployment/windows-service.ps1' -Raw).Replace("`r`n","`n")
+          $serviceHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.UTF8Encoding]::new($false).GetBytes($serviceText))).ToLowerInvariant()
+          $brokerText = (Get-Content -LiteralPath './tools/ci/windows-native-service-helper.ps1' -Raw).Replace("`r`n","`n")
+          $brokerHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.UTF8Encoding]::new($false).GetBytes($brokerText))).ToLowerInvariant()
+          @(
+            '### Hosted Windows SCM preflight',
+            "- OS: $($os.Caption) ($($os.Version)); architecture: $env:RUNNER_ARCH",
+            "- Runner environment: $env:HISPANIA_RUNNER_ENVIRONMENT; runner: $env:RUNNER_NAME",
+            "- Identity SID: $($identity.User.Value); administrator membership: true; high-integrity token: true",
+            "- .NET SDK: $($sdk -split "`n" | Where-Object { $_ -match '^10\.0\.' } | Select-Object -Last 1)",
+            "- Candidate SHA: $env:GITHUB_SHA; hosted helper normalized SHA-256: $helperHash",
+            "- Packaged SCM script normalized SHA-256: $serviceHash; protected broker candidate (not executed here) SHA-256: $brokerHash",
+            "- Fixture root: $root; pre-existing Hispania services: none"
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          "HISPANIA_PHASE21_NATIVE_HELPER=$helper" | Add-Content -LiteralPath $env:GITHUB_ENV
+          'HISPANIA_PHASE21_HOSTED_SCM=true' | Add-Content -LiteralPath $env:GITHUB_ENV
+      - name: Build and publish exact win-x64 fixture artifact
+        shell: pwsh
+        run: |
+          npm ci --prefix apps/web
+          if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
+          ./tools/publish-production.ps1 -Rid win-x64 -OutputDirectory .artifacts/phase18/win-x64
+      - name: Execute real Windows SCM server and worker acceptance, including recovery
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:HISPANIA_PHASE18_ARTIFACT = (Resolve-Path '.artifacts/phase18/win-x64').Path
+          $env:HISPANIA_PHASE18_REQUIRE_SERVICE = '1'
+          New-Item -ItemType Directory -Path '.artifacts/phase18/evidence' -Force | Out-Null
+          dotnet test tests/deployment-process/Hispania.Deployment.ProcessTests.csproj --configuration Release --filter 'Category=Phase18NativeService' --results-directory .artifacts/phase18/evidence --logger 'trx;LogFileName=windows-scm-native.trx' --nologo -v minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Real Windows SCM native service tests failed.' }
+          $trx = [xml](Get-Content -LiteralPath '.artifacts/phase18/evidence/windows-scm-native.trx' -Raw)
+          $results = @($trx.TestRun.Results.UnitTestResult)
+          if ($results.Count -ne 2 -or @($results | Where-Object outcome -ne 'Passed').Count -ne 0) { throw 'SCM acceptance requires exactly two passed cases, with no skips or failures.' }
+          'SCM acceptance result: both Server and Worker passed with real SCM, including controlled recovery.' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+      - name: Verify owned SCM cleanup and remove temporary fixture root
+        if: always()
+        shell: pwsh
+        run: |
+          $baseRoot = [IO.Path]::GetFullPath((Join-Path $env:ProgramData 'HispaniaPhase18CI'))
+          if ((Test-Path -LiteralPath $baseRoot) -and ((Get-Item -LiteralPath $baseRoot -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Refusing cleanup through a reparse-point fixture base.' }
+          $root = [IO.Path]::GetFullPath((Join-Path $baseRoot "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"))
+          $programDataPrefix = [IO.Path]::GetFullPath($env:ProgramData).TrimEnd('\') + '\'
+          if (-not $root.StartsWith($programDataPrefix,[StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing cleanup outside this GitHub-hosted VM fixture root.' }
+          if (Test-Path -LiteralPath $root) {
+            if ((Get-Item -LiteralPath $root -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing cleanup through a reparse-point fixture root.' }
+            foreach ($service in @(Get-CimInstance Win32_Service | Where-Object { $_.Name -match '^Hispania-Test-[0-9a-f]{32}-(Server|Worker)$' })) {
+              $role = if ($service.Name.EndsWith('-Server')) { 'server' } else { 'worker' }
+              $id = [regex]::Match($service.Name,'^Hispania-Test-([0-9a-f]{32})-(Server|Worker)$').Groups[1].Value
+              $leaf = 'hispania-phase18 isolated ñ ' + $id
+              $home = Join-Path $root $leaf
+              $assembly = if ($role -eq 'server') { 'Hispania.Server' } else { 'Hispania.WorkerAgent' }
+              $directory = if ($role -eq 'server') { 'server' } else { 'worker' }
+              $expected = '"' + [IO.Path]::GetFullPath((Join-Path $home "app/$directory/$assembly.exe")) + '" --home "' + $home + '"'
+              if ($service.PathName -cne $expected -or $service.StartName -cne 'NT AUTHORITY\LocalService' -or [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($home)) -ine $root) { throw "Refusing to clean service not proven owned by the current fixture: $($service.Name)" }
+              & ./deployment/windows-service.ps1 -Action uninstall -InstallationHome $home -Role $role -ServiceName $service.Name
+            }
+            $remaining = @(Get-CimInstance Win32_Service | Where-Object { $_.Name -match '^Hispania-Test-[0-9a-f]{32}-(Server|Worker)$' })
+            if ($remaining.Count -gt 0) { throw 'Hispania fixture service remains after cleanup.' }
+            if (@(Get-ChildItem -LiteralPath $root -Force -Recurse | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }).Count -gt 0) { throw 'Refusing recursive cleanup because the fixture contains a reparse point.' }
+            Remove-Item -LiteralPath $root -Recurse -Force
+          }
+          'Verified no fixture services remain; removed the job-scoped temporary root.' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+      - name: Preserve hosted Windows SCM evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase21-hosted-windows-scm-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            .artifacts/phase18/evidence
+            .artifacts/phase18/win-x64/artifact-manifest.json
+            .artifacts/phase18/win-x64.build-evidence.json
+            .artifacts/phase18/win-x64.manifest.sha256
+            .artifacts/phase18/production-gate.log

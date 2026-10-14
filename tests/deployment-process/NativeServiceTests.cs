@@ -137,6 +137,7 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
                 foreach (var log in Directory.EnumerateFiles(Path.Combine(fixture.Home, "logs"), "*", SearchOption.AllDirectories)) Assert.DoesNotContain(canary, File.ReadAllText(log), StringComparison.Ordinal);
             using (Hispania.Hosting.InstallationOperations.Lock(fixture.Home)) { }
             await ServiceAsync("uninstall", fixture.Home, role, serviceName); installed = false;
+            if (OperatingSystem.IsWindows()) Assert.Equal("MISSING", await TryGetWindowsServiceAsync(serviceName));
             Assert.True(File.Exists(Path.Combine(fixture.Home, "config", "production.json")));
             Assert.Equal("retained backup evidence", File.ReadAllText(retainedBackup));
             if (OperatingSystem.IsLinux() || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("HISPANIA_PHASE21_NATIVE_HELPER")))
