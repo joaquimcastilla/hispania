@@ -33,7 +33,7 @@ En cada recuperación controlada el gate comprueba manifiesto Complete, inexiste
 
 ## CI y resultado disponible
 
-`.github/workflows/phase21v2-migration.yml` se activa por `workflow_dispatch`, restringe repository/actor/rama, solicita solo `contents: read`, no escucha eventos PR, no configura secretos, desactiva persistencia de credenciales y utiliza `windows-2025` y `ubuntu-24.04`. Retiene ZIP/manifiestos verificados, manifiesto del destino, salida de plan/migración/rollback, logs, TRX y resumen de pruebas. El script comprueba que exactamente el gate obligatorio se descubrió y pasó, sin omitidos.
+`.github/workflows/phase21v2-migration.yml` admite `workflow_dispatch` y un `push` limitado a la rama candidata, restringe repository/actor/rama, solicita solo `contents: read`, no escucha eventos PR, no configura secretos, desactiva persistencia de credenciales y utiliza `windows-2025` y `ubuntu-24.04`. El push de bootstrap es necesario porque GitHub solo acepta `workflow_dispatch` cuando el workflow ya existe en la rama por defecto; cambiar `main` está prohibido en esta intervención. Tras ese primer run en la rama, se intentará el despacho manual sobre el mismo SHA. Retiene ZIP/manifiestos verificados, manifiesto del destino, salida de plan/migración/rollback, logs, TRX y resumen de pruebas. El script comprueba que exactamente el gate obligatorio se descubrió y pasó, sin omitidos.
 
 `actionlint 1.7.12` se descargó desde el release oficial. Se verificó SHA-256 del archivo de checksums (`433028cf0ba3c42163ea1a668dedce30fcdbe84fe912b1a5e288c006eab8a4f5`) y luego el checksum oficial del ZIP Windows x64 (`6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9`). Resultado: `actionlint .github/workflows/phase21v2-migration.yml` terminó con código 0 y sin diagnósticos.
 
@@ -42,7 +42,7 @@ La matriz completa Windows x64 ejecutada al preparar V3 pasó: **1 passed, 0 fai
 ## Limitaciones y decisión
 
 - En este host WSL1 no es compatible y no hay Linux instalable; Linux x64 real requiere el job `ubuntu-24.04` hospedado.
-- No se ha despachado ningún workflow desde GitHub todavía. Por tanto no hay run URL, SHA remoto de esta entrega, logs CI ni conclusión Windows/Linux de CI.
+- El primer intento manual devolvió HTTP 404 porque el workflow todavía no está en `main`. La actualización añade bootstrap `push` limitado a la rama candidata; al completar ese run se hará el despacho manual. Hasta que ambos se completen no hay conclusión final Windows/Linux de CI.
 - La política PostgreSQL está implementada fail-closed pero pendiente de aprobación expresa; no se declarará aprobada por esta intervención.
 - La recuperación pre-start conserva los directorios previos para análisis, no los purga automáticamente.
 - Hasta que ambas matrices hospedadas pasen, V3 queda PARTIAL y Step 2.1-V no se cierra como aceptación final.

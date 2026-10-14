@@ -2,6 +2,9 @@ name: Phase 2.1-V3 RC1 migration acceptance
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - codex/hispania-0.7.0-step2-1-production-readiness
 
 permissions:
   contents: read
