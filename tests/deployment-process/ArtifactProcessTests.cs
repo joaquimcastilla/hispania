@@ -209,7 +209,7 @@ public sealed class ArtifactProcessTests
             await File.WriteAllBytesAsync(secretPath, secretBytes);
             fixture.WriteConfiguration(new { libraryRoots = new[] { externalRoot }, bootstrapSecret = "env:PHASE21V_BOOTSTRAP", bootstrapPasswordSecret = "env:PHASE21V_PASSWORD", bootstrapUsername = "deployment-operator" });
             var provision = await fixture.CommandAsync(["--home", fixture.Home, "--bootstrap"], provisioningEnvironment);
-            Assert.Equal(0, provision.Code);
+            Assert.True(provision.Code == 0, "Official RC1 bootstrap failed: " + provision.Output);
             Assert.DoesNotContain(bootstrapSecret, provision.Output, StringComparison.Ordinal);
             var provisionedIdentity = new IdentityService(new SqliteIdentityStore(Path.Combine(fixture.Home, "state", "platform", "identity.sqlite")));
             Assert.NotNull(await provisionedIdentity.GetUserByUsernameAsync("deployment-operator"));
