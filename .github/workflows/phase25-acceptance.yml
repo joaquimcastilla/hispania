@@ -7,6 +7,11 @@ on:
         description: Full SHA of the exact Step 2.1 candidate commit to validate.
         required: true
         type: string
+      deterministic_zip_only:
+        description: Run the hosted deterministic ZIP matrix and skip the existing self-hosted Phase 25 job.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -17,7 +22,7 @@ concurrency:
 
 jobs:
   linux-package:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha && inputs.deterministic_zip_only != true
     runs-on: [self-hosted, Linux, X64, hispania, hispania-linux]
     timeout-minutes: 45
     steps:
@@ -109,6 +114,15 @@ jobs:
           ./tools/publish-production.ps1 -Rid linux-x64 -OutputDirectory .artifacts/phase25-repeat/linux-x64 -SkipWebBuild
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./tools/verify-production-reproducibility.ps1 -FirstDirectory .artifacts/phase25/linux-x64 -SecondDirectory .artifacts/phase25-repeat/linux-x64
+      - name: Verify executable install scripts survive ZIP packaging
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression
+          $archive = [IO.Compression.ZipFile]::OpenRead('.artifacts/phase25/linux-x64.zip')
+          try {
+            $entry = $archive.GetEntry('operations/install-systemd.sh')
+            if ($null -eq $entry -or (([uint32]$entry.ExternalAttributes -shr 16) -band 0x49) -eq 0) { throw 'Linux installation script execute permission is missing from the ZIP.' }
+          } finally { $archive.Dispose() }
       - name: Verify the clean package without starting a shared-port service
         shell: pwsh
         run: |
@@ -147,3 +161,142 @@ jobs:
           name: phase25-linux-native-package
           include-hidden-files: true
           path: .artifacts/phase25
+
+  hosted-deterministic-zip:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha && inputs.deterministic_zip_only == true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            rid: win-x64
+          - runner: ubuntu-24.04
+            rid: linux-x64
+          - runner: ubuntu-24.04
+            rid: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: source-a
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: source-b
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: source-a/apps/web/package-lock.json
+      - name: Run deterministic ZIP regression tests on hosted OS
+        working-directory: source-a
+        run: dotnet test tests/deterministic-zip/Hispania.DeterministicZip.Tests.csproj --configuration Release --verbosity minimal
+      - name: Verify exact source commit and clean independent checkouts
+        shell: pwsh
+        run: |
+          foreach ($root in @('source-a','source-b')) {
+            $sha = (& git -C $root rev-parse HEAD).Trim()
+            if ($LASTEXITCODE -ne 0 -or $sha -cne $env:GITHUB_SHA) { throw "Checkout SHA mismatch in $root." }
+            if (@(& git -C $root status --porcelain --untracked-files=normal).Count -ne 0) { throw "Checkout is not clean: $root" }
+          }
+          if ((dotnet --version) -cne '10.0.401') { throw 'Unexpected .NET SDK version.' }
+          "runner=$env:RUNNER_OS rid=${{ matrix.rid }} source_sha=$env:GITHUB_SHA sdk=$(dotnet --version)" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+      - name: Install locked web dependencies for independent build A
+        working-directory: source-a/apps/web
+        run: npm ci
+      - name: Install locked web dependencies for independent build B
+        working-directory: source-b/apps/web
+        run: npm ci
+      - name: Build and package A
+        shell: pwsh
+        run: ./source-a/tools/publish-production.ps1 -Rid '${{ matrix.rid }}' -OutputDirectory .artifacts/build-a/${{ matrix.rid }}
+      - name: Build and package B independently
+        shell: pwsh
+        run: ./source-b/tools/publish-production.ps1 -Rid '${{ matrix.rid }}' -OutputDirectory .artifacts/build-b/${{ matrix.rid }}
+      - name: Verify tree, manifest, ZIP bytes, metadata and clean install
+        shell: pwsh
+        run: |
+          ./source-a/tools/verify-production-reproducibility.ps1 -FirstDirectory .artifacts/build-a/${{ matrix.rid }} -SecondDirectory .artifacts/build-b/${{ matrix.rid }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $manifest = Get-Content -Raw .artifacts/build-a/${{ matrix.rid }}/artifact-manifest.json | ConvertFrom-Json
+          if ($manifest.sourceDirty -ne $false -or $manifest.gitSha -cne $env:GITHUB_SHA -or $manifest.targetRid -cne '${{ matrix.rid }}') { throw 'Artifact provenance does not match the exact clean source and requested RID.' }
+          $root = Join-Path $env:RUNNER_TEMP ('hispania-deterministic-zip-' + [guid]::NewGuid().ToString('N'))
+          $extractA = Join-Path $root 'extract-a'
+          $extractB = Join-Path $root 'extract-b'
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          New-Item -ItemType Directory -Path $extractA,$extractB -Force | Out-Null
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          try {
+            if ($env:RUNNER_OS -eq 'Linux') {
+              & unzip -q '.artifacts/build-a/${{ matrix.rid }}.zip' -d $extractA
+              if ($LASTEXITCODE -ne 0) { throw 'Could not extract ZIP A with the standard Linux unzip tool.' }
+              & unzip -q '.artifacts/build-b/${{ matrix.rid }}.zip' -d $extractB
+              if ($LASTEXITCODE -ne 0) { throw 'Could not extract ZIP B with the standard Linux unzip tool.' }
+              $executeBits = [IO.File]::GetUnixFileMode((Join-Path $extractA 'operations/install-systemd.sh')) -band ([IO.UnixFileMode]::UserExecute -bor [IO.UnixFileMode]::GroupExecute -bor [IO.UnixFileMode]::OtherExecute)
+              if ($executeBits -eq 0) { throw 'Standard Linux ZIP extraction did not preserve installation script execute permissions.' }
+            } else {
+              [IO.Compression.ZipFile]::ExtractToDirectory((Resolve-Path '.artifacts/build-a/${{ matrix.rid }}.zip'), $extractA)
+              [IO.Compression.ZipFile]::ExtractToDirectory((Resolve-Path '.artifacts/build-b/${{ matrix.rid }}.zip'), $extractB)
+            }
+            $hashes = { param($path) Get-ChildItem -LiteralPath $path -File -Recurse | ForEach-Object { [pscustomobject]@{ Path=[IO.Path]::GetRelativePath($path,$_.FullName).Replace('\','/'); Hash=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash } } | Sort-Object Path }
+            $treeA = @(& $hashes $extractA | ForEach-Object { "$($_.Path)|$($_.Hash)" }) -join "`n"
+            $treeB = @(& $hashes $extractB | ForEach-Object { "$($_.Path)|$($_.Hash)" }) -join "`n"
+            if ($treeA -cne $treeB) { throw 'Extracted ZIP file trees differ.' }
+            $buildTreeA = @(& $hashes (Resolve-Path '.artifacts/build-a/${{ matrix.rid }}') | ForEach-Object { "$($_.Path)|$($_.Hash)" }) -join "`n"
+            $buildTreeB = @(& $hashes (Resolve-Path '.artifacts/build-b/${{ matrix.rid }}') | ForEach-Object { "$($_.Path)|$($_.Hash)" }) -join "`n"
+            if ($treeA -cne $buildTreeA -or $treeB -cne $buildTreeB) { throw 'Extracted ZIP content does not match its publication tree.' }
+            $treeFiles = @(Get-ChildItem -LiteralPath $extractA -File -Recurse).Count
+            if ('${{ matrix.rid }}' -eq 'linux-arm64') {
+              if ($manifest.architecture -cne 'aarch64' -or $manifest.runtimePrerequisite -cne 'ASP.NET Core Runtime 10.0 (ARM64)') { throw 'ARM64 artifact architecture/runtime metadata is invalid.' }
+              dotnet source-a/apps/deployment/bin/Release/net10.0/Hispania.Deployment.dll verify $extractA
+              if ($LASTEXITCODE -ne 0) { throw 'Host-native verification of the ARM64 artifact failed.' }
+            } else {
+              dotnet (Join-Path $extractA 'deployment/Hispania.Deployment.dll') verify $extractA
+              if ($LASTEXITCODE -ne 0) { throw 'ArtifactManifest verification failed on the extracted ZIP.' }
+              $installHome = Join-Path $root 'home'
+              dotnet (Join-Path $extractA 'deployment/Hispania.Deployment.dll') install $extractA $installHome server
+              if ($LASTEXITCODE -ne 0) { throw 'Clean package installation failed.' }
+              dotnet (Join-Path $installHome 'app/server/Hispania.Server.dll') --home $installHome --check
+              if ($LASTEXITCODE -ne 0) { throw 'Installed Server --check failed.' }
+            }
+          Add-Type -AssemblyName System.IO.Compression
+          $archive = [IO.Compression.ZipFile]::OpenRead('.artifacts/build-a/${{ matrix.rid }}.zip')
+          try {
+            if ('${{ matrix.rid }}' -like 'linux-*') {
+              $entry = $archive.GetEntry('operations/install-systemd.sh')
+              if ($null -eq $entry -or (([uint32]$entry.ExternalAttributes -shr 16) -band 0x49) -eq 0) { throw 'Linux install script lost execute permission.' }
+            }
+          } finally { $archive.Dispose() }
+          $zipHash = (Get-FileHash .artifacts/build-a/${{ matrix.rid }}.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $zipHashB = (Get-FileHash .artifacts/build-b/${{ matrix.rid }}.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manifestHash = (Get-FileHash .artifacts/build-a/${{ matrix.rid }}/artifact-manifest.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manifestHashB = (Get-FileHash .artifacts/build-b/${{ matrix.rid }}/artifact-manifest.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($manifestHash -cne $manifestHashB) { throw 'Artifact manifest bytes differ.' }
+          "rid=${{ matrix.rid }} runner=$env:RUNNER_OS sdk=$(dotnet --version) packer=Hispania.DeterministicZip zip_method=Store file_count=$treeFiles zip_a_sha256=$zipHash zip_b_sha256=$zipHashB manifest_a_sha256=$manifestHash manifest_b_sha256=$manifestHashB extracted_tree_equal=true install_checked=${{ matrix.rid != 'linux-arm64' }}" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          } finally { if (Test-Path $root) { Remove-Item -LiteralPath $root -Recurse -Force } }
+      - name: Preserve deterministic ZIP evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase25-deterministic-zip-${{ matrix.rid }}
+          include-hidden-files: true
+          path: |
+            .artifacts/build-a/${{ matrix.rid }}.zip
+            .artifacts/build-a/${{ matrix.rid }}.zip.sha256
+            .artifacts/build-b/${{ matrix.rid }}.zip
+            .artifacts/build-b/${{ matrix.rid }}.zip.sha256
+            .artifacts/build-a/${{ matrix.rid }}/artifact-manifest.json
+            .artifacts/build-a/${{ matrix.rid }}.manifest.sha256
+            .artifacts/build-a/${{ matrix.rid }}.build-evidence.json
+            .artifacts/build-b/${{ matrix.rid }}/artifact-manifest.json
+            .artifacts/build-b/${{ matrix.rid }}.manifest.sha256
+            .artifacts/build-b/${{ matrix.rid }}.build-evidence.json

@@ -79,7 +79,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Published Platform-only artifact verification failed.' }
 
     $packagePath = $outputRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + '.zip'
-    Compress-Archive -Path (Join-Path $outputRoot '*') -DestinationPath $packagePath -CompressionLevel Optimal
+    & dotnet run --project (Join-Path $PSScriptRoot 'deterministic-zip/Hispania.DeterministicZip.csproj') --configuration Release -- $outputRoot $packagePath
+    if ($LASTEXITCODE -ne 0) { throw 'Deterministic ZIP packaging failed.' }
     $packageHash = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
     Set-Content -LiteralPath ($packagePath + '.sha256') -Value $packageHash -Encoding ascii
     Write-Output "Platform-only artifact: $outputRoot"

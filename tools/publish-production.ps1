@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('win-x64','linux-x64')][string]$Rid,
+    [ValidateSet('win-x64','linux-x64','linux-arm64')][string]$Rid,
     [Parameter(Mandatory)][string]$OutputDirectory,
     [switch]$SkipWebBuild
 )
@@ -9,6 +9,8 @@ $repoRoot = Split-Path $PSScriptRoot -Parent
 $outputRoot = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $outputRoot) { throw 'Output must be a fresh directory; previous artifacts are never overwritten.' }
 if (-not $Rid) { $Rid = if ($IsWindows) { 'win-x64' } else { 'linux-x64' } }
+$architecture = if ($Rid -eq 'linux-arm64') { 'aarch64' } else { 'x86_64' }
+$runtime = if ($Rid -eq 'linux-arm64') { 'ASP.NET Core Runtime 10.0 (ARM64)' } else { 'ASP.NET Core Runtime 10.0 (x64)' }
 Push-Location $repoRoot
 $stage = 'web build and publication prerequisites'
 try {
@@ -30,6 +32,13 @@ try {
         $stage = "publish $($publication.Project)"
         & dotnet publish $publication.Project -c Release -r $Rid --self-contained false -p:UseAppHost=true -p:ProductionPublication=true ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot $publication.Path)
         if ($LASTEXITCODE -ne 0) { throw "Publication failed: $($publication.Project)" }
+    }
+    $verifier = Join-Path $outputRoot 'deployment/Hispania.Deployment.dll'
+    if ($Rid -eq 'linux-arm64') {
+        # Use a host-native verifier to inspect the cross-published ARM64 directory.
+        & dotnet build 'apps/deployment/Hispania.Deployment.csproj' -c Release -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:UseAppHost=false --nologo -v quiet
+        if ($LASTEXITCODE -ne 0) { throw 'Host-native Deployment verifier build failed.' }
+        $verifier = Join-Path $repoRoot 'apps/deployment/bin/Release/net10.0/Hispania.Deployment.dll'
     }
     Copy-Item -LiteralPath (Join-Path $outputRoot 'server/wwwroot/classic/index.classic.html') -Destination (Join-Path $outputRoot 'server/wwwroot/classic/index.html')
     # Server's development content is deliberately excluded from production delivery.
@@ -74,20 +83,21 @@ try {
     $manifest = [ordered]@{
         manifestGeneration=1; distributionVersion=(Get-Content -Raw version.json | ConvertFrom-Json).distributionVersion
         distributionType='complete'; gitSha=$sourceSha; sourceBranch=$sourceBranch; sourceDirty=$sourceDirty
-        targetRid=$Rid; architecture='x86_64'; publishProfile='complete-production'
+        targetRid=$Rid; architecture=$architecture; publishProfile='complete-production'
         buildConfiguration='Release'; dotnetSdkVersion=$sdkVersion
-        runtimePrerequisite='ASP.NET Core Runtime 10.0 (x64)'; buildUtc=$buildUtc.ToUniversalTime().ToString('O'); files=$files
+        runtimePrerequisite=$runtime; buildUtc=$buildUtc.ToUniversalTime().ToString('O'); files=$files
     }
     $stage = 'manifest generation'
     $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outputRoot 'artifact-manifest.json') -Encoding utf8NoBOM
     # The dirty flag is evidence alongside the artifact, never silently claimed as exact-commit output.
-    [ordered]@{ sourceDirty=$sourceDirty; sourceSha=$sourceSha; sourceBranch=$sourceBranch; targetRid=$Rid; architecture='x86_64'; distributionType='complete'; publishProfile='complete-production'; note='A dirty artifact is local verification evidence, not a reproducible release.' } | ConvertTo-Json | Set-Content -LiteralPath ($outputRoot + '.build-evidence.json') -Encoding utf8NoBOM
+    [ordered]@{ sourceDirty=$sourceDirty; sourceSha=$sourceSha; sourceBranch=$sourceBranch; targetRid=$Rid; architecture=$architecture; distributionType='complete'; publishProfile='complete-production'; note='A dirty artifact is local verification evidence, not a reproducible release.' } | ConvertTo-Json | Set-Content -LiteralPath ($outputRoot + '.build-evidence.json') -Encoding utf8NoBOM
     (Get-FileHash -LiteralPath (Join-Path $outputRoot 'artifact-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content -LiteralPath ($outputRoot + '.manifest.sha256') -Encoding ascii
     $stage = 'artifact integrity verification'
-    & dotnet (Join-Path $outputRoot 'deployment/Hispania.Deployment.dll') verify $outputRoot
+    & dotnet $verifier verify $outputRoot
     if ($LASTEXITCODE -ne 0) { throw 'Published artifact verification failed.' }
     $packagePath = $outputRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + '.zip'
-    Compress-Archive -Path (Join-Path $outputRoot '*') -DestinationPath $packagePath -CompressionLevel Optimal
+    & dotnet run --project (Join-Path $PSScriptRoot 'deterministic-zip/Hispania.DeterministicZip.csproj') --configuration Release -- $outputRoot $packagePath
+    if ($LASTEXITCODE -ne 0) { throw 'Deterministic ZIP packaging failed.' }
     (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content -LiteralPath ($packagePath + '.sha256') -Encoding ascii
     Write-Host "Published $Rid artifact: $outputRoot"
     Write-Host "Package: $packagePath"
