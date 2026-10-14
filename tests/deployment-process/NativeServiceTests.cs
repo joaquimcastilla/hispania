@@ -33,10 +33,11 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
         if (role == "server")
         {
             fixture.WriteConfiguration(new { role, windowsServiceName = serviceName, bootstrapSecret = "file:NATIVE_CANARY", bootstrapPasswordSecret = "env:PHASE18_NATIVE_ADMIN_PASSWORD", bootstrapUsername = "deployment-operator" });
-            var bootstrap = await fixture.CommandAsync(["--home", fixture.Home, "--bootstrap"], new() { ["HISPANIA_SECRET_PHASE18_NATIVE_ADMIN_PASSWORD"] = adminPassword });
-            Assert.Equal(0, bootstrap.Code);
+            var bootstrap = await fixture.CommandAsync(["--home", fixture.Home, "--bootstrap"], new() { ["HISPANIA_SECRET_PHASE18_NATIVE_ADMIN_PASSWORD"] = adminPassword, ["HISPANIA_CI_DIAGNOSTICS"] = "1" });
+            var safeBootstrapOutput = bootstrap.Output.Replace(canary, "<redacted-canary>", StringComparison.Ordinal).Replace(adminPassword, "<redacted-password>", StringComparison.Ordinal);
             Assert.DoesNotContain(canary, bootstrap.Output, StringComparison.Ordinal);
             Assert.DoesNotContain(adminPassword, bootstrap.Output, StringComparison.Ordinal);
+            Assert.True(bootstrap.Code == 0, $"Bootstrap failed with exit code {bootstrap.Code}. Sanitized output:{Environment.NewLine}{safeBootstrapOutput}");
             // Remove bootstrap references before the service is installed or started.
             fixture.WriteConfiguration(new { role, windowsServiceName = serviceName });
         }
@@ -65,9 +66,13 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
             fixture.WriteConfiguration(new { role, windowsServiceName = serviceName, worker = new { coordinatorUri = $"https://localhost:{fixture.Port}", nodeId = "native-worker", certificateFile = "client.pfx", passwordSecret = "file:NATIVE_CANARY", coordinatorCertificateSha256Pins = new[] { Convert.ToHexString(SHA256.HashData(serverCertificate.RawData)) } } });
         }
         var installed = false;
+        var installationAttempted = false;
+        Exception? testFailure = null;
+        Exception? aclCleanupFailure = null;
         try
         {
             if (OperatingSystem.IsWindows()) Assert.Equal("MISSING", await TryGetWindowsServiceAsync(serviceName));
+            installationAttempted = true;
             await ServiceAsync("install", fixture.Home, role, serviceName); installed = true;
             if (OperatingSystem.IsWindows())
             {
@@ -145,8 +150,9 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
             else Assert.True(File.Exists(canaryPath));
             if (role == "server") Assert.True(File.Exists(Path.Combine(fixture.Home, "state", "platform", "identity.sqlite")));
         }
-        catch
+        catch (Exception exception)
         {
+            testFailure = exception;
             if (OperatingSystem.IsWindows())
             {
                 foreach (var log in Directory.EnumerateFiles(Path.Combine(fixture.Home, "logs"), "*", SearchOption.AllDirectories)) output.WriteLine(File.ReadAllText(log));
@@ -161,7 +167,15 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
             if (coordinator is not null) { await coordinator.StopAsync(); await coordinator.DisposeAsync(); }
             if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("HISPANIA_PHASE21_NATIVE_HELPER")))
             {
-                await NativeOperationAsync("reclaim", fixture.Home, role, serviceName, MissingNativeHelperAsync);
+                if (installationAttempted && Directory.Exists(Path.Combine(fixture.Home, "secrets")))
+                {
+                    try { await NativeOperationAsync("reclaim", fixture.Home, role, serviceName, MissingNativeHelperAsync); }
+                    catch (Exception cleanupException)
+                    {
+                        aclCleanupFailure = cleanupException;
+                        output.WriteLine("Fixture ACL cleanup failed: {0}: {1}", cleanupException.GetType().Name, cleanupException.Message);
+                    }
+                }
             }
             else if (OperatingSystem.IsLinux())
             {
@@ -175,6 +189,7 @@ public sealed class NativeServiceTests(ITestOutputHelper output)
                 await RunAsync("icacls.exe", [Path.Combine(fixture.Home, "secrets"), "/reset", "/T", "/Q"]);
             }
         }
+        if (testFailure is null && aclCleanupFailure is not null) throw new InvalidOperationException("Fixture ACL cleanup failed after an otherwise successful native service test.", aclCleanupFailure);
         async Task WaitAsync(int expected)
         {
             var deadline = DateTimeOffset.UtcNow.AddSeconds(45);

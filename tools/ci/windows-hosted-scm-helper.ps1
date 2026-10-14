@@ -84,6 +84,18 @@ try {
         if ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Fixture root/home is a reparse point.' }
     }
 
+    if ($Action -eq 'reclaim') {
+        $stage = 'fixture-acl-reclaim'
+        $secretsDirectory = Join-Path $home 'secrets'
+        if (-not (Test-Path -LiteralPath $secretsDirectory -PathType Container)) { throw 'Fixture secret directory is missing.' }
+        foreach ($item in @(Get-Item -LiteralPath $secretsDirectory -Force) + @(Get-ChildItem -LiteralPath $secretsDirectory -Force -Recurse -ErrorAction Stop)) {
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing fixture ACL reclaim through a reparse point.' }
+        }
+        & icacls.exe $secretsDirectory /reset /T /Q | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Fixture-only secret ACL reclaim failed.' }
+        exit 0
+    }
+
     $stage = 'fixture-file-integrity'
     foreach ($item in Get-ChildItem -LiteralPath $home -Force -Recurse -ErrorAction SilentlyContinue) {
         if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Fixture contains a reparse point.' }
@@ -162,11 +174,6 @@ try {
         if (-not (Test-Path -LiteralPath $secret -PathType Leaf)) { throw 'Fixture secret was not retained.' }
         $acl = Get-Acl -LiteralPath $secret
         if (-not $acl.AreAccessRulesProtected -or $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544') { throw 'Retained fixture secret ownership/ACL is unexpected.' }
-    } elseif ($Action -eq 'reclaim') {
-        $stage = 'fixture-acl-reclaim'
-        if (-not (Test-Path -LiteralPath (Join-Path $home 'secrets') -PathType Container)) { throw 'Fixture secret directory is missing.' }
-        & icacls.exe (Join-Path $home 'secrets') /reset /T /Q | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw 'Fixture-only secret ACL reclaim failed.' }
     } else {
         $stage = 'fixed-scm-operation'
         & $operations -Action $Action -InstallationHome $home -Role $Role -ServiceName $expectedService
@@ -174,5 +181,6 @@ try {
     exit 0
 } catch {
     Write-Error ('Restricted SCM helper rejected or failed the operation; operation={0}; stage={1}.' -f $Action,$stage) -ErrorAction Continue
+    Write-Error ('Diagnostic: exception={0}; hresult=0x{1:X8}; errorId={2}.' -f $_.Exception.GetType().FullName,$_.Exception.HResult,$_.FullyQualifiedErrorId) -ErrorAction Continue
     exit 1
 }
