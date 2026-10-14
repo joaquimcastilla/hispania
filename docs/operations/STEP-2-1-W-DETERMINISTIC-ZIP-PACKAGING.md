@@ -1,6 +1,6 @@
 # Step 2.1-W — Deterministic ZIP Packaging
 
-**Status: IMPLEMENTED LOCALLY; hosted cross-platform acceptance pending.** This record is scoped to the Step 2.1-W candidate and does not change the Step 2.1 final acceptance decision.
+**Status: PARTIAL; hosted acceptance found and isolated a second reproducibility defect, now corrected locally and awaiting a rerun.** This record is scoped to the Step 2.1-W candidate and does not change the Step 2.1 final acceptance decision.
 
 ## Scope
 
@@ -13,6 +13,10 @@ The production workflow's Linux `.tar.gz` is a separate archive path generated b
 Phase 25 run [38325713684](https://github.com/joaquimcastilla/hispania/actions/runs/38325713684) recorded identical trees (186 files) and identical manifest SHA-256 (`d670a11e1c93561107a3dfbdfb0c3ce3ad5f515508e3a20d992a96f0ee5fe58c`) but different ZIP hashes: `eb00c109b46f8205aa3b25fbbd231015491a63e659ebba9962454565549d4c51` and `d32ec5595ae83f115b106b2d8bca4ff0c961aafca516ba406772f6c2ff380ad4`. The uploaded evidence contains the first ZIP, not the second, so a historical entry-by-entry comparison is unavailable.
 
 The inspected historical ZIP contained many distinct entry timestamps. A controlled reproduction using identical names and bytes but different source mtimes produced hashes `7f76b032b8e9c5d3ed17ccf28c443b924dc75f69e33e5c3e116f2fe003152f7c` and `ec123a752dc6c5dff8ec94dac722bd2f9c597c953c8c981c8c30ffa6c7f532d5`; after matching source timestamps, both were `7f76b032b8e9c5d3ed17ccf28c443b924dc75f69e33e5c3e116f2fe003152f7c`. This demonstrates that the old archive envelope embedded varying filesystem timestamps; opposite file-creation order did not prevent equality after timestamp normalization in the controlled reproduction. `Compress-Archive` also did not preserve executable permission on the Linux installation script.
+
+The first hosted Step 2.1-W run, [38641818353](https://github.com/joaquimcastilla/hispania/actions/runs/38641818353), uncovered an additional defect before archive comparison: independent clean checkouts produced 107 differing published file hashes per RID. Inspecting `deployment/Hispania.Hosting.dll` showed the first byte difference in the PE COFF timestamp field (offset 136 in the captured file). The publishers had not explicitly enabled deterministic CI compilation. This changed the artifact manifest's file hash inventory and therefore the ZIP bytes as well. Both publishers now set `Deterministic=true` and `ContinuousIntegrationBuild=true` on every production publish/build invocation; the ARM64 host-native verifier build receives the same settings. A local two-checkout .NET 10 probe with those properties and the same PathMap produced identical DLL hashes (`bcb6f13b04b063bfcb41b17b1d671cf599f0bcc15ccb9761133f1f377996d78c` on both checkouts). Full product matrix confirmation is pending.
+
+The failed run's ZIP pairs were `linux-x64` `8598ed5d2f0d236ae598c2017fa058533a8202208a7be641ffffe3470f0dd060` / `457c1b513f323b5992fc17e3a27b53ca9a26a3720d5b574a6ad5017db9a9f67f`; `linux-arm64` `2dd42171edac9b1bf095d67286eacc848650c0d3e2ac0e31901a76644d9cbbac` / `351f0045611e97e6d91a3b0b1ca7d0c126b6e4b2551615dcd7c4a20ccc18731a`; `win-x64` `3f993564dbe11c5e1662b780086a1a1bd077d47fe1e653fa70e84393fab27c05` / `12609a74bbe0a93791659b229bac31b9274b242f11f2c8141d58e575961b5931`. These are evidence of a rejected build pair, not accepted reproducibility values.
 
 ## ZIP contract
 

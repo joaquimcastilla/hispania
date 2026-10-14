@@ -30,13 +30,13 @@ try {
     )
     foreach ($publication in $publications) {
         $stage = "publish $($publication.Project)"
-        & dotnet publish $publication.Project -c Release -r $Rid --self-contained false -p:UseAppHost=true -p:ProductionPublication=true ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot $publication.Path)
+        & dotnet publish $publication.Project -c Release -r $Rid --self-contained false -p:UseAppHost=true -p:ProductionPublication=true -p:Deterministic=true -p:ContinuousIntegrationBuild=true ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot $publication.Path)
         if ($LASTEXITCODE -ne 0) { throw "Publication failed: $($publication.Project)" }
     }
     $verifier = Join-Path $outputRoot 'deployment/Hispania.Deployment.dll'
     if ($Rid -eq 'linux-arm64') {
         # Use a host-native verifier to inspect the cross-published ARM64 directory.
-        & dotnet build 'apps/deployment/Hispania.Deployment.csproj' -c Release -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:UseAppHost=false --nologo -v quiet
+        & dotnet build 'apps/deployment/Hispania.Deployment.csproj' -c Release -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:UseAppHost=false -p:Deterministic=true -p:ContinuousIntegrationBuild=true ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet
         if ($LASTEXITCODE -ne 0) { throw 'Host-native Deployment verifier build failed.' }
         $verifier = Join-Path $repoRoot 'apps/deployment/bin/Release/net10.0/Hispania.Deployment.dll'
     }

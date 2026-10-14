@@ -37,18 +37,18 @@ try {
     $runtime = if ($Rid -eq 'linux-arm64') { 'Microsoft.AspNetCore.App 10.0 (ARM64)' } else { 'Microsoft.AspNetCore.App 10.0 (x64)' }
 
     New-Item -ItemType Directory -Path $outputRoot | Out-Null
-    & dotnet publish 'apps/server/Hispania.Server.csproj' -c Release -r $Rid --self-contained false -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:PlatformOnly=true -p:ProductionPublication=true -p:UseAppHost=false ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot 'server')
+    & dotnet publish 'apps/server/Hispania.Server.csproj' -c Release -r $Rid --self-contained false -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:PlatformOnly=true -p:ProductionPublication=true -p:UseAppHost=false -p:Deterministic=true -p:ContinuousIntegrationBuild=true ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot 'server')
     if ($LASTEXITCODE -ne 0) { throw 'Platform-only server publication failed.' }
-    & dotnet publish 'apps/module-host/Hispania.ModuleHost.csproj' -c Release --self-contained false -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:UseAppHost=false ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot 'server/module-host')
+    & dotnet publish 'apps/module-host/Hispania.ModuleHost.csproj' -c Release --self-contained false -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:UseAppHost=false -p:Deterministic=true -p:ContinuousIntegrationBuild=true ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot 'server/module-host')
     if ($LASTEXITCODE -ne 0) { throw 'Portable ModuleHost publication failed.' }
-    & dotnet publish 'apps/deployment/Hispania.Deployment.csproj' -c Release -r $Rid --self-contained false -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:PlatformOnly=true -p:UseAppHost=false ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot 'deployment')
+    & dotnet publish 'apps/deployment/Hispania.Deployment.csproj' -c Release -r $Rid --self-contained false -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:PlatformOnly=true -p:UseAppHost=false -p:Deterministic=true -p:ContinuousIntegrationBuild=true ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot 'deployment')
     if ($LASTEXITCODE -ne 0) { throw 'Deployment CLI publication failed.' }
 
     $verifier = Join-Path $outputRoot 'deployment/Hispania.Deployment.dll'
     if ($Rid -eq 'linux-arm64') {
         # Build the host-native verifier before hashing the package. On Linux this build can
         # refresh shared content outputs, so the manifest must describe the final package tree.
-        & dotnet build 'apps/deployment/Hispania.Deployment.csproj' -c Release -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:PlatformOnly=true -p:UseAppHost=false --nologo -v quiet
+        & dotnet build 'apps/deployment/Hispania.Deployment.csproj' -c Release -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false -nr:false -p:PlatformOnly=true -p:UseAppHost=false -p:Deterministic=true -p:ContinuousIntegrationBuild=true ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet
         if ($LASTEXITCODE -ne 0) { throw 'Host-native Deployment verifier build failed.' }
         $verifier = Join-Path $repoRoot 'apps/deployment/bin/Release/net10.0/Hispania.Deployment.dll'
     }
