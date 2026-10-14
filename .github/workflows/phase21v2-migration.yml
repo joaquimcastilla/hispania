@@ -1,0 +1,39 @@
+name: Phase 2.1-V3 RC1 migration acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  migration-acceptance:
+    if: github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    concurrency:
+      group: phase21v2-migration-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: false
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Execute pinned RC1 migration acceptance and preserve evidence
+        shell: pwsh
+        run: ./tools/test-phase21v2-migration.ps1 -ResultsDirectory .artifacts/phase21v2-${{ runner.os }}
+      - name: Upload migration logs, hashes, test results, and published fixture
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase21v3-migration-${{ runner.os }}-${{ github.sha }}
+          include-hidden-files: true
+          if-no-files-found: warn
+          path: .artifacts/phase21v2-${{ runner.os }}

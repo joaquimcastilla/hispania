@@ -181,6 +181,207 @@ public sealed class ArtifactProcessTests
     }
 
     [Fact]
+    public async Task OfficialCompleteRc1MigratesToPlatformOnlyAndCanRestoreTheCompleteFixture()
+    {
+        var rc1 = Environment.GetEnvironmentVariable("HISPANIA_PHASE21V_RC1_ARTIFACT") ??
+            throw new InvalidOperationException("The official v0.7.0-rc.1 Complete publication is required for this migration gate.");
+        var platform = Environment.GetEnvironmentVariable("HISPANIA_PHASE21V_PLATFORM_ARTIFACT") ??
+            throw new InvalidOperationException("A clean Platform-only publication is required for this migration gate.");
+        var externalRoot = Path.Combine(Path.GetTempPath(), "hispania-phase21v-external-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(externalRoot);
+        var externalFile = Path.Combine(externalRoot, "retained-media-fixture.bin");
+        await File.WriteAllBytesAsync(externalFile, RandomNumberGenerator.GetBytes(128 * 1024));
+        var password = "PHASE21V-RC1-" + Guid.NewGuid().ToString("N");
+        var bootstrapSecret = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        var provisioningEnvironment = new Dictionary<string, string>
+        {
+            ["HISPANIA_SECRET_PHASE21V_BOOTSTRAP"] = bootstrapSecret,
+            ["HISPANIA_SECRET_PHASE21V_PASSWORD"] = password
+        };
+        try
+        {
+            using var fixture = new HostFixture(rc1, officialArtifactInstall: true);
+            provisioningEnvironment["Persistence__Sqlite__Path"] = Path.Combine(fixture.Home, "state", "media.sqlite");
+            fixture.LibraryRootOverride = externalRoot;
+            var mediaDigest = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(externalFile)));
+            var secretPath = Path.Combine(fixture.Home, "secrets", "migration-preservation.canary");
+            var secretBytes = RandomNumberGenerator.GetBytes(64);
+            await File.WriteAllBytesAsync(secretPath, secretBytes);
+            fixture.WriteConfiguration(new { libraryRoots = new[] { externalRoot }, bootstrapSecret = "env:PHASE21V_BOOTSTRAP", bootstrapPasswordSecret = "env:PHASE21V_PASSWORD", bootstrapUsername = "deployment-operator" });
+            var provision = await fixture.CommandAsync(["--home", fixture.Home, "--bootstrap"], provisioningEnvironment);
+            Assert.Equal(0, provision.Code);
+            Assert.DoesNotContain(bootstrapSecret, provision.Output, StringComparison.Ordinal);
+            var provisionedIdentity = new IdentityService(new SqliteIdentityStore(Path.Combine(fixture.Home, "state", "platform", "identity.sqlite")));
+            Assert.NotNull(await provisionedIdentity.GetUserByUsernameAsync("deployment-operator"));
+            Assert.True((await provisionedIdentity.LoginAsync("deployment-operator", password)).Succeeded, "The official RC1 bootstrap output did not produce credentials accepted by its identity store.");
+            using (var source = fixture.Start(environment: provisioningEnvironment))
+            {
+                await fixture.ReadyAsync(source);
+                var session = await LoginForSessionAsync(fixture.Client, password);
+                using (var rolesRequest = new HttpRequestMessage(HttpMethod.Get, "/api/authorization/roles"))
+                {
+                    rolesRequest.Headers.Authorization = new AuthenticationHeaderValue("Session", session);
+                    using var rolesResponse = await fixture.Client.SendAsync(rolesRequest); rolesResponse.EnsureSuccessStatusCode();
+                    using var roles = JsonDocument.Parse(await rolesResponse.Content.ReadAsStringAsync());
+                    var administratorRoleId = roles.RootElement.EnumerateArray().Single(role => role.GetProperty("role").GetProperty("name").GetString() == "administrator").GetProperty("role").GetProperty("id").GetProperty("value").GetGuid();
+                    using var grant = new HttpRequestMessage(HttpMethod.Put, $"/api/authorization/roles/{administratorRoleId:D}/permissions/inventory.write");
+                    grant.Headers.Authorization = new AuthenticationHeaderValue("Session", session);
+                    using var granted = await fixture.Client.SendAsync(grant); Assert.Equal(HttpStatusCode.OK, granted.StatusCode);
+                }
+                using var createItem = new HttpRequestMessage(HttpMethod.Post, "/api/inventory/items")
+                {
+                    Content = JsonContent.Create(new { sku = "MIGRATION-PRESERVE-1", name = "Retained inventory record" })
+                };
+                createItem.Headers.Authorization = new AuthenticationHeaderValue("Session", session);
+                using var createdItem = await fixture.Client.SendAsync(createItem);
+                Assert.Equal(HttpStatusCode.Created, createdItem.StatusCode);
+                Assert.Throws<DeploymentException>(() => InstallationOperations.PlanCompleteRc1ToPlatformOnly(platform, fixture.Home));
+                await fixture.StopAsync(source);
+            }
+            // Seed a populated historical Media catalog from the immutable 0.7 compatibility
+            // corpus. The fixture lives under this disposable HOME and is never opened by the
+            // developer's real profile or production installation.
+            var mediaDatabasePath = Path.Combine(fixture.Home, "state", "media.sqlite");
+            SqliteConnection.ClearAllPools();
+            File.Copy(Path.Combine(FindRepositoryRoot(), "compatibility", "data", "0.7", "media-library.sqlite"), mediaDatabasePath, overwrite: true);
+            var mediaDatabaseHash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(mediaDatabasePath)));
+            Assert.True(await CountSqliteRowsAsync(mediaDatabasePath, "media_entities") > 0, "Historical Media fixture must contain media entities.");
+            Assert.True(await CountSqliteRowsAsync(mediaDatabasePath, "metadata_assertions") > 0, "Historical Media fixture must contain populated metadata.");
+            await AssertSqliteIntegrityAsync(mediaDatabasePath);
+            var moduleDatabasePaths = new[]
+            {
+                Path.Combine(fixture.Home, "state", "inventory.sqlite")
+            };
+            Assert.All(moduleDatabasePaths, path => Assert.True(File.Exists(path), "Complete RC1 did not initialize expected module database " + path));
+            var moduleDatabaseHashes = moduleDatabasePaths.Select(path => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)))).ToArray();
+            Assert.Equal(1L, await CountInventoryItemAsync(moduleDatabasePaths[0], "MIGRATION-PRESERVE-1"));
+            var sourceManifestSha = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(fixture.Home, "app", "artifact-manifest.json"))));
+            await AssertSqliteIntegrityAsync(moduleDatabasePaths[0]);
+            await Assert.ThrowsAsync<DeploymentException>(() => InstallationOperations.UpgradeAsync(platform, fixture.Home));
+            Assert.Equal(sourceManifestSha, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(fixture.Home, "app", "artifact-manifest.json")))));
+            Assert.False(Directory.Exists(Path.Combine(fixture.Home, "app.old")));
+
+            var targetAssembly = Path.Combine(platform, "server", "Hispania.Platform.Server.dll");
+            var targetAssemblyBytes = await File.ReadAllBytesAsync(targetAssembly);
+            try
+            {
+                targetAssemblyBytes[0] ^= 0x01;
+                await File.WriteAllBytesAsync(targetAssembly, targetAssemblyBytes);
+                Assert.Throws<DeploymentException>(() => InstallationOperations.PlanCompleteRc1ToPlatformOnly(platform, fixture.Home));
+            }
+            finally
+            {
+                targetAssemblyBytes[0] ^= 0x01;
+                await File.WriteAllBytesAsync(targetAssembly, targetAssemblyBytes);
+            }
+            Assert.Equal(sourceManifestSha, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(fixture.Home, "app", "artifact-manifest.json")))));
+
+            var installationRecordPath = Path.Combine(fixture.Home, "config", "installation.json");
+            var originalInstallationRecord = await File.ReadAllBytesAsync(installationRecordPath);
+            var mismatchedRecord = JsonNode.Parse(originalInstallationRecord)!.AsObject();
+            mismatchedRecord["gitSha"] = new string('0', 40);
+            await File.WriteAllTextAsync(installationRecordPath, mismatchedRecord.ToJsonString());
+            Assert.Throws<DeploymentException>(() => InstallationOperations.PlanCompleteRc1ToPlatformOnly(platform, fixture.Home));
+            var targetManifestShaForNegativeCase = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(platform, "artifact-manifest.json"))));
+            await Assert.ThrowsAsync<DeploymentException>(() => InstallationOperations.MigrateCompleteRc1ToPlatformOnlyAsync(platform, fixture.Home, targetManifestShaForNegativeCase));
+            Assert.False(Directory.Exists(Path.Combine(fixture.Home, "app.new")));
+            await File.WriteAllBytesAsync(installationRecordPath, originalInstallationRecord);
+
+            var originalConfiguration = await File.ReadAllBytesAsync(Path.Combine(fixture.Home, "config", "production.json"));
+            fixture.WriteConfiguration(new
+            {
+                libraryRoots = new[] { externalRoot }, persistence = "postgresql",
+                postgreSql = new { host = "127.0.0.1", database = "hispania", username = "hispania", passwordSecret = "env:PHASE21V_PG_PASSWORD" }
+            });
+            Assert.Throws<DeploymentException>(() => InstallationOperations.PlanCompleteRc1ToPlatformOnly(platform, fixture.Home));
+            var targetManifestSha = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(platform, "artifact-manifest.json"))));
+            await Assert.ThrowsAsync<DeploymentException>(() => InstallationOperations.MigrateCompleteRc1ToPlatformOnlyAsync(platform, fixture.Home, targetManifestSha));
+            Assert.False(Directory.Exists(Path.Combine(fixture.Home, "app.new")));
+            Assert.Equal(sourceManifestSha, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(fixture.Home, "app", "artifact-manifest.json")))));
+            await File.WriteAllBytesAsync(Path.Combine(fixture.Home, "config", "production.json"), originalConfiguration);
+
+            var plan = InstallationOperations.PlanCompleteRc1ToPlatformOnly(platform, fixture.Home);
+            Assert.Equal("0.7.0-rc.1", plan.SourceVersion);
+            Assert.Equal("complete", ArtifactManifest.Verify(Path.Combine(fixture.Home, "app")).DistributionType);
+            Assert.Contains(Path.GetFullPath(externalRoot), plan.PreservedExternalPaths);
+            var serializedPlan = JsonSerializer.Serialize(plan);
+            Assert.DoesNotContain(bootstrapSecret, serializedPlan, StringComparison.Ordinal);
+            Assert.DoesNotContain(password, serializedPlan, StringComparison.Ordinal);
+            var planCommand = await RunDeploymentCliAsync(platform, "plan-migrate-complete-rc1-to-platform-only", platform, fixture.Home);
+            Assert.Equal(0, planCommand.Code);
+            Assert.DoesNotContain(bootstrapSecret, planCommand.Output, StringComparison.Ordinal);
+            Console.WriteLine("Inspected migration plan: " + planCommand.Output);
+            using var cliPlan = JsonDocument.Parse(planCommand.Output);
+            var confirmedManifestSha = cliPlan.RootElement.GetProperty("targetManifestSha256").GetString()!;
+            Assert.Equal(plan.TargetManifestSha256, confirmedManifestSha, ignoreCase: true);
+            Console.WriteLine("Confirmed target manifest SHA-256: " + confirmedManifestSha);
+            await AssertAbruptMigrationInterruptionRecoversAsync(platform, fixture.Home, confirmedManifestSha, sourceManifestSha);
+            await AssertMigrationFixtureRestoredAsync(fixture.Home, sourceManifestSha, moduleDatabasePaths[0], moduleDatabaseHashes[0], mediaDatabasePath, mediaDatabaseHash, secretPath, secretBytes, externalFile, mediaDigest);
+            foreach (var checkpoint in new[]
+            {
+                "staging-file-copied", "before-backup", "after-backup-create", "during-state-verification",
+                "after-backup-verified", "before-switch", "during-switch-after-old-moved", "after-switch", "after-metadata-write"
+            })
+            {
+                await Assert.ThrowsAsync<InvalidOperationException>(() => InstallationOperations.MigrateCompleteRc1ToPlatformOnlyWithCheckpointsAsync(
+                    platform, fixture.Home, confirmedManifestSha, reached =>
+                    {
+                        if (reached == checkpoint) throw new InvalidOperationException("Controlled migration exception: " + checkpoint);
+                    }));
+                InstallationOperations.RecoverBeforeStartup(fixture.Home);
+                await AssertMigrationFixtureRestoredAsync(fixture.Home, sourceManifestSha, moduleDatabasePaths[0], moduleDatabaseHashes[0], mediaDatabasePath, mediaDatabaseHash, secretPath, secretBytes, externalFile, mediaDigest);
+                Assert.False(Directory.Exists(Path.Combine(fixture.Home, "app.new")));
+                Assert.False(Directory.Exists(Path.Combine(fixture.Home, "app.old")));
+            }
+            var migrationCommand = await RunDeploymentCliAsync(platform, "migrate-complete-rc1-to-platform-only", platform, fixture.Home, confirmedManifestSha);
+            Assert.Equal(0, migrationCommand.Code);
+            Console.WriteLine("Migration output: " + migrationCommand.Output.Trim());
+            var bundle = migrationCommand.Output.Trim();
+            Assert.True(Path.IsPathFullyQualified(bundle));
+            Assert.True(File.Exists(Path.Combine(bundle, "manifest.json")));
+            Assert.Equal("platform-only", ArtifactManifest.Verify(Path.Combine(fixture.Home, "app")).DistributionType);
+            Assert.Equal(secretBytes, await File.ReadAllBytesAsync(secretPath));
+            Assert.Equal(mediaDigest, Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(externalFile))));
+            Assert.Equal(mediaDatabaseHash, Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(mediaDatabasePath))));
+            await AssertSqliteIntegrityAsync(mediaDatabasePath);
+            Assert.Equal(moduleDatabaseHashes, moduleDatabasePaths.Select(path => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)))).ToArray());
+            await AssertSqliteIntegrityAsync(moduleDatabasePaths[0]);
+
+            using (var migrated = fixture.Start(environment: provisioningEnvironment))
+            {
+                await fixture.ReadyAsync(migrated);
+                await AssertLoginAsync(fixture.Client, password);
+                using var inventoryEndpoint = await fixture.Client.GetAsync("/api/inventory/items");
+                Assert.Equal(HttpStatusCode.NotFound, inventoryEndpoint.StatusCode);
+                await fixture.StopAsync(migrated);
+            }
+            Assert.Equal(moduleDatabaseHashes, moduleDatabasePaths.Select(path => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)))).ToArray());
+            Assert.Equal(mediaDatabaseHash, Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(mediaDatabasePath))));
+            Assert.Equal(1L, await CountInventoryItemAsync(moduleDatabasePaths[0], "MIGRATION-PRESERVE-1"));
+            var repeatedMigration = await RunDeploymentCliAsync(platform, "migrate-complete-rc1-to-platform-only", platform, fixture.Home, confirmedManifestSha);
+            Assert.Equal(0, repeatedMigration.Code);
+            Assert.Equal(bundle, repeatedMigration.Output.Trim());
+
+            SqliteConnection.ClearAllPools();
+            await Assert.ThrowsAsync<InvalidOperationException>(() => InstallationOperations.RestoreRollbackWithCheckpointsAsync(
+                fixture.Home, bundle, checkpoint =>
+                {
+                    if (checkpoint == "rollback-state-moved") throw new InvalidOperationException("Controlled rollback interruption after state was retained.");
+                }));
+            InstallationOperations.RecoverBeforeStartup(fixture.Home);
+            Assert.Equal("complete", ArtifactManifest.Verify(Path.Combine(fixture.Home, "app")).DistributionType);
+            await AssertSqliteIntegrityAsync(mediaDatabasePath);
+            Assert.True(await CountSqliteRowsAsync(mediaDatabasePath, "media_entities") > 0);
+            Assert.True(await CountSqliteRowsAsync(mediaDatabasePath, "metadata_assertions") > 0);
+            using var rolledBack = fixture.Start(environment: provisioningEnvironment);
+            await fixture.ReadyAsync(rolledBack);
+            await AssertLoginAsync(fixture.Client, password);
+            await fixture.StopAsync(rolledBack);
+        }
+        finally { Directory.Delete(externalRoot, recursive: true); }
+    }
+
+    [Fact]
     public void UninstallPreservesConfigurationSecretsStateAndBackups()
     {
         using var fixture = new HostFixture();
@@ -227,9 +428,95 @@ public sealed class ArtifactProcessTests
     internal static string Artifact => Environment.GetEnvironmentVariable("HISPANIA_PHASE18_ARTIFACT") ?? throw new InvalidOperationException("Set HISPANIA_PHASE18_ARTIFACT to a verified publication; no source-tree fallback is allowed.");
     private static bool Contains(byte[] haystack, byte[] needle) => haystack.AsSpan().IndexOf(needle) >= 0;
     private static async Task AssertLoginAsync(HttpClient client, string password)
+        => _ = await LoginForSessionAsync(client, password);
+
+    private static async Task<string> LoginForSessionAsync(HttpClient client, string password)
     {
         using var response = await client.PostAsJsonAsync("/api/identity/login", new { username = "deployment-operator", password });
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(response.StatusCode == HttpStatusCode.OK, $"Expected login success, got {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return document.RootElement.GetProperty("sessionToken").GetString()!;
+    }
+    private static async Task AssertSqliteIntegrityAsync(string path)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ConnectionString);
+        await connection.OpenAsync();
+        using var command = connection.CreateCommand(); command.CommandText = "PRAGMA integrity_check";
+        Assert.Equal("ok", await command.ExecuteScalarAsync());
+    }
+    private static async Task<long> CountInventoryItemAsync(string path, string sku)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ConnectionString);
+        await connection.OpenAsync();
+        using var command = connection.CreateCommand(); command.CommandText = "SELECT COUNT(*) FROM items WHERE sku=$sku"; command.Parameters.AddWithValue("$sku", sku);
+        return Convert.ToInt64(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+    }
+    private static async Task<long> CountSqliteRowsAsync(string path, string table)
+    {
+        if (table is not ("media_entities" or "metadata_assertions")) throw new ArgumentOutOfRangeException(nameof(table));
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ConnectionString);
+        await connection.OpenAsync();
+        using var command = connection.CreateCommand(); command.CommandText = $"SELECT COUNT(*) FROM {table}";
+        return Convert.ToInt64(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+    }
+    private static string FindRepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, "Hispania.sln"))) return directory.FullName;
+        throw new DirectoryNotFoundException("Repository root was not found for the disposable migration fixture.");
+    }
+    private static async Task AssertMigrationFixtureRestoredAsync(string home, string sourceManifestSha, string inventoryPath, string inventoryHash, string mediaPath, string mediaHash, string secretPath, byte[] secretBytes, string externalPath, string externalHash)
+    {
+        Assert.Equal(sourceManifestSha, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(home, "app", "artifact-manifest.json")))));
+        Assert.Equal(inventoryHash, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(inventoryPath))));
+        Assert.Equal(mediaHash, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(mediaPath))));
+        Assert.Equal(secretBytes, File.ReadAllBytes(secretPath));
+        Assert.Equal(externalHash, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(externalPath))));
+        var identity = new IdentityService(new SqliteIdentityStore(Path.Combine(home, "state", "platform", "identity.sqlite")));
+        Assert.NotNull(await identity.GetUserByUsernameAsync("deployment-operator"));
+        using var inventoryConnection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = inventoryPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ConnectionString);
+        inventoryConnection.Open(); using var inventoryCommand = inventoryConnection.CreateCommand(); inventoryCommand.CommandText = "PRAGMA integrity_check"; Assert.Equal("ok", inventoryCommand.ExecuteScalar());
+        using var mediaConnection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = mediaPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ConnectionString);
+        mediaConnection.Open(); using var mediaCommand = mediaConnection.CreateCommand(); mediaCommand.CommandText = "PRAGMA integrity_check"; Assert.Equal("ok", mediaCommand.ExecuteScalar());
+    }
+    private static async Task AssertAbruptMigrationInterruptionRecoversAsync(string artifact, string home, string targetManifestSha, string sourceManifestSha)
+    {
+        var helper = Path.Combine(FindRepositoryRoot(), "tests", "deployment-migration-harness", "bin", "Release", "net10.0", "Hispania.Deployment.MigrationHarness.dll");
+        Assert.True(File.Exists(helper), "The migration crash harness must be built as a test dependency.");
+        var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        start.ArgumentList.Add(helper); start.ArgumentList.Add(artifact); start.ArgumentList.Add(home); start.ArgumentList.Add(targetManifestSha); start.ArgumentList.Add("staging-file-copied");
+        start.Environment["DOTNET_DbgEnableMiniDump"] = "0";
+        using var child = Process.Start(start) ?? throw new InvalidOperationException("Could not start isolated migration crash harness.");
+        var stdout = child.StandardOutput.ReadToEndAsync(); var stderr = child.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        try { await child.WaitForExitAsync(timeout.Token); }
+        catch
+        {
+            if (!child.HasExited) child.Kill(entireProcessTree: true);
+            await child.WaitForExitAsync();
+            throw;
+        }
+        var output = (await stdout) + (await stderr);
+        Assert.NotEqual(0, child.ExitCode);
+        Assert.Contains("Controlled test-only process termination", output, StringComparison.Ordinal);
+        Assert.True(Directory.Exists(Path.Combine(home, "app.new")), "Abrupt staging termination must leave recoverable evidence.");
+        InstallationOperations.RecoverBeforeStartup(home);
+        Assert.Equal(sourceManifestSha, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(home, "app", "artifact-manifest.json")))));
+        Assert.False(Directory.Exists(Path.Combine(home, "app.new")));
+        Assert.False(Directory.Exists(Path.Combine(home, "app.old")));
+        Console.WriteLine("Abrupt child termination at staging-file-copied was recovered; child exit code: " + child.ExitCode);
+    }
+    private static async Task<(int Code, string Output)> RunDeploymentCliAsync(string artifact, params string[] arguments)
+    {
+        var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        start.ArgumentList.Add(Path.Combine(artifact, "deployment", "Hispania.Deployment.dll"));
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the candidate Deployment CLI.");
+        var stdout = process.StandardOutput.ReadToEndAsync(); var stderr = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+        try { await process.WaitForExitAsync(timeout.Token); }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested) { if (!process.HasExited) process.Kill(true); throw new TimeoutException("Candidate Deployment CLI exceeded 90 seconds."); }
+        return (process.ExitCode, (await stdout) + (await stderr));
     }
 
     internal sealed class HostFixture : IDisposable
@@ -238,15 +525,25 @@ public sealed class ArtifactProcessTests
         internal string RunId { get; }
         internal int Port { get; }
         internal HttpClient Client { get; }
+        internal string? LibraryRootOverride { get; set; }
         private readonly List<Process> processes = [];
         private readonly List<(int Id, DateTime Started)> identities = [];
         private readonly Dictionary<int, (ConcurrentQueue<string> Output, ConcurrentQueue<string> Error)> processLogs = [];
-        internal HostFixture(string? artifact = null, string? directoryRoot = null, string role = "server")
+        internal HostFixture(string? artifact = null, string? directoryRoot = null, string role = "server", bool officialArtifactInstall = false)
         {
             RunId = Guid.NewGuid().ToString("N");
             Home = Path.Combine(directoryRoot ?? Path.GetTempPath(), "hispania-phase18 isolated ñ " + RunId);
             using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); Port = ((IPEndPoint)listener.LocalEndpoint).Port;
-            InstallationOperations.Install(artifact ?? Artifact, Home, role);
+            if (officialArtifactInstall)
+            {
+                var deployment = Path.Combine(artifact ?? Artifact, "deployment", "Hispania.Deployment.dll");
+                var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+                start.ArgumentList.Add(deployment); start.ArgumentList.Add("install"); start.ArgumentList.Add(artifact ?? Artifact); start.ArgumentList.Add(Home); start.ArgumentList.Add(role);
+                using var install = Process.Start(start) ?? throw new InvalidOperationException("Could not start the official RC1 installer.");
+                var output = install.StandardOutput.ReadToEnd() + install.StandardError.ReadToEnd(); install.WaitForExit();
+                Assert.True(install.ExitCode == 0, "Official RC1 installation failed: " + output);
+            }
+            else InstallationOperations.Install(artifact ?? Artifact, Home, role);
             // Application requests include deliberate 600,000-iteration PBKDF2 password verification.
             // The short readiness polling budget must not become an authentication performance SLA.
             Client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{Port}"), Timeout = TimeSpan.FromSeconds(30) };
@@ -262,13 +559,15 @@ public sealed class ArtifactProcessTests
             var applicationDirectory = Path.Combine(Home, "app", worker ? "worker" : "server");
             var workingDirectory = worker ? Path.GetTempPath() : applicationDirectory;
             var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = workingDirectory };
-            start.ArgumentList.Add(Path.Combine(applicationDirectory, worker ? "Hispania.WorkerAgent.dll" : "Hispania.Server.dll"));
+            var manifest = ArtifactManifest.Verify(Path.Combine(Home, "app"));
+            var assembly = worker ? "Hispania.WorkerAgent.dll" : manifest.DistributionType == "platform-only" ? "Hispania.Platform.Server.dll" : "Hispania.Server.dll";
+            start.ArgumentList.Add(Path.Combine(applicationDirectory, assembly));
             // The archived Phase 17 development host does not understand --home and ignores
             // the fixture's production.json endpoint. Pin every host process through host config.
             start.Environment["ASPNETCORE_URLS"] = Client.BaseAddress!.ToString();
             foreach (var argument in arguments ?? ["--home", Home]) start.ArgumentList.Add(argument);
             foreach (var key in start.Environment.Keys.Where(key => key.StartsWith("HISPANIA__", StringComparison.OrdinalIgnoreCase) || key.StartsWith("HISPANIA_SECRET_", StringComparison.Ordinal)).ToArray()) start.Environment.Remove(key);
-            foreach (var (key, value) in CreateIsolatedDataEnvironment(Home)) start.Environment[key] = value;
+            foreach (var (key, value) in CreateIsolatedDataEnvironment(Home, LibraryRootOverride)) start.Environment[key] = value;
             if (environment is not null) foreach (var pair in environment) start.Environment[pair.Key] = pair.Value;
             var process = new Process { StartInfo = start, EnableRaisingEvents = true };
             var output = new ConcurrentQueue<string>(); var error = new ConcurrentQueue<string>();
@@ -284,7 +583,7 @@ public sealed class ArtifactProcessTests
             }
             processes.Add(process); identities.Add((process.Id, process.StartTime)); return process;
         }
-        private static Dictionary<string, string> CreateIsolatedDataEnvironment(string home)
+        private static Dictionary<string, string> CreateIsolatedDataEnvironment(string home, string? libraryRootOverride)
         {
             var state = Path.Combine(home, "state");
             var profile = Path.Combine(home, ".profile");
@@ -315,7 +614,8 @@ public sealed class ArtifactProcessTests
                 ["TEMP"] = Path.Combine(profile, "Temp"),
                 ["TMP"] = Path.Combine(profile, "Temp")
             };
-            foreach (var (key, path) in values.Where(pair => Path.IsPathRooted(pair.Value)).ToArray())
+            if (libraryRootOverride is not null) values["Library__Roots__0__Path"] = libraryRootOverride;
+            foreach (var (key, path) in values.Where(pair => pair.Key != "Library__Roots__0__Path" && Path.IsPathRooted(pair.Value)).ToArray())
             {
                 var fullPath = Path.GetFullPath(path);
                 var prefix = Path.GetFullPath(home).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
