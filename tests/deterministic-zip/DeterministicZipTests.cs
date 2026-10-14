@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text.Json.Nodes;
 using Hispania.DeterministicZip;
 using Xunit;
 
@@ -75,6 +76,23 @@ public sealed class DeterministicZipTests
         Program.Create(source, package);
         using var archive = ZipFile.OpenRead(package);
         Assert.Equal("café.txt", Assert.Single(archive.Entries).FullName);
+    }
+
+    [Fact]
+    public void NormalizesDynamicStaticAssetLastModifiedHeadersWithoutChangingRoutes()
+    {
+        using var fixture = new Fixture();
+        var first = fixture.File("first-endpoints.json", "{\"Version\":1,\"ManifestType\":\"Publish\",\"Endpoints\":[{\"Route\":\"a/index.html\",\"AssetFile\":\"a/index.html\",\"ResponseHeaders\":[{\"Name\":\"Last-Modified\",\"Value\":\"Wed, 14 Oct 2026 20:00:00 GMT\"}]}]}");
+        var second = fixture.File("second-endpoints.json", "{\"Version\":1,\"ManifestType\":\"Publish\",\"Endpoints\":[{\"Route\":\"a/index.html\",\"AssetFile\":\"a/index.html\",\"ResponseHeaders\":[{\"Name\":\"Last-Modified\",\"Value\":\"Wed, 14 Oct 2026 21:00:00 GMT\"}]}]}");
+        var commitTimestamp = DateTimeOffset.FromUnixTimeSeconds(1_792_000_000);
+
+        Program.NormalizeStaticAssetEndpoints(first, commitTimestamp);
+        Program.NormalizeStaticAssetEndpoints(second, commitTimestamp);
+
+        Assert.Equal(File.ReadAllBytes(first), File.ReadAllBytes(second));
+        var normalized = JsonNode.Parse(File.ReadAllText(first))!;
+        Assert.Equal("a/index.html", normalized["Endpoints"]![0]!["Route"]!.GetValue<string>());
+        Assert.Equal(commitTimestamp.UtcDateTime.ToString("R", System.Globalization.CultureInfo.InvariantCulture), normalized["Endpoints"]![0]!["ResponseHeaders"]![0]!["Value"]!.GetValue<string>());
     }
 
     [Fact]

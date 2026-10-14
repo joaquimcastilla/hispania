@@ -20,6 +20,10 @@ try {
         finally { Pop-Location }
     }
     if (-not (Test-Path -LiteralPath 'apps/web/dist/modern/index.html') -or -not (Test-Path -LiteralPath 'apps/web/dist/classic/index.classic.html')) { throw 'Both Modern and Classic Web builds are required.' }
+    $assetEpochOutput = & git show -s --format=%ct HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to read the source commit timestamp for static asset normalization.' }
+    $assetEpoch = ([string]$assetEpochOutput).Trim()
+    if ($assetEpoch -notmatch '^\d+$') { throw 'Source commit timestamp for static asset normalization is malformed.' }
     $publications = @(
         @{ Project='apps/server/Hispania.Server.csproj'; Path='server' },
         @{ Project='apps/worker-agent/Hispania.WorkerAgent.csproj'; Path='worker' },
@@ -32,6 +36,11 @@ try {
         $stage = "publish $($publication.Project)"
         & dotnet publish $publication.Project -c Release -r $Rid --self-contained false -p:UseAppHost=true -p:ProductionPublication=true -p:Deterministic=true -p:ContinuousIntegrationBuild=true ('-p:PathMap='+$repoRoot+'=/_/hispania') --nologo -v quiet -o (Join-Path $outputRoot $publication.Path)
         if ($LASTEXITCODE -ne 0) { throw "Publication failed: $($publication.Project)" }
+    }
+    $staticAssetEndpoints = Join-Path $outputRoot 'server/Hispania.Server.staticwebassets.endpoints.json'
+    if (Test-Path -LiteralPath $staticAssetEndpoints -PathType Leaf) {
+        & dotnet run --project (Join-Path $PSScriptRoot 'deterministic-zip/Hispania.DeterministicZip.csproj') --configuration Release -- normalize-static-assets $staticAssetEndpoints $assetEpoch
+        if ($LASTEXITCODE -ne 0) { throw 'Static Web Assets endpoint timestamp normalization failed.' }
     }
     $verifier = Join-Path $outputRoot 'deployment/Hispania.Deployment.dll'
     if ($Rid -eq 'linux-arm64') {

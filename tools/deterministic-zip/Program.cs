@@ -1,5 +1,9 @@
 using System.IO.Compression;
+using System.Globalization;
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Hispania.DeterministicZip;
 
@@ -9,9 +13,24 @@ internal static class Program
 
     internal static int Run(string[] args)
     {
+        if (args.Length == 3 && args[0] == "normalize-static-assets")
+        {
+            try
+            {
+                if (!long.TryParse(args[2], NumberStyles.None, CultureInfo.InvariantCulture, out var epoch)) throw new ArgumentException("Static asset timestamp must be a Unix epoch integer.");
+                NormalizeStaticAssetEndpoints(args[1], DateTimeOffset.FromUnixTimeSeconds(epoch));
+                return 0;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or JsonException)
+            {
+                Console.Error.WriteLine(exception.Message);
+                return 1;
+            }
+        }
+
         if (args.Length != 2)
         {
-            Console.Error.WriteLine("Usage: Hispania.DeterministicZip <source-directory> <output-zip>");
+            Console.Error.WriteLine("Usage: Hispania.DeterministicZip <source-directory> <output-zip> | normalize-static-assets <endpoints-json> <unix-epoch>");
             return 2;
         }
 
@@ -27,6 +46,31 @@ internal static class Program
             Console.Error.WriteLine(exception.Message);
             return 1;
         }
+    }
+
+    internal static int NormalizeStaticAssetEndpoints(string endpointsPath, DateTimeOffset timestamp)
+    {
+        var fullPath = Path.GetFullPath(endpointsPath);
+        var root = JsonNode.Parse(File.ReadAllText(fullPath))?.AsObject() ?? throw new InvalidDataException("Static Web Assets endpoint manifest must be a JSON object.");
+        var endpoints = root["Endpoints"]?.AsArray() ?? throw new InvalidDataException("Static Web Assets endpoint manifest is missing Endpoints.");
+        var normalizedTimestamp = timestamp.UtcDateTime.ToString("R", CultureInfo.InvariantCulture);
+        var changed = 0;
+        foreach (var endpoint in endpoints)
+        {
+            if (endpoint?["ResponseHeaders"] is not JsonArray headers) continue;
+            foreach (var header in headers)
+            {
+                if (header is JsonObject headerObject && string.Equals(headerObject["Name"]?.GetValue<string>(), "Last-Modified", StringComparison.OrdinalIgnoreCase))
+                {
+                    headerObject["Value"] = normalizedTimestamp;
+                    changed++;
+                }
+            }
+        }
+        if (changed == 0) throw new InvalidDataException("Static Web Assets endpoint manifest contained no Last-Modified headers to normalize.");
+        File.WriteAllText(fullPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = false }), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        Console.WriteLine($"Normalized {changed} static asset Last-Modified headers to {normalizedTimestamp}.");
+        return changed;
     }
 
     internal static void Create(string sourceDirectory, string outputZip)
