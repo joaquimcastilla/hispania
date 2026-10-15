@@ -8,7 +8,7 @@
 
 ## 1. Purpose and evidence rules
 
-The primary input is [HISPANIA v1.0 Deep Architecture Audit](HISPANIA-V1-ROADMAP-AUDIT.md). It is a baseline of observations and proposals, not a set of owner-approved decisions. The principles in §2 and Owner Decisions 9.1–9.8 below are explicitly approved. Decisions 9.9–9.11 remain open; recommendations are technical advice only.
+The primary input is [HISPANIA v1.0 Deep Architecture Audit](HISPANIA-V1-ROADMAP-AUDIT.md). It is a baseline of observations and proposals, not a set of owner-approved decisions. The principles in §2 and Owner Decisions 9.1–9.9 below are explicitly approved. Decisions 9.10–9.11 remain open; recommendations are technical advice only.
 
 This document distinguishes:
 
@@ -151,7 +151,7 @@ No forbidden edge above was corrected during Phase 0.
 | Marketplace / public registry | **Out of scope** | No need to boot empty Core. |
 | Dynamic module UI | **Extension point only** | UI contribution contract is designed now; runtime loading can follow Inventory reference module phase. |
 
-Phase 1 should not add generic scheduler scoring, Data Plane changes, PostgreSQL Core, WASM, Site Node, WOL, IoT, multi-site discovery, new tunneling, or module-specific persistence. It must preserve the approved network direction: private owner-managed infrastructure connectivity for multi-site Control Plane and separate HTTPS client access, without coupling Core to a VPN product or requiring public worker listeners. Implementing the multi-site network and CG-NAT connectivity is not part of the Empty Core gate. Reuse existing implementations where valid; create a separate composition root and artifact.
+Phase 1 should not add generic scheduler scoring, Data Plane changes, PostgreSQL Core, a WASM runtime or hostile-code sandbox, Site Node, WOL, IoT, multi-site discovery, new tunneling, or module-specific persistence. It must preserve the approved network direction: private owner-managed infrastructure connectivity for multi-site Control Plane and separate HTTPS client access, without coupling Core to a VPN product or requiring public worker listeners. Implementing the multi-site network and CG-NAT connectivity is not part of the Empty Core gate. Reuse existing implementations where valid; create a separate composition root and artifact.
 
 ## 7. Architecture Fitness Tests
 
@@ -287,7 +287,7 @@ For HISPANIA v1.0:
 - Third-party native modules are treated as trusted code only by the operator's explicit decision.
 - Out-of-Process execution provides fault isolation, resource limits, and supervision; it is **not a security sandbox**. Collectible `AssemblyLoadContext` is not a sandbox either.
 - Untrusted or adversarial native modules are **not supported in v1.0**. HISPANIA makes no malicious-code isolation promise for native modules.
-- A future validated sandbox (for example WASM/WASI or another technology) may be added without changing the Core principle of capability/permission enforcement.
+- WASM and other sandbox runtimes are deferred beyond v1.0 with no committed delivery date. A future validated sandbox may be proposed without changing the Core principle of capability/permission enforcement.
 - A module cannot run if its publisher is not authorized. It must declare requested permissions and gets no automatic filesystem, network, secret, database, scheduler, GPU, or other resource access merely because it is signed. The Core enforces each permission wherever resource enforcement exists; a permission without an enforcement path must not be represented as protected.
 
 ```text
@@ -697,9 +697,68 @@ Release acceptance requires: secure first-admin bootstrap; local login with no I
 
 Phase 1 priorities are platform identity/authentication contracts, secure admin bootstrap, local authentication, minimum authorization, and protecting Empty Core administration. Do not build complete TV pairing, external SSO, Media-specific authorization, advanced ERP/IoT permissions, or an unnecessarily generic policy engine in Phase 1. Phase 2 integrates permission declarations/enforcement with module trust and lifecycle; Phase 5 binds user/resource authorization to Data Plane grants; Phase 6 applies it to Media libraries/playback; client phases deliver sessions and device pairing. Release gates include security tests and migration validation. This does not authorize Phase 1 implementation.
 
-### 9.9 WASM / sandbox
+### 9.9 WASM / Untrusted Modules — APPROVED
 
-**Codex recommendation:** do not promise WASM in v1; do not support untrusted native modules. Existing OOP/collectible ALC are not sandboxes. Build trust tiers and OS-restricted accounts for trusted modules; defer a sandbox runtime until capability syscalls, filesystem/network isolation, quotas and platform conformance are real. **Decision: OPEN.**
+**OWNER DECISION 9.9 — APPROVED: TRUSTED NATIVE MODULES ONLY — WASM AND UNTRUSTED NATIVE MODULES DEFERRED.**
+
+HISPANIA v1.0 supports first-party native modules and trusted third-party native modules whose publishers the operator explicitly authorizes. Installable packages must pass signature, integrity, compatibility, and publisher-trust checks; installation and updates are controlled, and trust/module removal must be revocable. A valid signature establishes provenance and artifact integrity under the configured trust scheme; it does not prove the code is safe or bug-free. A signed package from an unknown or unauthorized publisher is not trusted automatically.
+
+HISPANIA v1.0 does not officially support hostile or untrusted native code, arbitrary code execution by unknown publishers, a security sandbox for native modules, an official WASM runtime, or an open marketplace of unreviewed modules. WASM and other sandboxing for untrusted code are **FUTURE CONSIDERATION — NOT SUPPORTED IN v1.0**, with no delivery date committed. This does not decide Marketplace scope; 9.10 remains open.
+
+Keep the trust and security layers distinct:
+
+| Layer | What it provides | What it does not prove |
+|---|---|---|
+| Supply-chain trust | Package signature/integrity checks, publisher authorization and compatibility checks. | That authorized publisher code is safe, bug-free, or vulnerability-free. |
+| Platform authorization | Permission checks for operations mediated by Core contracts. | Restrictions on every direct native OS/API call. A manifest declaration alone is not enforcement. |
+| Runtime isolation | In-process load-context lifecycle or OOP fault isolation, supervision and configured operational limits. | A hostile-code security boundary. |
+| Host security boundary | Effective OS controls on filesystem, network, credentials, privileges and resources. | No such comprehensive module sandbox is promised or verified for v1.0. |
+
+```text
+SIGNED != SAFE
+TRUSTED PUBLISHER != BUG-FREE
+AUTHENTICATED != AUTHORIZED
+OOP != SECURITY SANDBOX
+AssemblyLoadContext != SECURITY SANDBOX
+```
+
+First-party and trusted third-party modules follow the same minimum package checks: valid signature and integrity, authorized publisher, compatible host, controlled install/update/removal, versioned module contracts, and authorization for Core-mediated operations. The operator's publisher trust is an explicit decision; neither package signing nor installation grants blanket access to other modules or private data. Preserve the separation in 9.2, the limited ecosystem promise in 9.3, and user/resource authorization in 9.8.
+
+Preserve the architecture seam `Core → versioned module contracts → runtime/host → trusted native module`, including module identity, lifecycle, explicit APIs, supervision, resource limits and capability declarations where currently supported. These seams may ease future runtime choices; they are not a WASM compatibility promise and do not justify speculative abstractions. Keep supported in-process and out-of-process mechanisms where valid. OOP improves resilience and decoupling but does not by itself prevent malicious OS access; declared manifest permissions are not effective restrictions unless an enforcement path exists.
+
+#### WASM and future sandbox evaluation
+
+Any future proposal must validate a concrete runtime and WASI/capability model; host API security; filesystem/network access; memory, CPU and execution-time limits; revocation; escape/abuse testing; update/security maintenance; Linux x64, Windows x64 and Linux ARM64 compatibility; and Raspberry Pi 4B memory/performance. WASM does not imply safety by itself. Do not select or implement a runtime in Phase 0 or require one in Phase 1.
+
+General untrusted native support is out of scope for v1.0. A future proposal would need effective OS-level isolation, restricted process identity, filesystem and network isolation, privilege reduction, resource limits, secret separation, supervision and recovery, validated across supported operating systems. No specific mechanism is selected now.
+
+#### ARM64, acceptance, roadmap, and Phase 1 impact
+
+Decision 9.7 remains in force: the Core is multiplatform and ARM64 is a first-class Coordinator target. Trusted native modules avoid requiring a second runtime for v1.0 and reduce mandatory components, packaging, resource use and validation burden; they do not eliminate bugs, memory leaks or vulnerable dependencies. Raspberry Pi 4B keeps its independent stability, storage and resource qualification gates.
+
+Before declaring official trusted-native module support, release evidence must cover signature/integrity verification, explicit publisher authorization, compatibility checks, controlled installation/update, trust revocation and module disable/removal, failure recovery and supervision for each supported execution mode, versioned contracts, Core-mediated authorization, tampered packages, unauthorized publishers, incompatible packages, and Linux x64/Windows x64/Linux ARM64 support gates. Do not require hostile-native containment tests as a v1.0 support claim, and do not declare a capability implemented without evidence.
+
+Phase 1 preserves Empty Core, versioned contracts, module lifecycle, runtime/host separation, trust verification, platform authorization and ARM64 compatibility. It does not implement WASM/WASM SDK, a hostile-native sandbox, open marketplace, or new unapproved isolation mechanisms. Inventory remains the first planned real module for validating platform contracts; business modules must not become mandatory Core dependencies. Phase 2 matures module trust, permissions and the limited SDK. Later modules use the approved trusted-native model. Post-v1.0 sandbox/WASM evaluation is optional and has no committed date.
+
+#### Repository module-runtime inventory at committed product-code HEAD
+
+Static source review only; it is not a runtime/security validation. The product-code baseline is `134076f5ba2894aba216e775c4588cc3c547ee31`; subsequent commits through this update are documentation-only. Uncommitted work is excluded.
+
+| Capability | Status | Evidence and boundary |
+|---|---|---|
+| `.hispania` package format and local installation | **IMPLEMENTED — BASELINE** | `ExtensionPackageInstaller` validates a local ZIP package, manifest, paths, payload SHA-256 hashes, size limits, and host compatibility, then stores verified bytes inertly. It does not load code during installation. This is not a general distribution service. |
+| Package signatures | **IMPLEMENTED — BASELINE** | `ModulePackageSignature` verifies RSA-PSS/SHA-256 signatures over canonical manifest metadata including payload hashes. The signature implementation does not itself establish publisher trust or code safety. |
+| Trusted/revoked publisher configuration | **PARTIAL** | Worker/server composition supplies trusted publisher keys and revoked publisher IDs; catalog activation checks trust separately from installation. Durable publisher namespace authorization, operator review workflow, and complete lifecycle/revocation operations are not established as a complete product policy. |
+| Compatibility and package integrity | **IMPLEMENTED — BASELINE** | Manifest host-version ranges and file digests are validated. A valid package remains subject to trust and activation checks. |
+| Controlled upgrade, rollback and removal lifecycle | **PARTIAL / NOT VERIFIED** | Versioned installation directories and module administration exist, but a complete supported update/rollback/recovery policy and its release evidence are not established by this source review. |
+| `AssemblyLoadContext` | **IMPLEMENTED — BASELINE** | `apps/module-host` loads managed modules in a collectible context. This is lifecycle/load isolation, not a security sandbox. |
+| Out-of-process host and supervisor | **IMPLEMENTED — BASELINE** | `apps/module-host`, `OutOfProcessModule` and worker composition provide process hosting, restart policy and configured operational resource limits. These do not constitute OS-enforced hostile-code containment. |
+| Effective OS isolation of native module code | **NOT IMPLEMENTED / NOT VERIFIED** | No comprehensive filesystem, network, credential, privilege and resource sandbox for modules is established by the reviewed code. |
+| Declared permissions and Core enforcement | **PARTIAL** | Manifests declare permissions and Core-mediated checks exist in scoped areas; enforcement is not universal for all native operations and module APIs. A declaration alone is not confinement. |
+| Public SDK/compatibility and onboarding package | **NOT IMPLEMENTED as a complete public offering** | Contracts and sample modules exist; public SDK packaging, full compatibility policy, support/onboarding process remain future work under 9.3. |
+| WASM/WASI runtime and untrusted native sandbox | **NOT IMPLEMENTED** | No supported WASM runtime or general hostile-native sandbox was identified. |
+
+No tests were run for this documentation update; this table records source-level evidence and explicit gaps only.
 
 ### 9.10 Marketplace
 
@@ -711,7 +770,6 @@ No license change is proposed. Future technical choices affected by legal bounda
 
 ### Pending owner decisions
 
-- **9.9 WASM / sandbox — OPEN**
 - **9.10 Marketplace — OPEN**
 - **9.11 License boundary — OPEN**
 
@@ -859,7 +917,7 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 
 1. Design concrete network implementations that satisfy approved 9.5 multi-site private infrastructure and public HTTPS client access; no product-specific VPN or gateway is frozen by that decision.
 2. Define route-by-route migration from current anonymous reads to the approved 9.8 default-deny policy, including explicit public-resource declarations and compatibility tests; this is implementation planning, not an open owner-policy decision.
-3. Decide whether a WASM/other sandbox implementation enters v1; the approved 9.2 decision still excludes untrusted native modules and makes no malicious-code isolation promise.
+3. For a possible post-v1.0 sandbox proposal, validate runtime, isolation, host APIs, resources and platform support against approved 9.9; this is future engineering evaluation, not a v1.0 support commitment or an open owner decision.
 4. Confirm marketplace scope for v1.
 5. Decide CLI packaging/runtime expectation (side-by-side tool vs bundled) in Phase 1 design.
 6. Confirm minimum Core own-state backup/restore included in Fase 1 or an owner-approved 1.1 gate before module extraction.
@@ -876,5 +934,5 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 - Independent version planes: **PASS as proposal; public ABI freeze deferred**.
 - Phase 1 contract: **PASS**.
 - Product code unchanged: **PASS**.
-- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, 9.3 Third-party Module Promise, 9.4 Remote Worker Threat Model, 9.5 Network Supported in v1, 9.6 Data Plane Architecture, 9.7 ARM64 / Hardware Support, and 9.8 Authentication for Private Data: **APPROVED**.
-- Owner-only selections 9.9–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
+- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, 9.3 Third-party Module Promise, 9.4 Remote Worker Threat Model, 9.5 Network Supported in v1, 9.6 Data Plane Architecture, 9.7 ARM64 / Hardware Support, 9.8 Authentication for Private Data, and 9.9 WASM / Untrusted Modules: **APPROVED**.
+- Owner-only selections 9.10–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
