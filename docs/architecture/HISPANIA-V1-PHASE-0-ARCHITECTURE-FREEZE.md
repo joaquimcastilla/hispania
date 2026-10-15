@@ -2,13 +2,13 @@
 
 **Purpose:** freeze the architectural direction and define the acceptance contract for Phase 1 (Empty Core Composition Root). This is an analysis and planning document; it does not authorize implementation of Phase 1.
 
-**Repository evidence:** starting HEAD for this update `93b9204c88da6db3f502cbde6d7ae2911de6ae00`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; intervening commits changed only this Phase 0 document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
+**Repository evidence:** starting HEAD for this update `bae53024b2f31cc9200a179bd5c40780e230175a`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; intervening commits changed only this Phase 0 document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. A separate local Step 2.1 worktree/branch and ARM64 CI branches were inspected read-only; their relationship and evidence limits are recorded under 9.7. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
 
 **Phase 0 result:** **TECHNICAL PHASE 0: PASS** for the specified documentation outputs and Phase 1 contract. **OWNER FREEZE: PENDING** because the unresolved decisions in §9 require owner approval. No product code, APIs, databases, scheduler, Data Plane, runtime, or package format were changed; no tests were run.
 
 ## 1. Purpose and evidence rules
 
-The primary input is [HISPANIA v1.0 Deep Architecture Audit](HISPANIA-V1-ROADMAP-AUDIT.md). It is a baseline of observations and proposals, not a set of owner-approved decisions. The principles in §2 and Owner Decisions 9.1–9.6 below are explicitly approved. Decisions 9.7–9.11 remain open; recommendations are technical advice only.
+The primary input is [HISPANIA v1.0 Deep Architecture Audit](HISPANIA-V1-ROADMAP-AUDIT.md). It is a baseline of observations and proposals, not a set of owner-approved decisions. The principles in §2 and Owner Decisions 9.1–9.7 below are explicitly approved. Decisions 9.8–9.11 remain open; recommendations are technical advice only.
 
 This document distinguishes:
 
@@ -511,25 +511,99 @@ The table records present evidence and gaps; it does not authorize implementatio
 
 Phase 1 is limited to preserving the Control Plane/Data Plane boundary and neutral/versionable contract seams needed later. It must not implement the direct route matrix, Worker-to-Worker data movement, or Data Gateway. Phase 5 is the explicit **Data Plane v1 implementation and validation gate** before v1.0 support: freeze protocol/grant semantics, implement direct and independent Gateway paths, exercise cancellation/revocation/limits/backpressure/fail-closed behavior under network and Worker failure, capture traffic proving Coordinator bypass, and gate the Media reference adapter. Phase 6 integrates Media through those platform contracts; Phase 9 must publish the validated route/support matrix. No existing implementation or test source alone passes these new acceptance gates.
 
-### 9.7 ARM64 and hardware support
+### 9.7 ARM64 / Hardware Support — APPROVED
 
-The current principal workflow at this HEAD runs Linux x64 and Windows x64; the repo contains historical ARM work/notes, but this branch's `.github/workflows/validation.yml` has no ARM64 job. No official hardware acceleration certification follows from capability labels or FFmpeg presence.
+**OWNER DECISION 9.7 — APPROVED: MULTIPLATFORM CORE + ARM64 FIRST-CLASS COORDINATOR.**
 
-| Target | Proposed v1 status | Evidence / precondition |
+An official target decision is not a validation result. Each target remains **OFFICIAL TARGET — PENDING VALIDATION** until its reproducible acceptance gates pass; only then may it be called **OFFICIALLY SUPPORTED — VALIDATED**. Keep **EXPERIMENTAL** and **OUT OF SCOPE** distinct. A build, capability flag, short smoke, or result for a different artifact/branch does not establish certification.
+
+#### Approved support matrix
+
+| Platform / role | v1.0 owner decision | Current validation status |
 |---|---|---|
-| Linux x64 Coordinator | **OFFICIAL candidate** | Linux CI, .NET cross-platform suite, distributed/PG tests; release package/service/backup gates still required. |
-| Windows x64 Coordinator | **OFFICIAL candidate** | Windows CI full build/tests and worker process paths; installer/service/update gates still required. |
-| Generic Linux ARM64 Coordinator | **EXPERIMENTAL** until CI/lab gate | Build/runtime validation absent in current workflow. |
-| Raspberry Pi 4B 8 GB Coordinator | **EXPERIMENTAL candidate** | Plausible baseline, but sustained storage/backup/worker/upgrade and memory profile not evidenced in current HEAD. May be promoted only after ARM64 lab acceptance. |
-| Raspberry Pi 3B+ Coordinator | **OUT OF SCOPE** proposed | Low-memory support risk for ASP.NET + SQLite + admin; treat as potential agent experiment, not Coordinator target. |
-| Linux x64 Worker | **OFFICIAL candidate** | Cross-platform worker and mTLS/process tests; release service/runtime setup still required. |
-| Windows x64 Worker | **OFFICIAL candidate** | Windows integration/job object paths tested in CI; package/service gate remains. |
-| ARM64 Worker | **EXPERIMENTAL** | Add ARM64 runner/device smoke before promotion. |
-| CPU software worker | **OFFICIAL candidate** | FFmpeg software path exists, subject to release package gate. |
-| GPU worker generally | **EXPERIMENTAL** | Current inventory labels do not demonstrate resource reservation or workload matrix. |
-| NVIDIA GTX 950/1060 acceleration | **EXPERIMENTAL / OUT OF OFFICIAL SCOPE** | No driver/codec/version support matrix or CI evidence. Never infer from generic `gpu` label. |
+| Linux x64 Coordinator | **OFFICIAL TARGET** | Pending v1.0 release gates. |
+| Windows x64 Coordinator | **OFFICIAL TARGET** | Pending v1.0 release gates. |
+| Linux ARM64 Coordinator | **OFFICIAL TARGET** | Pending v1.0 release gates. |
+| Raspberry Pi 4B 8 GB Coordinator | **PRIORITY OFFICIAL TARGET** | Pending Pi-specific Coordinator acceptance; existing Platform-only staging is partial evidence only. |
+| Raspberry Pi 3B+ Coordinator | **OUT OF OFFICIAL SCOPE** | No v1.0 Coordinator support promise. |
+| Linux x64 Worker | **OFFICIAL TARGET** | Pending v1.0 release gates. |
+| Windows x64 Worker | **OFFICIAL TARGET** | Pending v1.0 release gates. |
+| Linux ARM64 Worker | **OFFICIAL TARGET, SUBJECT TO VALIDATION** | Pending native Worker/control/data-path validation. |
+| CPU software Worker | **OFFICIAL TARGET** | Pending package/workload validation; GPU is not required. |
+| Generic GPU Worker | **EXPERIMENTAL** | No universal GPU support promise. |
+| NVIDIA GTX 950 | **EXPERIMENTAL** | Reference hardware only; no codec/driver certification. |
+| NVIDIA GTX 1060 6 GB | **EXPERIMENTAL** | Reference hardware only; no codec/driver certification. |
+| ARM64 Site Node | **FUTURE TARGET** | Not implemented or required in Phase 1. |
+| Raspberry Pi 3B+ as lightweight Worker/agent | **EXPERIMENTAL, IF INVESTIGATED** | Not a support promise; Pi 3B+ Coordinator remains out of scope. |
 
-**Codex recommendation:** publish Linux x64 and Windows x64 first when install/upgrade gates close; ARM64 and Pi4 remain experimental until physical acceptance; Pi3B+ Coordinator out of scope, optional CPU Worker experiment. **Decision: OPEN.**
+HISPANIA must keep the Coordinator useful on low-power hardware. Its responsibilities include identity/authentication/authorization, configuration, module lifecycle, Worker registry, scheduling, grants, leases/fencing, health, audit, Core persistence, supervision, and Data Plane coordination. It must not require a dedicated GPU, heavy media transcoding, local AI models, large RAM, media-scale storage, or a hardware vendor. Heavy work is delegated to Workers. This follows approved 9.6: the Coordinator is not a mandatory relay for bulk data.
+
+The Core must not have mandatory dependencies on NVIDIA/CUDA, FFmpeg/NVENC/NVDEC, AI models, x64-only instructions, or Raspberry Pi-specific hardware. Hardware implementations belong behind neutral module/provider/Worker/adapter contracts. CPU software processing is the baseline official Worker target; advertised capabilities must reflect actual runtime availability.
+
+#### Raspberry Pi 4B 8 GB Coordinator profile
+
+Reference profile: Raspberry Pi 4B, 8 GB RAM, Linux ARM64, HISPANIA Coordinator, Core SQLite, Worker registry/scheduler, module lifecycle, Control Plane, and administration. USB SSD or M.2 storage may be used; installation must not require a particular SD card. Record the exact physical configuration, power, storage, and thermal profile during qualification.
+
+Before promotion to **OFFICIALLY SUPPORTED — VALIDATED**, require reproducible evidence for:
+
+- **Native ARM64:** clean Linux ARM64 build/publish and execution on Pi 4B; clean boot, authenticated administration, health/readiness, restart, and recovery.
+- **Persistence:** SQLite durable writes, restart, backup, restore, integrity check, and recovery from interrupted operations.
+- **Resources:** idle, registered-Worker, and administrative-load RAM/CPU/disk/log/concurrency measurements. Define acceptance thresholds before testing; this freeze invents no performance thresholds.
+- **Workers:** multiple Worker registration, heartbeats, selection, leases, fencing, cancellation, revocation, disconnect/reconnect.
+- **Multi-site:** Control Plane reachability over LAN and, where applicable, private VPN. Site Node is not a Phase 1 prerequisite.
+- **Data Plane:** in Phase 5, demonstrate direct and independent-Gateway routes without making Pi 4 Coordinator carry payloads; measure Coordinator traffic.
+- **Upgrade:** clean install, upgrade, restart, state persistence, supported rollback, and recovery from failed upgrade.
+- **Stability:** sustained operation, service supervision, bounded memory behavior, disconnect handling, and safe restart.
+- **Hardware:** stable power, temperature/throttling, storage health, and filesystem integrity. A short smoke is not a soak test.
+
+Do not mark a gate passed without recording artifact/source identity, hardware/OS, commands or workflow, result, and relevant measurements and limitations.
+
+#### ARM64 and hardware evidence reconciliation
+
+A separate local worktree `step2-1-production-readiness` exists on branch `codex/hispania-0.7.0-step2-1-production-readiness`, at commit `1463ca5ce47866e8813a3499a34609c723808b2f`. It was clean when inspected. This commit is available locally (also named by a local `origin/...` tracking ref); no fetch was performed, so current remote state is unknown. It shares merge base `134076f5ba2894aba216e775c4588cc3c547ee31` with this Phase 0 branch and is not an ancestor of this branch. Its changes/evidence are not included in current product-code HEAD and must not be silently treated as shipped here. Local ARM64 CI branches/worktrees were also found: `codex/hispania-arm64-ci` at `71fbe890f08af0177f54041487df19097a23437e` and `codex/hispania-arm64-integration` at `d3a16e8bd89c5f431faa1b1c17324220c0591a10`. Inspection was read-only; no worktree was checked out, merged, or changed.
+
+| Evidence item | Classification | What it establishes / limitation |
+|---|---|---|
+| Phase 0 product-code baseline `134076f5ba2894aba216e775c4588cc3c547ee31` and current Phase 0 branch | **VERIFIED IN CURRENT HEAD** | Existing validation workflow has Linux/Windows paths but no ARM64 job; it does not establish native Pi Coordinator support. |
+| Step 2.1 candidate branch/commit `1463ca5...`; report says overall Step 2.1 **PARTIAL** | **VERIFIED IN OTHER LOCAL COMMIT** | Local source and reports exist, but the branch diverges from Phase 0 at the shared baseline. This is not a merged Phase 0 implementation or v1.0 release qualification. |
+| Step 2.1 ARM64 publish/manifest scan | **REPORTED BUT NOT REPRODUCED** | `1463ca5:docs/HISPANIA-0.7.0-STEP-2-1.md` documents Linux ARM64 cross-publish, AArch64 SQLite binary, and artifact scans. Cross-publish is not native execution or release reproducibility. |
+| Pi 4B native Platform-only production staging | **REPORTED BUT NOT REPRODUCED** | The Step 2.1 report records isolated install/check, bootstrap, readiness, authenticated endpoints, SQLite backup, same-version upgrade, restore-backed rollback, restart, and shutdown. The tested package came from a dirty worktree; Coordinator service/data/config/log/release paths were not accessed. See `1463ca5:docs/HISPANIA-0.7.0-STEP-2-1.md`, ARM64 validation sections. It is not v1.0 Core Coordinator qualification. |
+| Pi 4B earlier SSH Platform-only smoke | **REPORTED BUT NOT REPRODUCED** | `1463ca5:docs/operations/PLATFORM-ONLY-ARM64.md` and `ARM64-LAB.md` record older working-tree artifact smoke for health/auth/SQLite restart; no stress/soak, production install lifecycle, or Coordinator service use. Artifact included a WindowsServices dependency at that time. |
+| Pi 3B+ Platform-only smoke / manual Actions run | **REPORTED BUT NOT REPRODUCED** | `1463ca5:docs/operations/ARM64-CI.md` reports a bounded smoke success on a fixed working-tree artifact. Throttling/undervoltage `0x50005` was present; later Step 2.1-H skipped Pi 3 testing due to that preflight. Pi 3 Coordinator is now out of official scope; this does not validate ARM64 Worker support. |
+| Pi 4 ARM64 integration workflow | **NOT VERIFIED for Step 2.1 artifact** | `1463ca5:docs/operations/ARM64-CI.md` documents a manual-only workflow whose provisioned hashes refer to an older artifact. Step 2.1 report says no Actions run validated its package on Pi 4. SSH staging is not an Actions result. |
+| Pi 4 sustained Coordinator workload, multi-Worker control, Data Plane bypass, thermal/power/storage endurance | **NOT VERIFIED** | Reports explicitly say no stress workload and make no Data Plane/production deployment claim. These remain v1.0 acceptance gates. |
+| Raspberry Pi 3B+ Coordinator | **NOT IMPLEMENTED / OUT OF SCOPE** | No official support is authorized. Lightweight Worker/agent remains only a possible experiment. |
+| GPU / GTX 950 / GTX 1060 codec-driver matrix | **NOT VERIFIED** | No validated OS/driver/FFmpeg/codec/concurrency matrix; these remain experimental. |
+
+Step 2.1 documentation also reports Windows x64 production-lifecycle validation on a dirty-source artifact, while native Linux x64 runner validation was unavailable. Its report documents incomplete/blocked gates and does not claim overall PASS. These results are useful follow-up evidence but do not erase branch, artifact, or scope boundaries. Future support evidence must reconcile to an identified clean source commit and release artifact.
+
+#### Required release gate matrix
+
+Every target below is required before full v1.0 release. A pass on one OS/architecture cannot substitute for another. Use each platform's native service/installer mechanisms; identical installation tooling is not required.
+
+| Gate | Linux x64 | Windows x64 | Linux ARM64 / Pi 4B |
+|---|---|---|---|
+| Clean build | Required | Required | Required; native build or verified publish plus native run |
+| Publish/package and artifact identity | Required | Required | Required |
+| Native runtime | Required | Required | Required on ARM64; specifically Pi 4B for Coordinator profile |
+| Service lifecycle | Required | Required | Required |
+| Clean install | Required | Required | Required |
+| Upgrade | Required | Required | Required |
+| Restart/recovery | Required | Required | Required |
+| SQLite persistence | Required | Required | Required |
+| Backup/restore | Required | Required | Required |
+| Worker enrollment | Required | Required | Required |
+| Multi-Worker control | Required | Required | Required |
+| Resource monitoring | Required | Required | Required, including Pi power/temperature/throttling/storage |
+| Sustained operation | Required | Required | Required; a short smoke alone is insufficient |
+
+Add OS-specific service, installer, rollback, filesystem, and hardware checks as appropriate. No mandatory skip may remain without a documented exception and explicit owner approval. If a required platform fails, mark it `TARGET NOT VALIDATED`; do not silently remove it from v1.0. Shipping with reduced support requires a separate explicit owner decision.
+
+#### Phase 1 and roadmap impact
+
+Phase 1 must avoid x64-only dependencies, preserve SQLite/Linux ARM64 compatibility, remain GPU- and FFmpeg-independent, keep the legacy server operating, and design tests for reuse on ARM64. Once an Empty Core artifact can execute, include a native Linux ARM64 build/publish and smoke at the earliest suitable checkpoint. This does not require completing the full Pi 4 sustained Coordinator qualification in Phase 1; that remains a release gate before v1.0.
+
+The roadmap treats Linux x64, Windows x64, Linux ARM64, Pi 4B 8 GB Coordinator, and CPU software Workers as official targets pending their gates; GPUs remain experimental; Pi 3B+ Coordinator remains out of scope. Keep a physical-hardware qualification gate. Use the same Core architecture across supported platforms rather than creating a Raspberry Pi-specific Core.
 
 ### 9.8 Authentication for private data
 
@@ -557,7 +631,6 @@ No license change is proposed. Future technical choices affected by legal bounda
 
 ### Pending owner decisions
 
-- **9.7 ARM64 and hardware support — OPEN**
 - **9.8 Authentication for private data — OPEN**
 - **9.9 WASM / sandbox — OPEN**
 - **9.10 Marketplace — OPEN**
@@ -609,6 +682,7 @@ Current reusable groundwork: module manifests/packages/signing; module catalogue
 - SDK packaging, compatibility-window details, and curated external onboarding (Phase 9); the limited public API promise is approved, but this phase does not implement it.
 - PostgreSQL Core provider is outside v1.0 by approved decision; this does not restrict module-owned provider choices.
 - Full user roles/SSO and business authorization (but minimal secure platform admin is not deferrable).
+- Sustained Pi 4B Coordinator and full platform/hardware qualification gates are Phase 8/9 release work; Phase 1 still adds an ARM64 Empty Core smoke once an executable artifact exists.
 - WASM sandbox, marketplace, public worker listeners, custom CG-NAT traversal/relay, Site Node, multi-coordinator, GPU scoring, AI, distributed models. The approved 9.5 network direction remains architectural; implementing multi-site connectivity is not part of Phase 1.
 - The approved 9.6 direct Data Plane and independent Gateway features; implementation belongs to the explicit Phase 5 validation gate, not Phase 1.
 - UI package contribution execution; Phase 1 needs an empty shell and registry surface, not arbitrary dynamic UI scripts.
@@ -628,6 +702,7 @@ Create a new production composition root and installable Core artifact that star
 - Explicit Core project allowlist and package/publish manifest; use Platform/ModuleSystem contracts and runtime only after reviewing transitive references.
 - Reuse Kernel, Runtime/module catalogue/lifecycle, signature/package verification and OOP supervisor as accepted by reuse gates.
 - Core-owned persistence contract and SQLite provider, following approved Owner Decision 9.1. The contract is provider-neutral and limited to demonstrated Core needs; SQLite is the only official Core provider in v1.0.
+- Preserve Linux ARM64 publication/runtime compatibility from the start; do not add x64-only Core dependencies. Full hardware qualification is not a Phase 1 implementation requirement.
 - Secure bootstrap administrator and authenticated Core-admin mutation routes, module list, health, readiness and minimal audit.
 - A signed no-business fixture package from an explicitly trusted test publisher, covering install, disable, module failure isolation, Core restart and empty data after fixture removal/archive.
 - Fail-closed package tests for unknown signer, revoked signer, tampered package/hash/signature, and incompatible host before code execution.
@@ -677,7 +752,7 @@ Likely **create**: a Core host/composition project; Core admin API/shell project
 5. Install fixture from explicitly trusted test publisher → verify signature/integrity/host compatibility → enumerate → disable → force fixture failure → Core still healthy → restart.
 6. Verify unknown signer, revoked signer, tampered artifact and incompatible host all fail closed before execution; retain package traversal/hash/signature and bounded supervisor regression coverage.
 7. Test Core state backup/restore and reopen; include interrupted/invalid backup behavior within agreed boundary.
-8. Run on Linux x64 and Windows x64; ARM64 build/smoke only if included in approved Phase 1 support target, otherwise track as Phase 8 experiment.
+8. Run on Linux x64 and Windows x64; when an executable Empty Core artifact is available, also build/publish and run a native Linux ARM64 smoke covering boot, authenticated admin, health/readiness, SQLite persistence and restart. This Phase 1 smoke is not Pi 4 sustained Coordinator qualification; complete that before v1.0 release.
 9. Keep current full product CI jobs passing; do not weaken/remove Media/Inventory regressions to make Core green.
 
 ### Migration/transition strategy
@@ -693,7 +768,7 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 - Core persistence contract is provider-neutral and tested through the official SQLite provider; PostgreSQL Core is neither shipped nor required. Do not create a generic abstraction broader than the Core's actual operations.
 - The existing Library/Media PostgreSQL provider and migrations are unchanged by Fase 1.
 - No forbidden project/reference/runtime/package dependency; all fitness tests pass.
-- Linux x64 and Windows x64 build/publish/process gates pass; no required skips or undocumented manual assumptions.
+- Linux x64 and Windows x64 build/publish/process gates pass; ARM64 Empty Core native smoke passes when the executable artifact is available. No required skips or undocumented manual assumptions.
 - Existing product CI remains green.
 - No Media/Inventory routes, data, schema, tests, or behavior moved/changed as part of Core creation.
 - Commit/PR evidence lists package hash, test report, support runner and any remaining owner decision.
@@ -701,13 +776,12 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 ## 14. Open questions to resolve before contract freeze
 
 1. Design concrete network implementations that satisfy approved 9.5 multi-site private infrastructure and public HTTPS client access; no product-specific VPN or gateway is frozen by that decision.
-2. Approve official hardware/platform matrix; current evidence does not justify Pi4/ARM64 as official yet.
-3. Approve authentication-by-default for private data and migration policy from current anonymous reads.
-4. Decide whether a WASM/other sandbox implementation enters v1; the approved 9.2 decision still excludes untrusted native modules and makes no malicious-code isolation promise.
-5. Confirm marketplace scope for v1.
-6. Decide CLI packaging/runtime expectation (side-by-side tool vs bundled) in Phase 1 design.
-7. Confirm minimum Core own-state backup/restore included in Fase 1 or an owner-approved 1.1 gate before module extraction.
-8. Obtain legal guidance on SDK, module redistribution and commercial/proprietary extensions without changing license in this phase.
+2. Approve authentication-by-default for private data and migration policy from current anonymous reads.
+3. Decide whether a WASM/other sandbox implementation enters v1; the approved 9.2 decision still excludes untrusted native modules and makes no malicious-code isolation promise.
+4. Confirm marketplace scope for v1.
+5. Decide CLI packaging/runtime expectation (side-by-side tool vs bundled) in Phase 1 design.
+6. Confirm minimum Core own-state backup/restore included in Fase 1 or an owner-approved 1.1 gate before module extraction.
+7. Obtain legal guidance on SDK, module redistribution and commercial/proprietary extensions without changing license in this phase.
 
 ### Gate summary
 
@@ -716,9 +790,9 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 - Core boundary/responsibility and forbidden graph: **PASS**.
 - Code classification and reuse matrix: **PASS**.
 - Fitness tests and phase allocation: **PASS**.
-- Proposed platform/hardware support matrix: **PASS as proposal; no unsupported target asserted officially**.
+- Owner-approved platform/hardware target matrix: **PASS; validation pending per target as recorded in 9.7**.
 - Independent version planes: **PASS as proposal; public ABI freeze deferred**.
 - Phase 1 contract: **PASS**.
 - Product code unchanged: **PASS**.
-- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, 9.3 Third-party Module Promise, 9.4 Remote Worker Threat Model, 9.5 Network Supported in v1, and 9.6 Data Plane Architecture: **APPROVED**.
-- Owner-only selections 9.7–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
+- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, 9.3 Third-party Module Promise, 9.4 Remote Worker Threat Model, 9.5 Network Supported in v1, 9.6 Data Plane Architecture, and 9.7 ARM64 / Hardware Support: **APPROVED**.
+- Owner-only selections 9.8–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
