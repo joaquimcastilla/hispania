@@ -2,7 +2,7 @@
 
 **Purpose:** freeze the architectural direction and define the acceptance contract for Phase 1 (Empty Core Composition Root). This is an analysis and planning document; it does not authorize implementation of Phase 1.
 
-**Repository evidence:** HEAD `134076f5ba2894aba216e775c4588cc3c547ee31`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
+**Repository evidence:** starting HEAD for this update `af797295b69bffc24aa582a36deb13b6b65939ed`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; the intervening commit changed only this Phase 0 document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
 
 **Phase 0 result:** **TECHNICAL PHASE 0: PASS** for the specified documentation outputs and Phase 1 contract. **OWNER FREEZE: PENDING** because the unresolved decisions in §9 require owner approval. No product code, APIs, databases, scheduler, Data Plane, runtime, or package format were changed; no tests were run.
 
@@ -57,7 +57,7 @@ These are approved and are **not** open decisions:
 | Leases/retries | CORE | Fencing, expiry, cancellation, retry-safe state and uncertainty behavior; task handler is module/provider-owned. |
 | Grants | CORE | Creates and revokes narrowly scoped, short-lived authorization; storage/source provider validates and serves bytes. |
 | Data Plane authorization | CORE | Authorizes task/node/destination/scope/TTL. Bulk transfer implementation is PROVIDER/WORKER; no business payload relay in generic Core path. |
-| Platform persistence | CORE + PROVIDER | Owns Core config, identity, module inventory, trust and task metadata through persistence contracts; SQLite or another backend is PROVIDER. |
+| Platform persistence | CORE + PROVIDER | Owns Core config, identity, module inventory, trust and task metadata through a provider-neutral persistence contract. SQLite is the approved official Core provider for v1.0; PostgreSQL is not an official Core provider. |
 | Module persistence | MODULE + PROVIDER | Module owns its schema/data and selects its DB provider; no implicit shared Core tables. |
 | Web shell | CORE | Login, platform status, module registry/navigation extension points. Module pages are MODULE contributions under versioned UI contract and strict origin/CSP rules. |
 | CLI | OPERATOR TOOLING | Operator-facing commands call stable Core APIs; CLI is not platform business logic. |
@@ -134,7 +134,7 @@ No forbidden edge above was corrected during Phase 0.
 | Health/readiness endpoint | **Required** | Proves host and platform store status without business module. |
 | Authenticated administrator bootstrap/login | **Required, minimal** | Establish secure admin boundary; full users/SSO/roles can mature later. Must not leave admin mutation anonymous. |
 | Load and validate platform configuration | **Required** | Invalid config fails clearly; module config remains absent until installed. |
-| Open Core-owned persistence | **Required** | SQLite default proposed pending owner decision; schema version and health visible. |
+| Open Core-owned persistence | **Required** | A provider-neutral Core persistence contract is mandatory; SQLite is the approved official v1.0 provider. Schema version and health are visible. PostgreSQL Core is out of scope. |
 | Register module runtime/catalogue | **Required** | Empty list is valid and observable. Reuse current ModuleRuntime/catalogue after dependency review. |
 | Enumerate installed modules | **Required** | Empty result and health visible. |
 | Install a compatible signed module | **Required at least for a harmless fixture module** | Proves the Core is extensible. Not Media/Inventory installation in Phase 1. Requires trust decision before final signature policy. |
@@ -242,19 +242,34 @@ No fitness tests were implemented in Phase 0. This table gives intended phase an
 - Existing integration tests and manifests are test material even when demo projects are excluded from product artifacts.
 - Keep compatibility adapters around old APIs while the new composition root is introduced; data migration precedes deletion of legacy paths.
 
-## 9. OWNER DECISIONS — OPEN
+## 9. OWNER DECISIONS
 
 Recommendations below are not approvals. The owner should reply with selections or edits before the corresponding public contract/support statement is frozen. “Difficulty to change” means after v1 consumers/data exist.
 
-### 9.1 Core persistence
+### 9.1 Core persistence — APPROVED
 
-| Option | Advantages | Disadvantages / short term | v1 effect | Future change difficulty |
-|---|---|---|---|---|
-| A. SQLite-only Core v1 | Small install, low RAM, simple Pi recovery and backup. | No shared DB/HA; modules still choose own DB independently. | Narrow, testable Coordinator. | Medium if storage contract is clean; high if SQL leaks into Core API. |
-| B. SQLite default + optional PostgreSQL | Home-friendly default and larger-deployment choice. | Matrix, migrations, backup and semantic differences double; requires real integration. | Core has two official providers. | Medium if provider contract frozen first. |
-| C. Both officially supported from v1 | Broad deployment choice. | Most validation and support burden before empty Core is stable. | Larger v1 gate. | High if one is later dropped after users rely on it. |
+**OWNER DECISION 9.1 — APPROVED**
 
-**Codex recommendation:** A for Core state in v1; keep the provider interface and do not prevent a module from using its own remote DB. Keep Library PostgreSQL as a **Media module provider** if it passes its own gate. **Decision: OPEN.**
+For HISPANIA v1.0:
+
+- SQLite is the officially supported Core persistence provider.
+- Core must consume a provider-neutral persistence contract; SQLite is an implementation/provider, not the Core's public contract.
+- The contract should be only as general as current Core needs require. Do not introduce a speculative persistence framework or provider surface unsupported by repository use cases.
+- PostgreSQL is **not** an officially supported Core provider in v1.0. It may be added later without breaking public Core contracts.
+- Modules own their data and may select their own persistence providers, including SQLite, PostgreSQL, or another backend, without imposing that choice on Core.
+- The existing Library/Media PostgreSQL adapter belongs to the future Media module. It does not constitute PostgreSQL support for Core and must not be moved into or treated as a Core provider.
+
+```text
+HISPANIA Core
+    -> Core Persistence Contract
+         -> SQLite Provider (OFFICIAL v1.0)
+         -> Future providers (NOT OFFICIAL v1.0)
+
+Media -> module-owned persistence -> SQLite / PostgreSQL
+Inventory, ERP, and other modules -> their own persistence policies
+```
+
+This decision selects SQLite-only as the official Core provider for v1.0. It does not constrain module-owned storage choices or approve changes to the existing Media PostgreSQL adapter.
 
 ### 9.2 Module trust model
 
@@ -265,7 +280,7 @@ Recommendations below are not approvals. The owner should reply with selections 
 | C. Untrusted native modules | Maximum openness. | No safe isolation in current runtime; privilege and data compromise risk. | Not supportable. | Very high; cannot retrofit security after exposure. |
 | D. Sandboxed untrusted modules (e.g. WASM) | Capability model can bound access. | WASM/WASI runtime is not implemented; host APIs/resource limits/audits need design and platform validation. | Only if separate sandbox project is completed; not current capability. | High if API designed without sandbox assumptions. |
 
-**Codex recommendation:** v1 supports first-party and explicitly trusted signed native publishers only, OOP restricted OS identity as fault containment, and declares hostile/untrusted modules unsupported until a verified sandbox exists. Signer approval and permission approval remain separate. **Decision: OPEN.**
+**RECOMMENDATION — NOT APPROVED:** v1 supports first-party and explicitly trusted signed native publishers only, OOP restricted OS identity as fault containment, and declares hostile/untrusted modules unsupported until a verified sandbox exists. Signer approval and permission approval remain separate. **Decision: OPEN.**
 
 ### 9.3 Third-party module promise
 
@@ -355,6 +370,19 @@ Current HEAD docs/source indicate some admin mutation routes use a configured be
 
 No license change is proposed. Future technical choices affected by legal boundaries: whether SDK is separately licensed; whether third-party modules may link/distribute; whether proprietary modules can be packaged; bundle redistribution; registry/marketplace terms; trademarks and signing authority. Record owner/legal advice before publishing third-party SDK guarantees. **Decision: OPEN (legal policy only; no technical license change in Phase 0).**
 
+### Pending owner decisions
+
+- **9.2 Module Trust Model — OPEN**
+- **9.3 Third-party module promise — OPEN**
+- **9.4 Remote worker threat model — OPEN**
+- **9.5 Network supported in v1 — OPEN**
+- **9.6 Data Plane scope — OPEN**
+- **9.7 ARM64 and hardware support — OPEN**
+- **9.8 Authentication for private data — OPEN**
+- **9.9 WASM / sandbox — OPEN**
+- **9.10 Marketplace — OPEN**
+- **9.11 License boundary — OPEN**
+
 ## 10. Version planes (proposal, not irreversible API freeze)
 
 | Plane | Versioned independently? | Minimum proposed rule |
@@ -399,7 +427,7 @@ Current reusable groundwork: module manifests/packages/signing; module catalogue
 
 - Media/Inventory extraction and module DB migration (later phases).
 - General third-party SDK public guarantees (can use fixture-only provisional contracts until owner resolves third-party promise).
-- PostgreSQL Core provider (can defer with SQLite selected; module-owned DB choice unaffected).
+- PostgreSQL Core provider is outside v1.0 by approved decision; this does not restrict module-owned provider choices.
 - Full user roles/SSO and business authorization (but minimal secure platform admin is not deferrable).
 - WASM sandbox, marketplace, public WAN, CG-NAT/relay, multi-coordinator, GPU scoring, AI, distributed models.
 - Worker-to-client/worker-to-worker direct streaming; retain existing worker path without expanding it.
@@ -419,7 +447,7 @@ Create a new production composition root and installable Core artifact that star
 - New Core app/composition root and minimal Core Web/API surface; exact project names can be selected during Phase 1 implementation while respecting frozen boundaries.
 - Explicit Core project allowlist and package/publish manifest; use Platform/ModuleSystem contracts and runtime only after reviewing transitive references.
 - Reuse Kernel, Runtime/module catalogue/lifecycle, signature/package verification and OOP supervisor as accepted by reuse gates.
-- Core-owned persistence provider, initially SQLite **only if owner approves §9.1**; otherwise Phase 1 begins with a provider-neutral interface and no premature DB promise.
+- Core-owned persistence contract and SQLite provider, following approved Owner Decision 9.1. The contract is provider-neutral and limited to demonstrated Core needs; SQLite is the only official Core provider in v1.0.
 - Secure bootstrap administrator and authenticated Core-admin mutation routes, module list, health, readiness and minimal audit.
 - A signed no-business fixture package test covering install, disable, module failure isolation, Core restart and empty data after fixture removal/archive.
 - Core-only package contents inspection; prove no Media/Inventory DLLs/migrations/routes/web assets.
@@ -430,7 +458,8 @@ Create a new production composition root and installable Core artifact that star
 
 - Moving/refactoring `apps/server`; deleting or changing current API routes; extracting Media/Inventory; modifying their schemas or migrations.
 - Scheduler scoring redesign, changing worker protocol, Data Plane or grant design, adding AI/GPU/NAS providers.
-- PostgreSQL Core (unless explicitly selected by owner); Marketplace, public registry, WASM, untrusted native modules, public WAN relay.
+- PostgreSQL Core; Marketplace, public registry, WASM, untrusted native modules, public WAN relay.
+- Any change to the existing Library/Media PostgreSQL provider or its schema/migrations; it remains Media-owned and is not part of Fase 1.
 - Full third-party stable SDK promise; use only a fixture contract whose provisional status is explicit until §9.3 resolves.
 - Releasing v1.0 or migrating existing user data.
 
@@ -443,13 +472,14 @@ Likely **create**: a Core host/composition project; Core admin API/shell project
 - .NET platform/runtime and required ASP.NET framework.
 - `Hispania.Kernel` and reviewed generic portions of `Hispania.Runtime`.
 - `Hispania.ModuleSystem.Contracts`, `Hispania.Platform.Contracts`, reviewed identity/auth/audit/health/config/backup contracts.
-- selected Core-owned persistence provider behind its provider contract.
+- provider-neutral Core persistence contract plus its SQLite provider, the single officially supported Core provider for v1.0. Keep the abstraction narrowly matched to actual Core storage operations.
 - package verification/signature and module-host executable for explicitly trusted fixture modules.
 - operator CLI only as a client of Core API, not as Core composition dependency.
 
 ### Forbidden dependencies
 
 - Any `core/domain` Media implementation; Library/Metadata/Playback contracts or apps; Inventory contract/app/persistence; TMDB; FFmpeg/transcoder; AI; ERP; demo business modules in product artifact.
+- PostgreSQL Core provider, PostgreSQL-specific Core API/schema, or changes to the Media/Library PostgreSQL provider and migrations.
 - Any module-owned migrations, routes, frontend page bundles, native provider binaries, or test fixtures in Core artifact.
 - Runtime dependency on module availability for Core boot/readiness/admin/doctor/backup.
 - Direct project references from one business module to another implementation.
@@ -476,6 +506,8 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 - Health/status and authenticated administration work before/after restart.
 - Module registry returns empty; a permitted signed fixture can install/disable and fail without taking down Core.
 - Core persists its own state; backup/restore reopens a valid installation (or an explicit Phase 1.1 checkpoint is owner-approved before Phase 2 begins).
+- Core persistence contract is provider-neutral and tested through the official SQLite provider; PostgreSQL Core is neither shipped nor required. Do not create a generic abstraction broader than the Core's actual operations.
+- The existing Library/Media PostgreSQL provider and migrations are unchanged by Fase 1.
 - No forbidden project/reference/runtime/package dependency; all fitness tests pass.
 - Linux x64 and Windows x64 build/publish/process gates pass; no required skips or undocumented manual assumptions.
 - Existing product CI remains green.
@@ -484,17 +516,16 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 
 ## 14. Open questions to resolve before contract freeze
 
-1. Select §9.1 Core persistence provider scope.
-2. Select module trust model and whether first-party-only or curated third parties are in v1.
-3. Select whether limited third-party API compatibility is an explicit v1 promise.
-4. Approve remote worker as owner-managed LAN/VPN-only for v1, or define a stronger adversary model.
-5. Approve Data Plane paths required for v1, especially whether worker→storage direct is mandatory for supported sources.
-6. Approve official hardware/platform matrix; current evidence does not justify Pi4/ARM64 as official yet.
-7. Approve authentication-by-default for private data and migration policy from current anonymous reads.
-8. Confirm no WASM/untrusted module support and no marketplace in v1.
-9. Decide CLI packaging/runtime expectation (side-by-side tool vs bundled) in Phase 1 design.
-10. Confirm minimum Core own-state backup/restore included in Fase 1 or an owner-approved 1.1 gate before module extraction.
-11. Obtain legal guidance on SDK, module redistribution and commercial/proprietary extensions without changing license in this phase.
+1. Select module trust model and whether first-party-only or curated third parties are in v1.
+2. Select whether limited third-party API compatibility is an explicit v1 promise.
+3. Approve remote worker as owner-managed LAN/VPN-only for v1, or define a stronger adversary model.
+4. Approve Data Plane paths required for v1, especially whether worker→storage direct is mandatory for supported sources.
+5. Approve official hardware/platform matrix; current evidence does not justify Pi4/ARM64 as official yet.
+6. Approve authentication-by-default for private data and migration policy from current anonymous reads.
+7. Confirm no WASM/untrusted module support and no marketplace in v1.
+8. Decide CLI packaging/runtime expectation (side-by-side tool vs bundled) in Phase 1 design.
+9. Confirm minimum Core own-state backup/restore included in Fase 1 or an owner-approved 1.1 gate before module extraction.
+10. Obtain legal guidance on SDK, module redistribution and commercial/proprietary extensions without changing license in this phase.
 
 ### Gate summary
 
@@ -507,4 +538,5 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 - Independent version planes: **PASS as proposal; public ABI freeze deferred**.
 - Phase 1 contract: **PASS**.
 - Product code unchanged: **PASS**.
-- Owner-only selections: **OPEN** → **OWNER FREEZE: PENDING**.
+- Owner Decision 9.1 Core Persistence: **APPROVED**.
+- Owner-only selections 9.2–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
