@@ -2,13 +2,13 @@
 
 **Purpose:** freeze the architectural direction and define the acceptance contract for Phase 1 (Empty Core Composition Root). This is an analysis and planning document; it does not authorize implementation of Phase 1.
 
-**Repository evidence:** starting HEAD for this update `bae53024b2f31cc9200a179bd5c40780e230175a`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; intervening commits changed only this Phase 0 document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. A separate local Step 2.1 worktree/branch and ARM64 CI branches were inspected read-only; their relationship and evidence limits are recorded under 9.7. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
+**Repository evidence:** starting HEAD for this update `b043be03be83caef431c53c6480bd6e9359666d2`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; intervening commits changed only this Phase 0 document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. A separate local Step 2.1 worktree/branch and ARM64 CI branches were inspected read-only; their relationship and evidence limits are recorded under 9.7. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
 
 **Phase 0 result:** **TECHNICAL PHASE 0: PASS** for the specified documentation outputs and Phase 1 contract. **OWNER FREEZE: PENDING** because the unresolved decisions in §9 require owner approval. No product code, APIs, databases, scheduler, Data Plane, runtime, or package format were changed; no tests were run.
 
 ## 1. Purpose and evidence rules
 
-The primary input is [HISPANIA v1.0 Deep Architecture Audit](HISPANIA-V1-ROADMAP-AUDIT.md). It is a baseline of observations and proposals, not a set of owner-approved decisions. The principles in §2 and Owner Decisions 9.1–9.7 below are explicitly approved. Decisions 9.8–9.11 remain open; recommendations are technical advice only.
+The primary input is [HISPANIA v1.0 Deep Architecture Audit](HISPANIA-V1-ROADMAP-AUDIT.md). It is a baseline of observations and proposals, not a set of owner-approved decisions. The principles in §2 and Owner Decisions 9.1–9.8 below are explicitly approved. Decisions 9.9–9.11 remain open; recommendations are technical advice only.
 
 This document distinguishes:
 
@@ -605,17 +605,97 @@ Phase 1 must avoid x64-only dependencies, preserve SQLite/Linux ARM64 compatibil
 
 The roadmap treats Linux x64, Windows x64, Linux ARM64, Pi 4B 8 GB Coordinator, and CPU software Workers as official targets pending their gates; GPUs remain experimental; Pi 3B+ Coordinator remains out of scope. Keep a physical-hardware qualification gate. Use the same Core architecture across supported platforms rather than creating a Raspberry Pi-specific Core.
 
-### 9.8 Authentication for private data
+### 9.8 Authentication for Private Data — APPROVED
 
-Current HEAD docs/source indicate some admin mutation routes use a configured bearer, while Media and Inventory read routes are public and a general user/session/domain authorization system is not wired through the Shell. This behavior is not a safe default for a broadly exposed v1 server.
+**OWNER DECISION 9.8 — APPROVED: AUTHENTICATION REQUIRED BY DEFAULT + EXPLICIT PUBLIC ACCESS.**
 
-| Option | Tradeoff |
+HISPANIA v1.0 requires authentication by default, explicit authorization, permissions scoped by user/module/resource/operation, and anonymous access only when explicitly authorized. Local authentication must work without external identity providers or persistent Internet access. Sessions and device binding must be secure. User, device, module, Worker, and future Site Node identities are separate principals; LAN or VPN reachability does not grant access to private data.
+
+```text
+LAN access != authenticated identity
+VPN connectivity != user authorization
+Authenticated != authorized
+Installed module != unrestricted access
+Public endpoint != public private data
+Route selection != authorization bypass
+```
+
+Keep four concepts distinct: **Identity** is who/what acts; **Authentication** proves that identity; **Authorization** decides what it may do; **Session** maintains and renews a valid authentication. Do not collapse them into a boolean `IsAuthenticated` policy.
+
+#### Default access policy
+
+Default is **deny**. A missing or unconfigured route policy must not make a route anonymous.
+
+| Surface/resource | Approved v1.0 default |
 |---|---|
-| A. Require authentication for private business data by default | Secure default; requires migration/setup and clients/session support. Anonymous mode can remain explicit for selected public content. |
-| B. Keep LAN anonymous default | Easy local demo, but LAN is not a strong identity boundary and accidental exposure risks data. |
-| C. Operator-selected default | Flexible but creates misconfiguration ambiguity and support burden. |
+| Core administration/configuration and module/user management | Authentication and explicit authorization required. |
+| Worker enrollment | Explicit machine authorization; separate from user login. |
+| Private module data, Media libraries/playback, Inventory, ERP, AI tasks, IoT commands | Authenticated identity plus resource/action authorization. |
+| Module APIs | Private by default; platform policy must be applied server-side. |
+| Public websites/shared resources | Anonymous only when explicitly configured, scoped, auditable, and revocable. |
+| Health/readiness | Anonymous only for minimal non-sensitive status; operational detail remains protected. |
 
-**Codex recommendation:** A. All private module data and mutations require authenticated identity by default; public access must be explicit per resource/module and visibly configured. Migration must preserve a bootstrap administrator and explain old public endpoints. **Decision: OPEN.**
+The Core owns platform identity/authentication, sessions, authorization decisions, user administration, revocation, audit, and secure bootstrap. Modules declare resources/actions/permissions through versioned neutral contracts; Core does not encode Media/ERP/Inventory/AI/IoT rules. Do not create incompatible identity systems per module or an oversized generic policy engine during Phase 1.
+
+User authentication does not grant blanket module access. A signed/installed module does not gain private data permissions, and trusted native modules do not gain sandbox-like isolation. Preserve 9.2: module publisher trust, declared module capabilities, user identity/permissions, and per-operation authorization are separate controls. A module can access another module only through authorized platform contracts.
+
+#### Local login and bootstrap
+
+Local authentication is an official v1.0 capability. Login must not require Google, Microsoft, Apple, a cloud service, an external identity provider, or an Internet connection. OpenID Connect/corporate SSO may be added later but is not required in Phase 1.
+
+The first administrator must be created through explicit, auditable bootstrap: no universal/default credentials; bootstrap is restricted to a secure initialization window/procedure; after first completion, anonymous administrator creation stays closed. Being on LAN is not sufficient. Define a secure administrative recovery procedure. Never use `admin/admin` or a password shared across installations.
+
+Support multiple users with different permissions by module/resource/action; roles may be used where appropriate. Example permission strings such as `media.library.read`, `inventory.item.write`, or `ai.task.submit` are illustrative, not a frozen contract. Do not implement full RBAC/ABAC in Phase 1 without first defining the minimum contract.
+
+#### Explicit public access
+
+Anonymous access is permitted only per explicitly configured public resource/route, with a limited scope, audit trail, and revocation. No global switch may expose all private resources. Publishing a public website does not publish its database, administrative routes, or internal API. Public access must not be inferred from endpoint absence of an auth policy.
+
+#### Web, mobile, desktop, and TV clients
+
+Browser sessions must eventually define secure cookie attributes where cookies are used (`Secure`, `HttpOnly`, appropriate `SameSite`), CSRF protection for cookie-authenticated mutations, expiry, controlled renewal, logout/session invalidation, fixation protection, and brute-force controls. This Phase 0 decision does not select a concrete session technology.
+
+Native mobile/desktop clients need secure login, credential storage via OS facilities where available, bounded session renewal/expiry, logout, and per-device revocation. Permanent non-expiring tokens are not the default.
+
+For Smart TVs and limited-input devices, a future pairing flow should use a short-lived, one-use code, explicit approval by an already authenticated user, rate limits and anti-enumeration controls, correct device association, and revocation. A code displayed by the TV alone must not authorize access. Do not implement device pairing in Phase 1; retain it as a client/Media requirement.
+
+#### Playback and Data Plane authorization
+
+Playback requires both client authentication and authorization for the requested library/item. Access grants for Worker-direct, independent Data Gateway, Worker-to-Worker, and Storage-to-Worker routes must preserve the original user/resource/action authorization from 9.6. Authentication of a user and authorization of a transfer grant are separate responsibilities. Grants must be scoped, temporary, revocable, and bound to the operation/resource/destination; never give Worker or Gateway administrative credentials. Do not require every media segment to pass through the Coordinator if secure delegated validation is available, but revocation semantics must be explicit and testable.
+
+Worker/Site Node machine identity remains distinct from user identity: explicit enrollment, mTLS, node authorization, capabilities, leases/fencing, and revocation. An authenticated Worker cannot perform arbitrary user or administrative operations.
+
+All APIs apply authentication/authorization server-side, do not trust UI restrictions or a reverse proxy alone for business authorization, return consistent 401/403 behavior, avoid sensitive information leakage, and audit sensitive access. Distinguish `READ`, `CREATE`, `UPDATE`, `DELETE`, `EXECUTE`, and `ADMINISTER`; read permission implies no write/execute/admin permission.
+
+Audit relevant login failures/successes, permission changes, session creation/revocation, device pairing, administrator changes, administrative actions, and sensitive operations. Never log passwords, secrets, complete tokens, recovery codes, or external-provider credentials. Retention and log protection remain later design work.
+
+#### Current repository authentication inventory
+
+This is a source review of committed starting product-code HEAD `134076f5ba2894aba216e775c4588cc3c547ee31` (Phase 0 commits since then changed documentation only). It is not runtime/test verification. The pre-existing uncommitted identity-related worktree is recorded separately below and is not counted as shipped behavior.
+
+| Surface/capability | Classification at committed HEAD | Evidence and gap |
+|---|---|---|
+| Core/module administration | **PARTIALLY PROTECTED** | `/internal/admin/modules` uses configured `Modules:AdminToken` with fixed-time comparison and audits module admin operations. It is a shared static bearer, not local user/session identity or per-user authorization. |
+| User identity, local login, sessions, user administration, roles/permissions | **NOT IMPLEMENTED** | No committed platform user/session service or login/bootstrap endpoints are wired through the server. |
+| Secure initial administrator bootstrap/recovery | **NOT IMPLEMENTED** | A configured module admin token protects admin operations, but no committed one-time initial-user bootstrap/recovery flow exists. |
+| Worker authentication/enrollment | **PARTIALLY PROTECTED** | Worker endpoints use HTTPS/mTLS certificate checks and coordinator node authorization; enrollment/authorization is an admin operation guarded by the shared bearer. This is machine identity, not user authentication. |
+| Inventory read APIs | **CURRENTLY PUBLIC** | In committed `apps/server/InventoryEndpoints.cs`, item/warehouse/location/stock/movement reads have no user-auth policy. Mutation endpoints use the shared admin bearer, not per-user permissions. Asset access has a limited PublicRead/admin-token check. |
+| Media library/list, playback, artwork, people, metadata reads and metadata edits | **CURRENTLY PUBLIC** | Committed routes in `DirectPlayEndpoints.cs`, `ArtworkDeliveryEndpoints.cs`, `PersonMetadataEndpoints.cs`, and `MetadataEditingEndpoints.cs` do not apply user authentication/authorization. Playback does not enforce library/item permissions. |
+| Platform asset APIs | **PARTIALLY PROTECTED** | Upload/delete require the shared admin bearer; reads are public when the stored `PublicRead` flag is set and otherwise require that same admin bearer. This is not per-user/resource permission enforcement. |
+| Health/readiness and internal diagnostics | **PARTIALLY PROTECTED / NOT VERIFIED** | `/healthz` and `/readyz` expose minimal status; current `/internal/*` health/diagnostic routes are mapped without a unified user policy. Information exposure has not been comprehensively inventoried/tested. |
+| Public access policy | **PARTIALLY PROTECTED** | Platform Assets contain an explicit `PublicRead` field, but there is no consistent platform-wide private-by-default route policy. Existing public Media/Inventory routes predate this decision and must not be presumed public in v1.0. |
+| Web/mobile/desktop sessions and Smart TV device pairing | **NOT IMPLEMENTED** | No committed secure browser session, native device credential lifecycle, device revocation/pairing protocol, or TV authorization flow was identified. |
+| Authorization/audit across modules and Data Plane | **NOT IMPLEMENTED as a complete model** | Admin-operation audit and Worker/transfer machine controls exist in scoped paths; user/resource/action authorization is not propagated through Media/Inventory and 9.6 data routes. |
+
+The current worktree contains **UNCOMMITTED / NOT VERIFIED** identity work: new platform identity contracts, SQLite identity persistence, `PlatformIdentityEndpoints.cs`, modifications to `Program.cs`, `PlatformEndpoints.cs`, and `InventoryEndpoints.cs`, and identity-related tests. These files are local pre-existing work, not committed HEAD; they were not modified or staged by this update. The work suggests local user/role/session/bootstrap and some Platform/Inventory permission paths, but it does not yet prove all Media routes, cookie/TV flows, default-deny behavior, device revocation, migration safety, or the full 9.8 contract. No tests were run here, so this work is not classified as validated or shipped.
+
+#### Migration, acceptance, and phase impact
+
+Do not change routes in Phase 0. Before v1.0, inventory current public/private/partially protected routes and tests that depend on anonymous access; migrate without exposing private data, preserve a secure admin bootstrap, and make selected public resources explicit. Existing public routes are not grandfathered automatically.
+
+Release acceptance requires: secure first-admin bootstrap; local login with no Internet; default-deny private routes; distinct user/module/resource/operation permissions; negative unauthorized-operation tests; explicit public access only; session expiry/renewal/revocation; admin protection; playback/Data Plane grant authorization; machine/user identity separation; sensitive-operation audit; and client flows for browser, mobile/desktop, and TV pairing. Do not mark an item implemented without route-specific evidence and reproducible tests.
+
+Phase 1 priorities are platform identity/authentication contracts, secure admin bootstrap, local authentication, minimum authorization, and protecting Empty Core administration. Do not build complete TV pairing, external SSO, Media-specific authorization, advanced ERP/IoT permissions, or an unnecessarily generic policy engine in Phase 1. Phase 2 integrates permission declarations/enforcement with module trust and lifecycle; Phase 5 binds user/resource authorization to Data Plane grants; Phase 6 applies it to Media libraries/playback; client phases deliver sessions and device pairing. Release gates include security tests and migration validation. This does not authorize Phase 1 implementation.
 
 ### 9.9 WASM / sandbox
 
@@ -631,7 +711,6 @@ No license change is proposed. Future technical choices affected by legal bounda
 
 ### Pending owner decisions
 
-- **9.8 Authentication for private data — OPEN**
 - **9.9 WASM / sandbox — OPEN**
 - **9.10 Marketplace — OPEN**
 - **9.11 License boundary — OPEN**
@@ -681,7 +760,7 @@ Current reusable groundwork: module manifests/packages/signing; module catalogue
 - Media/Inventory extraction and module DB migration (later phases).
 - SDK packaging, compatibility-window details, and curated external onboarding (Phase 9); the limited public API promise is approved, but this phase does not implement it.
 - PostgreSQL Core provider is outside v1.0 by approved decision; this does not restrict module-owned provider choices.
-- Full user roles/SSO and business authorization (but minimal secure platform admin is not deferrable).
+- Full user roles, SSO, and business authorization. Per approved 9.8, local authentication, secure one-time bootstrap, default-deny private Core administration, and minimum admin authorization are not deferrable; external identity providers and complete module/resource policies remain later work.
 - Sustained Pi 4B Coordinator and full platform/hardware qualification gates are Phase 8/9 release work; Phase 1 still adds an ARM64 Empty Core smoke once an executable artifact exists.
 - WASM sandbox, marketplace, public worker listeners, custom CG-NAT traversal/relay, Site Node, multi-coordinator, GPU scoring, AI, distributed models. The approved 9.5 network direction remains architectural; implementing multi-site connectivity is not part of Phase 1.
 - The approved 9.6 direct Data Plane and independent Gateway features; implementation belongs to the explicit Phase 5 validation gate, not Phase 1.
@@ -704,6 +783,7 @@ Create a new production composition root and installable Core artifact that star
 - Core-owned persistence contract and SQLite provider, following approved Owner Decision 9.1. The contract is provider-neutral and limited to demonstrated Core needs; SQLite is the only official Core provider in v1.0.
 - Preserve Linux ARM64 publication/runtime compatibility from the start; do not add x64-only Core dependencies. Full hardware qualification is not a Phase 1 implementation requirement.
 - Secure bootstrap administrator and authenticated Core-admin mutation routes, module list, health, readiness and minimal audit.
+- Local Core authentication and the minimum provider-neutral identity/session/authorization seams needed to protect Core administration; bootstrap is one-time, secure, usable without Internet or an external identity provider, and fails closed. Do not add external SSO, TV/device pairing, or a broad generic policy engine.
 - A signed no-business fixture package from an explicitly trusted test publisher, covering install, disable, module failure isolation, Core restart and empty data after fixture removal/archive.
 - Fail-closed package tests for unknown signer, revoked signer, tampered package/hash/signature, and incompatible host before code execution.
 - Core does not claim OOP or collectible ALC makes hostile native code safe; no arbitrary untrusted modules or WASM/sandbox implementation in Phase 1.
@@ -718,6 +798,7 @@ Create a new production composition root and installable Core artifact that star
 - Scheduler scoring redesign, changing worker protocol, implementing Data Plane routes or changing grant semantics, adding AI/GPU/NAS providers.
 - Site Node, site registry/protocol, local worker discovery, WOL, IoT/MQTT/ESP32, locality scoring, public worker WAN listeners, public relay, new tunneling/traversal mechanisms, or a new reverse proxy. These remain outside Phase 1 even though the network direction is approved in 9.5.
 - PostgreSQL Core; Marketplace, public registry, WASM, untrusted native modules, public WAN relay.
+- External SSO, TV/device pairing, and complete Media/ERP/IoT per-resource authorization; Core administration still requires local authentication and explicit authorization.
 - Any change to the existing Library/Media PostgreSQL provider or its schema/migrations; it remains Media-owned and is not part of Fase 1.
 - SDK packaging and general external onboarding; Phase 1 may use the trusted fixture contract, while the approved limited public API is delivered through the later SDK/compatibility work.
 - Releasing v1.0 or migrating existing user data.
@@ -749,6 +830,7 @@ Likely **create**: a Core host/composition project; Core admin API/shell project
 2. Project/reference graph fitness A/B/G and content fitness C/D/E.
 3. Route/UI fitness F on clean Core artifact.
 4. Process integration J: boot → health → authenticated admin → module list empty → restart → health.
+   - Verify secure one-time bootstrap and local admin login work without Internet/external identity services; deny unauthenticated Core-admin mutations and ensure no default credential or implicit public access is created.
 5. Install fixture from explicitly trusted test publisher → verify signature/integrity/host compatibility → enumerate → disable → force fixture failure → Core still healthy → restart.
 6. Verify unknown signer, revoked signer, tampered artifact and incompatible host all fail closed before execution; retain package traversal/hash/signature and bounded supervisor regression coverage.
 7. Test Core state backup/restore and reopen; include interrupted/invalid backup behavior within agreed boundary.
@@ -776,7 +858,7 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 ## 14. Open questions to resolve before contract freeze
 
 1. Design concrete network implementations that satisfy approved 9.5 multi-site private infrastructure and public HTTPS client access; no product-specific VPN or gateway is frozen by that decision.
-2. Approve authentication-by-default for private data and migration policy from current anonymous reads.
+2. Define route-by-route migration from current anonymous reads to the approved 9.8 default-deny policy, including explicit public-resource declarations and compatibility tests; this is implementation planning, not an open owner-policy decision.
 3. Decide whether a WASM/other sandbox implementation enters v1; the approved 9.2 decision still excludes untrusted native modules and makes no malicious-code isolation promise.
 4. Confirm marketplace scope for v1.
 5. Decide CLI packaging/runtime expectation (side-by-side tool vs bundled) in Phase 1 design.
@@ -794,5 +876,5 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 - Independent version planes: **PASS as proposal; public ABI freeze deferred**.
 - Phase 1 contract: **PASS**.
 - Product code unchanged: **PASS**.
-- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, 9.3 Third-party Module Promise, 9.4 Remote Worker Threat Model, 9.5 Network Supported in v1, 9.6 Data Plane Architecture, and 9.7 ARM64 / Hardware Support: **APPROVED**.
-- Owner-only selections 9.8–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
+- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, 9.3 Third-party Module Promise, 9.4 Remote Worker Threat Model, 9.5 Network Supported in v1, 9.6 Data Plane Architecture, 9.7 ARM64 / Hardware Support, and 9.8 Authentication for Private Data: **APPROVED**.
+- Owner-only selections 9.9–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
