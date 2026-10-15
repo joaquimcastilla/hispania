@@ -2,20 +2,20 @@
 
 **Purpose:** freeze the architectural direction and define the acceptance contract for Phase 1 (Empty Core Composition Root). This is an analysis and planning document; it does not authorize implementation of Phase 1.
 
-**Repository evidence:** starting HEAD for this update `cc61ec3a570f42dd8e0c40dc521104bd403cf0e3`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; intervening Phase 0 commits changed only this document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. A separate local Step 2.1 worktree/branch and ARM64 CI branches were inspected read-only; their relationship and evidence limits are recorded under 9.7. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
+**Repository evidence:** this 9.11 update starts at HEAD `0a209bd9cffc89317b447f039e321a44431c7955`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; intervening Phase 0 commits changed only this document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. Step 2.1 candidate `1463ca5ce47866e8813a3499a34609c723808b2f` exists locally, shares the product-code baseline, and is not an ancestor of this branch; no merge or cherry-pick was performed. Other worktrees were not modified. The working tree has no upstream configured for this branch; remote state was not fetched.
 
-**Phase 0 result:** **TECHNICAL PHASE 0: PASS** for the specified documentation outputs and Phase 1 contract. **OWNER FREEZE: PENDING** because the unresolved decisions in §9 require owner approval. No product code, APIs, databases, scheduler, Data Plane, runtime, or package format were changed; no tests were run.
+**Phase 0 result:** **TECHNICAL PHASE 0: PASS** for the specified architecture documentation and Phase 1 contract. **OWNER DECISIONS: COMPLETE — 11/11 APPROVED. OWNER ARCHITECTURE FREEZE: APPROVED — IMPLEMENTATION GATES PENDING.** This approval records architectural direction only; it does not mean the legal audit passed, licenses were applied, or Phase 1 is ready/authorized. The Phase 1 entry gates are listed in §16. No product code, APIs, databases, scheduler, Data Plane, runtime, package format, or license files were changed; no tests or package downloads were performed.
 
 ## 1. Purpose and evidence rules
 
-The primary input is [HISPANIA v1.0 Deep Architecture Audit](HISPANIA-V1-ROADMAP-AUDIT.md). It is a baseline of observations and proposals, not a set of owner-approved decisions. The principles in §2 and Owner Decisions 9.1–9.10 below are explicitly approved. Decision 9.11 remains open; recommendations are technical advice only.
+The primary input is [HISPANIA v1.0 Deep Architecture Audit](HISPANIA-V1-ROADMAP-AUDIT.md). It is a baseline of observations and proposals, not a set of owner-approved decisions. The principles in §2 and Owner Decisions 9.1–9.11 below are explicitly approved. Recommendations and legal questions remain clearly distinguished from owner decisions.
 
 This document distinguishes:
 
 - **Verified observation:** directly visible in the versioned tree at the HEAD above.
 - **Owner-approved:** explicitly approved by the owner in the Phase 0 request.
 - **Recommendation:** proposed engineering choice, not approved until the owner accepts it.
-- **Open:** needs an owner decision before the relevant public contract or support promise is frozen.
+- **Open:** would need an owner decision before the relevant public contract or support promise is frozen; the 9.1–9.11 owner decision register is now complete.
 
 The audit's principal conclusion stands: preserve reusable platform foundations and build a clean Core composition root in a later phase; do not rewrite the repository wholesale and do not gradually transform `apps/server` into Core by deleting business references. Two clarifications from this fresh HEAD inspection are important:
 
@@ -244,7 +244,7 @@ No fitness tests were implemented in Phase 0. This table gives intended phase an
 
 ## 9. OWNER DECISIONS
 
-Recommendations below are not approvals. The owner should reply with selections or edits before the corresponding public contract/support statement is frozen. “Difficulty to change” means after v1 consumers/data exist.
+Recommendations remain technical advice, not approvals. The explicit owner decisions below freeze the corresponding direction; implementation, evidence and legal gates remain separate. “Difficulty to change” means after v1 consumers/data exist.
 
 ### 9.1 Core persistence — APPROVED
 
@@ -837,13 +837,100 @@ Static source review of committed product-code baseline `134076f5ba2894aba216e77
 
 No tests were run for this documentation update; capabilities are classified from committed source only. The uncommitted local identity/events changes remain untouched and are not used as shipped evidence.
 
-### 9.11 License boundary
+### 9.11 Licensing, open source and community funding — APPROVED
 
-No license change is proposed. Future technical choices affected by legal boundaries: whether SDK is separately licensed; whether third-party modules may link/distribute; whether proprietary modules can be packaged; bundle redistribution; registry/marketplace terms; trademarks and signing authority. Record owner/legal advice before publishing third-party SDK guarantees. **Decision: OPEN (legal policy only; no technical license change in Phase 0).**
+**OWNER DECISION 9.11 — APPROVED**
+
+Policy: **AGPLv3 CORE — PERMISSIVE SDK — INDEPENDENT MODULE LICENSING — VOLUNTARY COMMUNITY FUNDING.** The decision freezes project direction, not a completed legal audit or automatic relicensing of existing files.
+
+#### Project principles and funding
+
+HISPANIA is a modular, distributed, open-source platform intended to let individuals, communities and organizations operate their own services and infrastructure. Project principles are freedom to use, study, modify and redistribute under applicable licenses; extensibility, interoperability, self-hosting, provider independence, community development and long-term sustainability. Funding supports the project; it is not a condition for the Core to exist or for users to exercise license rights. This does not promise that every future module or service will be free of charge.
+
+Donations are optional. A future project website may accept one-time or recurring donations, individual or corporate sponsorship, and goal-based funding for infrastructure, hardware, security, maintenance, documentation or development. No payment provider, account, donation page, exclusive use of funds, tax treatment or payment integration is selected or promised here. Donations, sponsorship, contracted services and commercial module licenses are distinct arrangements; do not describe donations as payment for a contractual feature or imply that donors receive roadmap control or exclusive Core rights. The project may compensate contributors if funds permit.
+
+#### License boundaries
+
+| Component | Approved direction | Application status / restriction |
+|---|---|---|
+| HISPANIA Core | GNU Affero General Public License v3.0 (AGPLv3) | **PENDING** audit, rights review, and deliberate application; do not add a LICENSE file or blanket headers in this phase. |
+| Public contracts | Permissive license compatible with AGPLv3; Apache License 2.0 preferred | **PENDING** boundary and compatibility review; the preference is not yet applied. |
+| Public SDK | Permissive license compatible with AGPLv3; Apache-2.0 preferred | **PENDING** definition, implementation and review; a permissive SDK does not itself decide the license status of modules that use it. |
+| Official modules | License chosen/reviewed per module; may be open or commercial | Independent licensing only where actual legal and technical integration permits it. |
+| External/community modules | Publisher-selected license, subject to compatibility and 9.2/9.3/9.9 policy | No promise that proprietary modules are always compatible with AGPLv3 or distributable as one combined work. |
+| Documentation | Separate license decision | **NOT APPROVED** by 9.11. |
+| Assets, images, icons, fonts and marks | Rights and permissions reviewed individually | **NOT APPROVED** by 9.11; no blanket relicensing. |
+| Third-party dependencies and generated/vendor code | Original applicable terms and notices | Never relicense as HISPANIA-owned code; establish provenance and distribution obligations. |
+
+#### Core AGPLv3 — scope and limits
+
+AGPLv3 is the approved Core license direction because HISPANIA is server software and the owner wants users interacting remotely with a modified network service to have the corresponding-source offer described in AGPLv3 §13. The license permits personal, organizational and commercial use, modification, and redistribution subject to its conditions. For covered conveyance/distribution, obligations include license/copyright notices and corresponding source under the applicable terms. Section 13 addresses remote network interaction with a modified version; it is not a universal rule that every company using HISPANIA must publish every private modification. AGPLv3 does not prohibit selling copies, support or services and does not impose a royalty payable to the original project owner merely for use. Forks retain rights and obligations under the license.
+
+Do not claim that all service operators must disclose all changes, that all commercial services owe royalties, that AGPLv3 prevents sale, or that every linked/connected module automatically has the same license. Whether particular code forms a covered or combined work, and what source obligations follow, can depend on facts and applicable law. Process separation, IPC or module packaging alone does not establish a legal result; do not make architecture changes to evade license obligations. A final file-by-file rights review and legal advice are still required before distribution under this policy.
+
+GNU materials describe AGPLv3 §13 and the relationship between AGPLv3/GPLv3 and Apache-2.0. The GNU project identifies Apache-2.0 as compatible with GPLv3 and describes the specific AGPLv3 §13 permission for combining an AGPLv3 program with a GPLv3-covered work under the stated terms. That does not decide whether a specific HISPANIA SDK/module integration is an independent work or authorize relicensing code without rights. Sources: [GNU AGPLv3](https://www.gnu.org/licenses/agpl-3.0.html), [GNU FAQ: AGPLv3 §13](https://www.gnu.org/licenses/gpl-faq.en.html#AGPLv3InteractingRemotely), [GNU license compatibility](https://www.gnu.org/licenses/license-compatibility.en.html), and [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0.html). These explain license text and the GNU project's view; they are not legal advice for HISPANIA's specific facts.
+
+#### Core, SDK and module interaction
+
+The intended structure is conceptual, not a legal conclusion:
+
+```text
+HISPANIA Core — AGPLv3
+       |
+       +— public contracts / SDK — permissive, Apache-2.0 preferred
+                    |
+                    +— modules — independent terms where legally compatible
+```
+
+Before applying the SDK/contract license, review assembly references, shared code, dynamic loading/linking, IPC and OOP hosts, shared dependencies, joint distribution and bundle/install packaging. Separately installed independent programs may raise different questions from a combined distributed work; process boundaries do not by themselves settle them. AGPLv3 and Apache-2.0 combination compatibility does not prove that every proprietary module can use, link to, or ship with every Core distribution. Do not make public third-party licensing guarantees until the actual API boundary and legal review are complete.
+
+#### Static repository license audit
+
+Scope: read-only review of committed product-code baseline `134076f5ba2894aba216e775c4588cc3c547ee31`, including tracked project/package manifests and license/notice/copyright markers. No network package restore, download, generated report, or lockfile change was made. This is a manifest inventory, not a complete SBOM, source-provenance audit, binary scan or legal opinion.
+
+| Classification | Finding |
+|---|---|
+| **VERIFIED FROM REPOSITORY** | No tracked root or per-component `LICENSE`, `NOTICE`, `COPYING` or equivalent licensing file was found in the baseline. No SPDX identifier or copyright/license header was found by the bounded source scan. This means the repository currently lacks those declarations; it does **not** prove ownership or absence of third-party code. |
+| **VERIFIED FROM REPOSITORY** | `apps/web/package-lock.json` is present (lockfile v3) and records 153 locked npm package entries with license metadata. The recorded SPDX-like values include MIT (105), Apache-2.0 (25), MPL-2.0 (12), ISC (3), BSD-2-Clause (2), BSD-3-Clause (2), MIT-0 (2), BlueOak-1.0.0 (1), and CC0-1.0 (1). These are values recorded by the lockfile, not independent verification of package rights, notices, exceptions, or distribution obligations. |
+| **VERIFIED FROM REPOSITORY** | Direct NuGet references in tracked `.csproj` manifests include Microsoft.Data.Sqlite 10.0.12; Microsoft.EntityFrameworkCore, Microsoft.EntityFrameworkCore.Relational, Microsoft.EntityFrameworkCore.Sqlite and Microsoft.EntityFrameworkCore.Design 10.0.12; Microsoft.Extensions.Logging.Abstractions 10.0.0; Microsoft.AspNetCore.TestHost 10.0.1; Npgsql.EntityFrameworkCore.PostgreSQL 10.0.0; Microsoft.NET.Test.Sdk 17.11.1/17.14.1; xUnit 2.9.2/2.9.3; xunit.runner.visualstudio 2.8.2/3.1.4. This list is direct-reference evidence, not a resolved/transitive inventory. |
+| **REQUIRES EXTERNAL VERIFICATION** | Verify license expression/text, copyright holder, notices, transitive dependencies, package-specific exceptions, native assets, and exact versions for every NuGet/npm dependency before publishing affected binaries. There is no NuGet `packages.lock.json` in the inspected tree. The npm lock metadata should be checked against package provenance and actual published contents. |
+| **REQUIRES EXTERNAL VERIFICATION** | FFmpeg/ffprobe are invoked as external executables/configurable paths in Media/transcoding code. The baseline does not establish that HISPANIA distributes those binaries or their build configuration. If bundled or redistributed, verify exact FFmpeg build flags, enabled codecs, linked libraries, notices and corresponding license obligations. No conclusion about GPL/nonfree codec configuration is made here. |
+| **UNKNOWN** | Provenance and rights for all assets, icons, fonts, copied/generated code, templates, sample content and contributions; ownership/authority for every existing file; completeness of copyright notices; license terms of the future SDK boundary. |
+| **POTENTIAL COMPATIBILITY ISSUE** | The lockfile records MPL-2.0 and multiple other license families, and the dependency set includes native/media-adjacent components. No incompatibility is established from this scan. File-level incorporation, distribution, exceptions and combined-work facts must be checked before applying AGPLv3 or shipping artifacts. |
+
+Do not infer a package license from its name, a top-level dependency's license, or a generated lockfile field alone. Preserve original licenses and notices. Do not add a blanket AGPL header to code whose provenance/ownership is not confirmed.
+
+#### Third-party contributions and marks
+
+Before accepting external contributions, define a contributor policy covering author identity/authority, copyright retention, contribution licensing, provenance review, dependencies, generated/AI-assisted code, assets, and any future relicensing need. DCO and CLA are options for later evaluation, not selected here. Do not impose copyright assignment or adopt a definitive CLA during Phase 0. A DCO alone does not necessarily grant every right needed for future relicensing. Preserve contributors' rights unless an explicit, reviewed policy says otherwise.
+
+Copyright/software licensing is separate from trademark/branding. Code rights do not grant unrestricted use of the HISPANIA name or marks to identify an official fork/product. A future brand policy should address the name, logo, visual identity, official version names, forks, integrators and external module branding. No claim is made that HISPANIA is registered as a trademark; no registration or brand enforcement is initiated here.
+
+#### Community funding and future dual licensing
+
+**Voluntary donations and corporate sponsorship** are the approved funding direction. Users retain all rights offered by the Core license whether or not they donate; donations do not buy exclusive Core rights or automatic roadmap control. Funding does not change AGPLv3 rights and does not make commercial modules part of the Core.
+
+**FUTURE OPTION — DUAL LICENSING (NOT APPROVED):** the project may study a commercial alternative for specific uses later. No royalty model, restrictive commercial license or unilateral relicensing of other contributors' work is approved. Revisit only after ownership/contributor rights, dependency compatibility, commercial agreements, version maintenance, community impact, viability and legal review are established.
+
+### Owner decision register — 9.1–9.11
+
+| ID | Decision | Status / policy | Constraints and remaining gates |
+|---|---|---|---|
+| 9.1 | Core Persistence | **APPROVED** — provider-neutral Core contract; SQLite official Core provider for v1.0 | PostgreSQL Core is not supported; module providers remain module-owned. Implement/test in later phases. |
+| 9.2 | Module Trust Model | **APPROVED** — first-party and explicitly trusted signed native publishers; untrusted native unsupported in v1.0 | Signed is not safe; OOP/ALC is not a sandbox; permission policy/enforcement and trust lifecycle gates remain. |
+| 9.3 | Third-party Module Promise | **APPROVED** — Public API + limited ecosystem | Compatibility, SDK, onboarding and support scope still require implementation/review. |
+| 9.4 | Remote Worker Threat Model | **APPROVED** — owner-managed trusted workers | Enrollment, authorization, key lifecycle and operational gates remain. |
+| 9.5 | Network Supported in v1 | **APPROVED** — private multi-site infrastructure plus public HTTPS client access | Concrete network implementation and validation remain open engineering work. |
+| 9.6 | Data Plane Architecture | **APPROVED** — direct-first transfer plus independent Gateway fallback | Phase 5 implementation/validation remains. |
+| 9.7 | ARM64 / Hardware Support | **APPROVED** — ARM64 first-class Coordinator; Pi 4B priority | Per-target build, native smoke and release qualification remain. |
+| 9.8 | Authentication for Private Data | **APPROVED** — authentication required by default; explicit public access | Route migration and authorization tests remain. |
+| 9.9 | WASM / Untrusted Modules | **APPROVED** — trusted native modules only for v1.0; sandbox future | No untrusted native or WASM sandbox support in v1.0. |
+| 9.10 | Marketplace | **APPROVED** — no Marketplace in v1.0; distribution-agnostic Module Manager | Local/manual package path must meet trust/integrity/lifecycle gates; no store/payments. |
+| 9.11 | Licensing, Open Source and Funding | **APPROVED** — AGPLv3 Core; permissive SDK/contracts, Apache-2.0 preferred; independent module licensing where compatible; voluntary funding | Legal audit, file ownership, license application, SDK/module boundaries, contributions, assets and notices remain pending; approval is not legal clearance. |
 
 ### Pending owner decisions
 
-- **9.11 License boundary — OPEN**
+**None. OWNER DECISIONS: COMPLETE — 11/11 APPROVED.** The technical/legal and implementation gates listed later remain pending; they are not owner decision slots and do not change this count.
 
 ## 10. Version planes (proposal, not irreversible API freeze)
 
@@ -989,14 +1076,53 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 - No Media/Inventory routes, data, schema, tests, or behavior moved/changed as part of Core creation.
 - Commit/PR evidence lists package hash, test report, support runner and any remaining owner decision.
 
-## 14. Open questions to resolve before contract freeze
+## 14. Engineering and legal questions for later planning
 
 1. Design concrete network implementations that satisfy approved 9.5 multi-site private infrastructure and public HTTPS client access; no product-specific VPN or gateway is frozen by that decision.
 2. Define route-by-route migration from current anonymous reads to the approved 9.8 default-deny policy, including explicit public-resource declarations and compatibility tests; this is implementation planning, not an open owner-policy decision.
 3. For a possible post-v1.0 sandbox proposal, validate runtime, isolation, host APIs, resources and platform support against approved 9.9; this is future engineering evaluation, not a v1.0 support commitment or an open owner decision.
 4. Decide CLI packaging/runtime expectation (side-by-side tool vs bundled) in Phase 1 design.
 5. Confirm minimum Core own-state backup/restore included in Fase 1 or an owner-approved 1.1 gate before module extraction.
-6. Obtain legal guidance on SDK, module redistribution and commercial/proprietary extensions without changing license in this phase.
+6. Obtain legal guidance on applying AGPLv3 to the Core, the proposed Apache-2.0 SDK/contracts boundary, and module redistribution. Direction is approved in 9.11; legal application and conclusions remain pending.
+
+## 15. Baseline reconciliation before Phase 1
+
+The Phase 0 product-code baseline `134076f5ba2894aba216e775c4588cc3c547ee31` and the later Step 2.1 candidate `1463ca5ce47866e8813a3499a34609c723808b2f` were both verified as commits in the local repository at this update. The candidate shares the Phase 0 baseline as merge base and is not an ancestor of the current branch HEAD `0a209bd9cffc89317b447f039e321a44431c7955`. It is not assumed integrated. No merge, cherry-pick, rebase, or replacement of the baseline was performed.
+
+Before Phase 1, perform a separate, isolated reconciliation that records: authoritative product-code baseline; candidate changes retained/rejected and their commit provenance; reproducible tests/evidence by commit; ARM64 gates still open; every worktree and its local changes; commits requiring integration; and explicit blockers. Preserve unrelated worktrees and uncommitted changes. The current worktree already contains pre-existing local edits/untracked files listed in the repository evidence paragraph; these are not part of committed product state and were not used to claim shipped behavior. Do not infer that other worktrees are clean merely because their branch/commit appears in `git worktree list`.
+
+Read-only worktree snapshot taken during this update (dirty counts include this documentation edit in the primary worktree before its isolated commit; paths in other worktrees were not opened or changed):
+
+| Worktree | Branch / HEAD | Local status |
+|---|---|---|
+| `home_server_project_docs/home_server_project_docs` | `feature/phase-13-platform-maturity` / `0a209bd9...` | **DIRTY — 15 paths** at inspection: the authorized document plus 14 pre-existing unrelated paths; after this doc-only commit, those 14 remain. |
+| `phase-13-4-durable-event-bus` | `feature/phase-20-dynamic-web-modules` / `742914b0...` | **DIRTY — 2 paths**; preserve and reconcile separately. |
+| `phase23-e2e-compatibility-upgrades` | `feature/phase-23-e2e-compatibility-upgrades` / `4faf7132...` | **DIRTY — 1 path**; preserve and reconcile separately. |
+| `phase24-operational-resilience` | `feature/phase-24-operational-resilience` / `f2c5798b...` | **DIRTY — 3 paths**; preserve and reconcile separately. |
+| `step1-work` | `codex/hispania-0.7.0-step2-platform-only` / `17eaee7d...` | **DIRTY — 29 paths**; preserve and reconcile separately. |
+| Other registered worktrees in the snapshot | Branches/HEADs shown by `git worktree list` | **CLEAN at inspection**; this is a point-in-time status, not a claim that their commits are integrated or validated. |
+
+No upstream is configured for the primary branch. No push was made or attempted.
+
+## 16. Phase 1 entry gates and v1.0 release gates
+
+**PHASE 1 READINESS: NOT READY.** Owner architecture approval does not authorize implementation. The following entry gates must be completed in the later, explicitly authorized Phase 1 preparation/implementation task:
+
+1. Reconcile the baseline according to §15 in an isolated worktree/task.
+2. Inventory all worktrees, branches, dirty/untracked files and commits; decide which work is relevant without overwriting unrelated work.
+3. Review dependency manifests and generate a reproducible dependency/license inventory, including transitive NuGet/npm dependencies and native/media binaries, without distributing unverified components.
+4. Delimit Core, public contracts and SDK, module APIs, and package/bundle distribution; review actual link/load/IPC and joint-distribution cases.
+5. Define a contribution/provenance policy and a proportionate way to record contributor authority; no CLA/DCO is preselected.
+6. Confirm ownership or license authority for existing Core candidates and contributions; do not assume repository presence proves rights.
+7. Review rights and source/redistribution terms for images, icons, fonts, generated code and other assets.
+8. Freeze the minimum Phase 1 work breakdown against the approved contract; keep license-file application and broad legal publication readiness outside Phase 1 unless implementation would distribute affected artifacts.
+9. Prepare a validation plan for clean Core package contents, CI, authentication, persistence, module trust, backup/restore and applicable Linux/Windows/ARM64 targets.
+10. Resolve any specific blocking contradiction found during reconciliation or license-boundary review; record it and request owner resolution rather than changing an approved decision silently.
+11. Obtain the owner's express authorization to start Phase 1 after the preparation findings are presented.
+
+**v1.0 RELEASE GATES (not all required to begin Phase 1):** complete rights/ownership and dependency review; apply approved license terms only to files whose rights are established; prepare required source, attribution and notice materials for each distributed artifact; finalize Core/SDK/module compatibility and bundle distribution review; verify FFmpeg/ffprobe and native dependency configuration if redistributed; define contributor and trademark policies; and complete legal review for the intended release/distribution model. A Phase 1 test artifact must not be publicly distributed under unverified license assumptions.
+
+The Owner Architecture Freeze is **APPROVED** because decisions 9.1–9.11 are recorded and no blocking contradiction was identified in this documentation review. This status means the architectural decisions are frozen subject to later evidence and gates. It does not mean **LEGAL AUDIT PASSED**, **LICENSES APPLIED**, **PHASE 1 READY**, or **PHASE 1 AUTHORIZED**.
 
 ### Gate summary
 
@@ -1009,5 +1135,9 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 - Independent version planes: **PASS as proposal; public ABI freeze deferred**.
 - Phase 1 contract: **PASS**.
 - Product code unchanged: **PASS**.
-- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, 9.3 Third-party Module Promise, 9.4 Remote Worker Threat Model, 9.5 Network Supported in v1, 9.6 Data Plane Architecture, 9.7 ARM64 / Hardware Support, 9.8 Authentication for Private Data, 9.9 WASM / Untrusted Modules, and 9.10 Marketplace: **APPROVED**.
-- Owner-only selection 9.11 License boundary: **OPEN** → **OWNER FREEZE: PENDING**.
+- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, 9.3 Third-party Module Promise, 9.4 Remote Worker Threat Model, 9.5 Network Supported in v1, 9.6 Data Plane Architecture, 9.7 ARM64 / Hardware Support, 9.8 Authentication for Private Data, 9.9 WASM / Untrusted Modules, 9.10 Marketplace, and 9.11 Licensing/Open Source/Funding: **APPROVED — 11/11**.
+- Owner decisions: **COMPLETE**; Owner Architecture Freeze: **APPROVED — IMPLEMENTATION GATES PENDING**.
+- License inventory: **STATIC REVIEW COMPLETE, BOUNDED**; legal audit, rights/provenance verification, and license application: **PENDING**. This is not a license compliance certification.
+- Phase 1 readiness: **NOT READY**; §16 entry gates and express owner authorization remain.
+- Baseline reconciliation: **PENDING**; the two commits are verified locally but remain divergent and no integration was performed.
+- Product code/license files unchanged; pre-existing worktree changes preserved: **PASS**.
