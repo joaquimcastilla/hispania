@@ -2,13 +2,13 @@
 
 **Purpose:** freeze the architectural direction and define the acceptance contract for Phase 1 (Empty Core Composition Root). This is an analysis and planning document; it does not authorize implementation of Phase 1.
 
-**Repository evidence:** starting HEAD for this update `b043be03be83caef431c53c6480bd6e9359666d2`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; intervening commits changed only this Phase 0 document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. A separate local Step 2.1 worktree/branch and ARM64 CI branches were inspected read-only; their relationship and evidence limits are recorded under 9.7. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
+**Repository evidence:** starting HEAD for this update `cc61ec3a570f42dd8e0c40dc521104bd403cf0e3`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; intervening Phase 0 commits changed only this document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. A separate local Step 2.1 worktree/branch and ARM64 CI branches were inspected read-only; their relationship and evidence limits are recorded under 9.7. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
 
 **Phase 0 result:** **TECHNICAL PHASE 0: PASS** for the specified documentation outputs and Phase 1 contract. **OWNER FREEZE: PENDING** because the unresolved decisions in §9 require owner approval. No product code, APIs, databases, scheduler, Data Plane, runtime, or package format were changed; no tests were run.
 
 ## 1. Purpose and evidence rules
 
-The primary input is [HISPANIA v1.0 Deep Architecture Audit](HISPANIA-V1-ROADMAP-AUDIT.md). It is a baseline of observations and proposals, not a set of owner-approved decisions. The principles in §2 and Owner Decisions 9.1–9.9 below are explicitly approved. Decisions 9.10–9.11 remain open; recommendations are technical advice only.
+The primary input is [HISPANIA v1.0 Deep Architecture Audit](HISPANIA-V1-ROADMAP-AUDIT.md). It is a baseline of observations and proposals, not a set of owner-approved decisions. The principles in §2 and Owner Decisions 9.1–9.10 below are explicitly approved. Decision 9.11 remains open; recommendations are technical advice only.
 
 This document distinguishes:
 
@@ -148,7 +148,7 @@ No forbidden edge above was corrected during Phase 0.
 | Backup/restore Core-owned state | **Core contract required; minimal working flow required before public beta** | Phase 1 should include a simple versioned backup/restore for Core DB/config or explicitly stage it as a short follow-up before Fase 2. The audit's v1 asks for tested backup/restore. |
 | Full module DB backup/export/migrations | **Later (Phase 3)** | Needs module ownership and compatibility format. |
 | Media/Inventory routes and domain functionality | **Forbidden** | Modules arrive in later phases. |
-| Marketplace / public registry | **Out of scope** | No need to boot empty Core. |
+| Online Marketplace / public registry | **Out of scope** | Approved 9.10 excludes these from v1.0. Empty Core must manage installed modules and remain independent of catalog availability. |
 | Dynamic module UI | **Extension point only** | UI contribution contract is designed now; runtime loading can follow Inventory reference module phase. |
 
 Phase 1 should not add generic scheduler scoring, Data Plane changes, PostgreSQL Core, a WASM runtime or hostile-code sandbox, Site Node, WOL, IoT, multi-site discovery, new tunneling, or module-specific persistence. It must preserve the approved network direction: private owner-managed infrastructure connectivity for multi-site Control Plane and separate HTTPS client access, without coupling Core to a VPN product or requiring public worker listeners. Implementing the multi-site network and CG-NAT connectivity is not part of the Empty Core gate. Reuse existing implementations where valid; create a separate composition root and artifact.
@@ -322,7 +322,7 @@ This approval governs the trust model. It does not by itself define the breadth 
 
 **OWNER DECISION 9.3 — APPROVED: Public API + limited ecosystem.**
 
-HISPANIA v1.0 will expose a documented public module API for a limited ecosystem. The promise is bounded: it does not mean full support for arbitrary third-party modules, unrestricted publisher enrollment, or a public marketplace. Any third-party native module remains subject to the approved 9.2 trust model: signed, integrity/compatibility checked, and from a publisher the operator explicitly trusts. Marketplace scope remains separately open under 9.10. The SDK packaging, compatibility window, and onboarding/support process must be specified before inviting external module authors; this decision does not implement them.
+HISPANIA v1.0 will expose a documented public module API for a limited ecosystem. The promise is bounded: it does not mean full support for arbitrary third-party modules, unrestricted publisher enrollment, or a public marketplace. Any third-party native module remains subject to the approved 9.2 trust model: signed, integrity/compatibility checked, and from a publisher the operator explicitly trusts. Under approved 9.10, v1.0 uses operator-managed package distribution with no Marketplace/catalog service. SDK packaging, compatibility window, and onboarding/support process must be specified before inviting external module authors; this decision does not implement them.
 
 | Option | Advantages | Disadvantages / short term | v1 effect | Future change difficulty |
 |---|---|---|---|---|
@@ -703,7 +703,7 @@ Phase 1 priorities are platform identity/authentication contracts, secure admin 
 
 HISPANIA v1.0 supports first-party native modules and trusted third-party native modules whose publishers the operator explicitly authorizes. Installable packages must pass signature, integrity, compatibility, and publisher-trust checks; installation and updates are controlled, and trust/module removal must be revocable. A valid signature establishes provenance and artifact integrity under the configured trust scheme; it does not prove the code is safe or bug-free. A signed package from an unknown or unauthorized publisher is not trusted automatically.
 
-HISPANIA v1.0 does not officially support hostile or untrusted native code, arbitrary code execution by unknown publishers, a security sandbox for native modules, an official WASM runtime, or an open marketplace of unreviewed modules. WASM and other sandboxing for untrusted code are **FUTURE CONSIDERATION — NOT SUPPORTED IN v1.0**, with no delivery date committed. This does not decide Marketplace scope; 9.10 remains open.
+HISPANIA v1.0 does not officially support hostile or untrusted native code, arbitrary code execution by unknown publishers, a security sandbox for native modules, an official WASM runtime, or an open marketplace of unreviewed modules. WASM and other sandboxing for untrusted code are **FUTURE CONSIDERATION — NOT SUPPORTED IN v1.0**, with no delivery date committed. Marketplace scope is separately resolved by approved 9.10; no Marketplace is included in v1.0.
 
 Keep the trust and security layers distinct:
 
@@ -760,9 +760,82 @@ Static source review only; it is not a runtime/security validation. The product-
 
 No tests were run for this documentation update; this table records source-level evidence and explicit gaps only.
 
-### 9.10 Marketplace
+### 9.10 Marketplace — APPROVED
 
-**Codex recommendation:** marketplace/registry is v1.1+; v1 can distribute signed bundles through documented operator-managed sources. Marketplace needs reputation, ownership of publisher namespaces, revocation/incident response, moderation and reproducible artifacts. **Decision: OPEN.**
+**OWNER DECISION 9.10 — APPROVED: NO MARKETPLACE IN v1.0 — DISTRIBUTION-AGNOSTIC MODULE MANAGEMENT.**
+
+#### v1.0 distribution policy
+
+HISPANIA v1.0 supports installation of `.hispania` packages acquired through operator-managed means. This includes official, private, enterprise, trusted third-party, and developer-distributed modules where the publisher is explicitly authorized and the package passes the approved 9.2/9.9 checks. Manual distribution does not mean HISPANIA-only authorship. No online catalog/store, central distribution service, payments, developer account, or permanent Internet connection is required. A valid local package from an already authorized publisher can be installed offline; an offline host cannot claim knowledge of revocations it has not received.
+
+There is one platform Module Manager and one validation/install/lifecycle path. Distribution/discovery, package verification/installation, and execution/lifecycle are separate responsibilities. Local files are the v1.0 acquisition path; future catalogs or marketplaces may supply package bytes to the same manager. A source must never bypass package integrity, signature, publisher trust, compatibility, install authorization, platform authorization, revocation, or recovery controls. Being listed or downloaded is not trust, and publisher authorization is separate from the operator's decision to install a package.
+
+The design below is a target and set of invariants, not a claim that every capability already exists:
+
+```text
+Local package (v1.0) ─┐
+Curated catalog (future) ─┼─> Module Manager ─> verify/trust/compatibility
+Open marketplace (future) ─┘                       └─> install/lifecycle ─> Module Host
+```
+
+#### Architectural invariants
+
+1. Module identity is independent of the distribution source, filename, download URL/domain, display name, or catalog position.
+2. Package verification is independent of any catalog or marketplace.
+3. The Module Manager is the single authority for installation and module lifecycle.
+4. No distribution source may bypass trust, integrity, compatibility, authorization, or revocation checks.
+5. Explicit operator authorization of the publisher and authorization of a particular installation are distinct.
+6. The executable package format has no mandatory dependency on a store, online account, central server, payment provider, or commercial API.
+7. Update discovery/acquisition may later be automated, but validation, installation, and recovery reuse the Module Manager path; do not create parallel update engines.
+8. Core and previously authorized local modules remain operable offline, subject to the known freshness limits of revocation data.
+9. A catalog is not a Core boot/runtime dependency.
+10. Future catalogs are additional discovery/distribution layers, not replacements for the Module Manager.
+
+#### Stable identity and metadata boundaries
+
+Reuse and evolve current manifest fields before proposing incompatible schemas. The current `ModuleManifest` already has `Id`, `PublisherId`, `Version`, `PackageFormatVersion`, host compatibility, contract/capability declarations, dependencies, runtime, permissions, signature information, and payload hashes. It does not currently define a complete per-platform support matrix; don't imply that such metadata is already present. Future supported OS/architecture metadata must be verifiable and the Module Manager must independently validate compatibility, regardless of catalog filtering. Do not freeze the illustrative schema in this decision.
+
+Keep separate:
+
+- **Package metadata:** fields required to verify, install and execute, including stable module/publisher identity, version, format, integrity/signature, compatibility/contracts and necessary dependencies.
+- **Catalog metadata:** search, categories, descriptions, screenshots, publisher profile, recommendations, download statistics, and update/security notices.
+- **Commercial metadata:** license terms, pricing and transactions. Payments/licensing are not part of 9.10 or v1.0 and remain subject to 9.11.
+
+Catalog presentation or commercial data must not require a monolithic executable manifest. Future source names such as `LocalPackageSource`, `CuratedCatalogSource` and `MarketplaceSource` are conceptual only, not approved interfaces. Phase 1 may add only the minimal source-neutral seams justified by actual Empty Core functionality; do not build fake providers or speculative Marketplace APIs.
+
+#### Future distribution options
+
+**B — Curated Catalog (future option, not approved for v1.0):** may add browsing/search, categories, publisher and version details, compatibility filters, downloads, update notices, security advisories, and package withdrawal. It hands artifacts to the existing Module Manager; it cannot install around platform checks. Whether HISPANIA or an authorized provider operates it remains open for a future proposal. No mandatory centralized service is selected.
+
+**C — Open Marketplace (future option, not approved):** would add developer registration, publisher identity, submission/review or moderation policy, package/version governance, abuse reporting and incident response, supply-chain security, dependency policy, revocation, support, reputation, distribution rules, and possibly monetization. Open publication does not mean automatic execution or trusted status; the operator's publisher authorization under 9.2/9.9 still applies unless a later owner decision approves another validated trust/isolation model. It may build on B but adds substantial governance and operations.
+
+#### Update, revocation, compatibility, and offline operation
+
+Treat update discovery, acquisition, validation, installation, and recovery as separate stages. Discovery and acquisition may be manual in v1.0 and automated by a future catalog. Signature/integrity, publisher trust, compatibility, and install authorization stay with the Module Manager. Distinguish publisher/key revocation, version withdrawal from a source, local disablement, uninstall, and permission revocation; a catalog withdrawal does not silently uninstall all existing copies. Define incident response later.
+
+Respect approved 9.7 targets: Linux x64, Windows x64, Linux ARM64, and Raspberry Pi 4B Coordinator qualification. Modules need not target every platform. A catalog may filter candidates, but server-side package/host compatibility validation remains authoritative. Never assume an x64 Windows module works on Linux ARM64. Keep the Core usable without catalog availability, an online account, payments, developer registration, or update server. State the freshness limits of offline revocation data honestly.
+
+No payment or commercial-license enforcement is implemented or decided here. Keep Core, SDK, module license, redistribution rights, usage rights, and any future purchase/subscription distinct. Do not make Core installation depend on online license checks. Decision 9.11 governs HISPANIA's licensing policy; this Marketplace decision does not approve a paid store.
+
+#### v1.0 module-management release acceptance
+
+Before stable v1.0 support, validate local installation of an authorized signed package; rejection of altered packages, invalid signatures, unauthorized publishers and incompatible packages; stable module identity; controlled update; disablement and supported removal; trust revocation; recovery from failures; offline operation; supported platform compatibility; and absence of any mandatory online catalog dependency. The same validation/install/lifecycle path must apply regardless of how package bytes were acquired. Marketplace-specific tests are not required because no Marketplace ships in v1.0. Do not claim these gates have passed without evidence.
+
+#### Repository module distribution and management inventory
+
+Static source review of committed product-code baseline `134076f5ba2894aba216e775c4588cc3c547ee31`; the pre-existing uncommitted worktree is excluded. This is not a claim that the target architecture is implemented.
+
+| Capability | Status | Evidence and gap |
+|---|---|---|
+| `.hispania` format and manifest identity | **IMPLEMENTED — BASELINE** | `ModuleManifest` uses stable `Id`, `PublisherId`, `Version`, `PackageFormatVersion`, contract/dependency/runtime/permission fields, signature metadata and per-file hashes. Identity is not derived from source URL. A complete platform support matrix is absent. |
+| Local package validation/installation | **IMPLEMENTED — BASELINE** | `ExtensionPackageInstaller` accepts package bytes, validates ZIP paths/limits, manifest, SHA-256 payload files and host compatibility, and stores validated bytes. It does not load code during installation. No online catalog is required by this API. |
+| Signatures and publisher allow/revocation | **PARTIAL** | RSA-PSS/SHA-256 verification and trusted/revoked publisher configuration exist, with catalog activation checks. Trusted keys/revocations are composed from configuration/runtime state; durable policy, complete revocation freshness/offline UX, and release-grade governance are not established as a finished product. |
+| Module registration/discovery and execution | **PARTIAL** | `ModuleExtensionCatalog` discovers installed versions and coordinates trust checks, activation/deactivation/unload and in-process/out-of-process hosting. This is not a distribution catalog or public Marketplace. |
+| Update, uninstall and rollback | **PARTIAL** | Update and uninstall operations exist in the runtime catalog, but a complete supported update transaction, rollback/recovery guarantee, and release evidence are not established by this source review. |
+| Management API | **PARTIAL** | `/internal/admin/modules` exposes package install, extension/publisher listing and lifecycle operations guarded by the existing shared admin bearer; this is not a polished user-facing Core Module Manager or a separate source/provider architecture. |
+| Curated catalog / open Marketplace / payments | **NOT IMPLEMENTED** | No catalog, developer registration, marketplace governance, payment service or online distribution dependency was identified. These are not v1.0 requirements under this approval. |
+
+No tests were run for this documentation update; capabilities are classified from committed source only. The uncommitted local identity/events changes remain untouched and are not used as shipped evidence.
 
 ### 9.11 License boundary
 
@@ -770,7 +843,6 @@ No license change is proposed. Future technical choices affected by legal bounda
 
 ### Pending owner decisions
 
-- **9.10 Marketplace — OPEN**
 - **9.11 License boundary — OPEN**
 
 ## 10. Version planes (proposal, not irreversible API freeze)
@@ -780,13 +852,13 @@ No license change is proposed. Future technical choices affected by legal bounda
 | Core version | Yes | SemVer for Core release; module compatibility must not be tied only to exact Core version. |
 | Module API version | Yes | Capability/API ID and major; additive compatible changes within major; document deprecation/window before public SDK. |
 | Module version | Yes | SemVer for module artifact/release; digest identifies exact immutable payload. |
-| Package format version | Yes | `PackageFormatVersion` governs manifest/container/signature interpretation; separate from module release. |
+| Package format version | Yes | `PackageFormatVersion` governs manifest/container/signature interpretation; separate from module release and distribution source. |
 | Worker protocol version | Yes | Negotiated min/max supported versions; golden fixtures and safe incompatible rejection. |
 | Data Plane protocol version | Yes | Separate from worker control RPC; version grants, chunk/range, integrity, resume and limits. |
 | UI contribution API version | Yes | Route/nav/settings/widget manifest compatibility; shell enforces CSP and no privileged arbitrary script. |
 | Persistence schema version | Yes | Per owner (Core, module/provider) with migration history, backup checkpoint and rollback/forward recovery policy. |
 
-Existing code already has module version, host range, package format integer, capability versions, and worker protocol negotiation. This is not yet one published compatibility policy. Before freezing a public API: produce sample consumer tests, define N/N-1 window, error taxonomy, deprecation and migration policy, binary/CLR compatibility constraints. Version numbering alone does not guarantee state/data compatibility.
+Existing code already has module ID, publisher ID, module version, host range, package format integer, payload digests, signature fields, capability versions, and worker protocol negotiation. This is not yet one published compatibility policy. Before freezing a public API: produce sample consumer tests, define N/N-1 window, error taxonomy, deprecation and migration policy, binary/CLR compatibility constraints. Version numbering alone does not guarantee state/data compatibility. Module identity is independent of package filename, source URL/domain, display name, or catalog position. Keep package verification metadata separate from catalog discovery/presentation metadata and commercial terms; do not add store dependencies to the executable package format.
 
 ## 11. Bundles model
 
@@ -800,6 +872,8 @@ A bundle is declarative and reproducible. It contains `coreVersion`, a list of m
 | Core + Media + Inventory | Same Core + both module bundles | Candidate Complete profile; composition and permissions remain identical to individual bundles. |
 
 Current reusable groundwork: module manifests/packages/signing; module catalogue/lifecycle; Platform-only build filter as an architecture check; separate Inventory and Library stores; static web route registry concept; worker protocol/provider loading. Missing: bundle lock file/catalogue, clean Core artifact manifest, dependency resolution plan, dynamic module route/UI lifecycle and install/rollback integration. None created in Phase 0.
+
+Under approved 9.10, `.hispania` packages may be acquired via operator-managed local/manual distribution in v1.0. Future curated or open catalogs are optional source layers that must submit package bytes to the same Module Manager; the Core and local installation path must not depend on catalog services. Package source, package verification/install, and runtime/lifecycle remain separate responsibilities. No online catalog, store, payments, developer registration, or central distribution service is part of v1.0.
 
 ## 12. Phase 1 debt: blockers and deferrable work
 
@@ -816,11 +890,11 @@ Current reusable groundwork: module manifests/packages/signing; module catalogue
 ### CAN DEFER from Phase 1
 
 - Media/Inventory extraction and module DB migration (later phases).
-- SDK packaging, compatibility-window details, and curated external onboarding (Phase 9); the limited public API promise is approved, but this phase does not implement it.
+- SDK packaging, compatibility-window details, and curated external onboarding (Phase 9); the limited public API promise is approved, but this phase does not implement it. Online Marketplace/catalog features are excluded from v1.0; only minimal source-neutral seams justified by actual Core package management may be added.
 - PostgreSQL Core provider is outside v1.0 by approved decision; this does not restrict module-owned provider choices.
 - Full user roles, SSO, and business authorization. Per approved 9.8, local authentication, secure one-time bootstrap, default-deny private Core administration, and minimum admin authorization are not deferrable; external identity providers and complete module/resource policies remain later work.
 - Sustained Pi 4B Coordinator and full platform/hardware qualification gates are Phase 8/9 release work; Phase 1 still adds an ARM64 Empty Core smoke once an executable artifact exists.
-- WASM sandbox, marketplace, public worker listeners, custom CG-NAT traversal/relay, Site Node, multi-coordinator, GPU scoring, AI, distributed models. The approved 9.5 network direction remains architectural; implementing multi-site connectivity is not part of Phase 1.
+- WASM sandbox, online Marketplace/catalog, public worker listeners, custom CG-NAT traversal/relay, Site Node, multi-coordinator, GPU scoring, AI, distributed models. The approved 9.5 network direction remains architectural; implementing multi-site connectivity is not part of Phase 1.
 - The approved 9.6 direct Data Plane and independent Gateway features; implementation belongs to the explicit Phase 5 validation gate, not Phase 1.
 - UI package contribution execution; Phase 1 needs an empty shell and registry surface, not arbitrary dynamic UI scripts.
 - Full cross-module backup/migration; Core own-state backup/restore contract remains in scope before v1 public readiness.
@@ -845,6 +919,7 @@ Create a new production composition root and installable Core artifact that star
 - A signed no-business fixture package from an explicitly trusted test publisher, covering install, disable, module failure isolation, Core restart and empty data after fixture removal/archive.
 - Fail-closed package tests for unknown signer, revoked signer, tampered package/hash/signature, and incompatible host before code execution.
 - Core does not claim OOP or collectible ALC makes hostile native code safe; no arbitrary untrusted modules or WASM/sandbox implementation in Phase 1.
+- Keep package ingestion independent of acquisition source: Phase 1 needs only the real local fixture flow, not Marketplace/source-provider interfaces. Any future source must hand package bytes through the same Module Manager trust, integrity, compatibility, install-authorization and lifecycle checks. No catalog, online account, payments, or Internet is required for Core boot or local fixture management.
 - Phase 1 proves only the minimum trust path for the signed fixture. Complete per-resource permission enforcement remains a Phase 2 deliverable.
 - Core-only package contents inspection; prove no Media/Inventory DLLs/migrations/routes/web assets.
 - Reuse current tests where they validate behavior; add only the new Core integration/fitness tests necessary to meet this contract.
@@ -906,6 +981,7 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 - Module registry returns empty; a permitted signed fixture can install/disable and fail without taking down Core.
 - Core persists its own state; backup/restore reopens a valid installation (or an explicit Phase 1.1 checkpoint is owner-approved before Phase 2 begins).
 - Core persistence contract is provider-neutral and tested through the official SQLite provider; PostgreSQL Core is neither shipped nor required. Do not create a generic abstraction broader than the Core's actual operations.
+- The local signed fixture path works without a Marketplace/catalog service; no online distribution dependency is present in the Core artifact. Package validation and module identity are independent of package acquisition source.
 - The existing Library/Media PostgreSQL provider and migrations are unchanged by Fase 1.
 - No forbidden project/reference/runtime/package dependency; all fitness tests pass.
 - Linux x64 and Windows x64 build/publish/process gates pass; ARM64 Empty Core native smoke passes when the executable artifact is available. No required skips or undocumented manual assumptions.
@@ -918,10 +994,9 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 1. Design concrete network implementations that satisfy approved 9.5 multi-site private infrastructure and public HTTPS client access; no product-specific VPN or gateway is frozen by that decision.
 2. Define route-by-route migration from current anonymous reads to the approved 9.8 default-deny policy, including explicit public-resource declarations and compatibility tests; this is implementation planning, not an open owner-policy decision.
 3. For a possible post-v1.0 sandbox proposal, validate runtime, isolation, host APIs, resources and platform support against approved 9.9; this is future engineering evaluation, not a v1.0 support commitment or an open owner decision.
-4. Confirm marketplace scope for v1.
-5. Decide CLI packaging/runtime expectation (side-by-side tool vs bundled) in Phase 1 design.
-6. Confirm minimum Core own-state backup/restore included in Fase 1 or an owner-approved 1.1 gate before module extraction.
-7. Obtain legal guidance on SDK, module redistribution and commercial/proprietary extensions without changing license in this phase.
+4. Decide CLI packaging/runtime expectation (side-by-side tool vs bundled) in Phase 1 design.
+5. Confirm minimum Core own-state backup/restore included in Fase 1 or an owner-approved 1.1 gate before module extraction.
+6. Obtain legal guidance on SDK, module redistribution and commercial/proprietary extensions without changing license in this phase.
 
 ### Gate summary
 
@@ -934,5 +1009,5 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 - Independent version planes: **PASS as proposal; public ABI freeze deferred**.
 - Phase 1 contract: **PASS**.
 - Product code unchanged: **PASS**.
-- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, 9.3 Third-party Module Promise, 9.4 Remote Worker Threat Model, 9.5 Network Supported in v1, 9.6 Data Plane Architecture, 9.7 ARM64 / Hardware Support, 9.8 Authentication for Private Data, and 9.9 WASM / Untrusted Modules: **APPROVED**.
-- Owner-only selections 9.10–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
+- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, 9.3 Third-party Module Promise, 9.4 Remote Worker Threat Model, 9.5 Network Supported in v1, 9.6 Data Plane Architecture, 9.7 ARM64 / Hardware Support, 9.8 Authentication for Private Data, 9.9 WASM / Untrusted Modules, and 9.10 Marketplace: **APPROVED**.
+- Owner-only selection 9.11 License boundary: **OPEN** → **OWNER FREEZE: PENDING**.
