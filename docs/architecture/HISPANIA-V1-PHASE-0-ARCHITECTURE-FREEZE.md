@@ -2,13 +2,13 @@
 
 **Purpose:** freeze the architectural direction and define the acceptance contract for Phase 1 (Empty Core Composition Root). This is an analysis and planning document; it does not authorize implementation of Phase 1.
 
-**Repository evidence:** starting HEAD for this update `e1ef5b51b66e0d77c2fbc8647f26d62276cff074`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; intervening commits changed only this Phase 0 document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
+**Repository evidence:** starting HEAD for this update `93b9204c88da6db3f502cbde6d7ae2911de6ae00`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; intervening commits changed only this Phase 0 document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
 
 **Phase 0 result:** **TECHNICAL PHASE 0: PASS** for the specified documentation outputs and Phase 1 contract. **OWNER FREEZE: PENDING** because the unresolved decisions in §9 require owner approval. No product code, APIs, databases, scheduler, Data Plane, runtime, or package format were changed; no tests were run.
 
 ## 1. Purpose and evidence rules
 
-The primary input is [HISPANIA v1.0 Deep Architecture Audit](HISPANIA-V1-ROADMAP-AUDIT.md). It is a baseline of observations and proposals, not a set of owner-approved decisions. The principles in §2 and Owner Decisions 9.1–9.5 below are explicitly approved. Decisions 9.6–9.11 remain open; recommendations are technical advice only.
+The primary input is [HISPANIA v1.0 Deep Architecture Audit](HISPANIA-V1-ROADMAP-AUDIT.md). It is a baseline of observations and proposals, not a set of owner-approved decisions. The principles in §2 and Owner Decisions 9.1–9.6 below are explicitly approved. Decisions 9.7–9.11 remain open; recommendations are technical advice only.
 
 This document distinguishes:
 
@@ -336,7 +336,7 @@ The selected option is **B**. The recommendation for a small supported API surfa
 
 **OWNER DECISION 9.4 — APPROVED: OWNER-MANAGED TRUSTED WORKERS.**
 
-HISPANIA v1.0 supports workers that the owner/operator explicitly authorizes and trusts. They may be in the Coordinator's LAN, another home or physical site, behind NAT or CG-NAT, connected through an operator-managed VPN, associated with a future local Site Node, or hosted on a remote server controlled by the owner. Physical location is not the trust boundary; explicit operator authorization and trust are. Support for those topologies is an outcome requirement. The supported network direction is recorded in 9.5; specific Data Plane routes remain open under 9.6.
+HISPANIA v1.0 supports workers that the owner/operator explicitly authorizes and trusts. They may be in the Coordinator's LAN, another home or physical site, behind NAT or CG-NAT, connected through an operator-managed VPN, associated with a future local Site Node, or hosted on a remote server controlled by the owner. Physical location is not the trust boundary; explicit operator authorization and trust are. Support for those topologies is an outcome requirement. The supported network direction is recorded in 9.5 and the approved Data Plane routes are recorded in 9.6.
 
 The operator is trusting the worker machine, OS, administrator, execution environment, WorkerAgent software, and the resources accessible to that worker. A trusted remote worker may inspect the private bytes it is authorized to process. HISPANIA does not claim to protect those bytes from the administrator or a compromised OS of an authorized worker.
 
@@ -417,25 +417,99 @@ HISPANIA v1.0 treats Control Plane, Data Plane, client access, and administratio
 
 #### Data Plane boundary
 
-The Control Plane may authorize, schedule, lease, observe, cancel, and audit while data bytes follow a different route. Do not assume the Control Plane overlay is the optimal Data Plane route. This decision guarantees client-facing HTTPS service access but does not require all bytes to traverse Core/Coordinator, require direct Worker-to-client streaming, or select source/Worker/result routes. Those paths are Owner Decision 9.6 and remain open.
+The Control Plane may authorize, schedule, lease, observe, cancel, and audit while data bytes follow a different route. Do not assume the Control Plane overlay is the optimal Data Plane route. The approved Data Plane routes and independent Gateway fallback are recorded in Owner Decision 9.6. Phase 1 only preserves these boundaries; it does not implement the v1.0 Data Plane.
 
 #### Phase 1 implications
 
-Phase 1 must preserve provider/product-neutral Core and Worker contracts, avoid dependencies on Tailscale/Headscale/WireGuard, avoid public Worker listeners, and not require a Worker public IP or DNS. It does not implement full multi-site networking, Site Node, new tunneling/NAT traversal, a public relay, or a new reverse proxy. It must preserve interfaces that allow the approved network direction to be implemented later; do not change Worker/Data Plane protocols unless strictly required by the Empty Core contract. No speculative network abstraction should be added without a concrete Phase 1 need.
+Phase 1 must preserve provider/product-neutral Core and Worker contracts, avoid dependencies on Tailscale/Headscale/WireGuard, avoid public Worker listeners, and not require a Worker public IP or DNS. It does not implement the v1.0 Data Plane paths, Gateway, full multi-site networking, Site Node, new tunneling/NAT traversal, or a new reverse proxy. It must preserve the Control Plane/Data Plane boundary and leave room for versioned, module-neutral data transfer contracts; do not change Worker/Data Plane protocols unless strictly required by the Empty Core contract. No speculative network abstraction should be added without a concrete Phase 1 need.
 
-The approved v1.0 network direction is **PRIVATE MULTI-SITE INFRASTRUCTURE + PUBLIC HTTPS CLIENT ACCESS**. This does not resolve Owner Decision 9.6 or prescribe a Data Plane optimization.
+The approved v1.0 network direction is **PRIVATE MULTI-SITE INFRASTRUCTURE + PUBLIC HTTPS CLIENT ACCESS**. The Data Plane policy and route requirements are specified in Owner Decision 9.6 below.
 
-### 9.6 Data Plane scope
+### 9.6 Data Plane Architecture — APPROVED
 
-| Path | v1 decision proposal | Reason |
+**OWNER DECISION 9.6 — APPROVED: DIRECT-FIRST DATA PLANE + INDEPENDENT DATA GATEWAY FALLBACK.**
+
+HISPANIA v1.0 separates the Control Plane from the Data Plane. The Coordinator owns identity/authorization, Worker selection and scheduling, grants, leases/fencing, supervision, cancellation, audit, and selection/authorization of data routes. It must not be a mandatory proxy for large media, file, AI-model, or other bulk payloads.
+
+#### Approved route categories
+
+**A. Direct Data Plane — preferred when reachable and authorized**
+
+```text
+Storage → Worker → Client
+Storage → Worker A → Worker B → Client
+```
+
+Source-to-Worker and authorized Worker-to-Worker traffic should be direct where a supported route exists. Direct Worker-to-Client delivery is required when the endpoint is reachable and the route is authorized.
+
+**B. Private multi-site Data Plane**
+
+```text
+Site A Storage → private VPN/overlay → Site B Worker → authorized destination
+```
+
+Data may cross owner-managed LAN/VPN/overlay infrastructure without passing through the Coordinator process. Reachability and Data Plane authorization remain separate requirements.
+
+**C. Independent Data Gateway — required fallback**
+
+```text
+Worker → authenticated data connection → independent Data Gateway → HTTPS → Client
+```
+
+When the client cannot reach a Worker directly, a public HTTPS Data Gateway must be available. It is an independently deployable infrastructure responsibility and may run on another machine; it must not require the Coordinator process or a Raspberry Pi Coordinator to relay all streams. Its implementation may later be a HISPANIA process, dedicated gateway service, or adapter over existing infrastructure. This decision freezes separation of process/resources, not a specific implementation technology. This Gateway is a data-delivery fallback, not a general public Worker listener or a HISPANIA-operated global relay.
+
+#### Mandatory v1.0 acceptance objectives
+
+1. Demonstrate a verifiable Control Plane/Data Plane separation.
+2. Transfer supported source/storage input directly to a Worker over supported networks.
+3. Deliver Worker output directly to a Client when the authorized endpoint is reachable.
+4. Deliver publicly over HTTPS through an independent Data Gateway when direct Client-to-Worker delivery is not viable.
+5. Authenticate and authorize every participant and route.
+6. Use ephemeral grants scoped to operation, resource, and destination.
+7. Verify expiry, revocation, and cancellation behavior.
+8. Enforce concurrency/resource quotas, transfer limits, and backpressure.
+9. Supervise work without transporting payloads through the Coordinator.
+10. Fail closed when no authorized route is available; do not silently downgrade to insecure HTTP or an undisclosed Coordinator relay.
+11. Test and instrument that the Coordinator is not acting as a data relay for routes declared direct or Gateway-delivered.
+12. Validate consistency with approved network policy 9.5.
+13. Support direct transfer between authorized Workers over LAN/private VPN for the v1.0 reference pipeline; this does not require arbitrary workflow orchestration.
+
+These are acceptance objectives, not claims about current implementation. No objective is considered implemented without route-specific code and reproducible acceptance evidence.
+
+#### Security and network constraints
+
+- Data Plane channels are encrypted and authenticated. No silent fallback to HTTP is permitted.
+- A transfer grant is not an administrative credential. A Worker receives only the task-scoped source/output access it needs, never global storage access by virtue of running a task.
+- A Gateway receives no implicit administrative authority. It enforces route grant scope, expiry, revocation, destination, and authentication.
+- Do not log secrets or complete tokens. Limit simultaneous transfers, bytes, and duration where applicable; propagate cancellation and backpressure.
+- Do not require inbound connectivity at every home. For CG-NAT, use an existing private overlay or outbound authenticated connection to an accessible Gateway; direct routes are used only when possible. HISPANIA v1.0 does not require custom P2P NAT traversal, QUIC, STUN, TURN, or ICE.
+- Coordinator and Workers may coordinate a bounded pipeline (e.g. NAS → FFmpeg Worker → AI Worker → destination) without Coordinator receiving content. Arbitrary workflow engines are out of scope unless separately approved.
+- Expose Data Plane capabilities through versioned, module-neutral platform contracts. Modules request transfers through contracts; they do not create parallel Worker identity, issue administrative grants, depend on Coordinator-internal routes, or require Core to know Media/FFmpeg/AI.
+
+#### Repository capability and gap assessment
+
+Assessment is against committed starting HEAD `93b9204c88da6db3f502cbde6d7ae2911de6ae00`. Code inspection and existing test source were reviewed; tests were not run in this documentation update. “IMPLEMENTED” is limited to the named existing scenario, not generic v1.0 readiness. Uncommitted worktree changes are excluded from shipped-state evidence.
+
+| Capability | Status at inspected HEAD | Evidence / gap |
 |---|---|---|
-| Worker ↔ authorized storage/source | Required for reference workload where supported | Existing short-lived source grants/range-limited transfer form a useful base; no raw local paths in protocol. |
-| Worker → Coordinator result | Required as baseline fallback | Existing bounded upload/hash/publish path is implemented; coordinator may receive result bytes for local cache. |
-| Worker → client direct | Not required | Requires client-reachable worker, safe audience-bound URL/token, range/cancel/revocation and NAT handling. Optimize later with measurements. |
-| Worker → Worker | Not required | Multi-hop trust, scheduling, transfer authorization and failure semantics add scope. |
-| Coordinator relay fallback | Existing upload/cache path allowed for v1 | Coordinator may handle result bytes if protocol needs it; avoid routing source+result through it when direct source grants are possible. No promise of a universal direct stream. |
+| Coordinator scheduling, Worker identity, leases, fencing, heartbeat and cancellation | **PARTIAL** | `core/runtime/DistributedWorkCoordinator.cs` and `contracts/module-system/DistributedWorkerContracts.cs` provide a real but capability-specific distributed worker path. It is not a generic module task/data scheduler with all v1.0 route selection policy. |
+| Short-lived source/result transfer grant | **PARTIAL** | `apps/server/DistributedMediaTransferRegistry.cs` binds transfer ID/token to job, expiry, source/result limits and source callback; range-bounded reads, result hash/size checks, opaque published handle and job revocation exist. Grant is served through Coordinator worker endpoints and is not yet a generic operation/resource/destination-scoped platform grant. |
+| Worker transfer endpoints | **PARTIAL** | `apps/server/DistributedWorkerEndpoints.cs` serves `media/grant`, `media/source`, and `media/result` under the Coordinator's `/internal/worker/v1` HTTPS/mTLS surface. This is a Coordinator-mediated transfer route, not a separate direct Data Plane endpoint. |
+| Source/storage → Worker direct | **NOT IMPLEMENTED** | `infrastructure/transcoding-ffmpeg/DistributedFfmpegCapabilityHandler.cs` downloads source blocks from Coordinator `media/source`; the source callback is brokered there. Existing implementation transfers bounded blocks but does not bypass Coordinator. |
+| Remote FFmpeg source→Worker→result workflow | **IMPLEMENTED — NARROW MEDIA SCENARIO** | `DistributedFfmpegCapabilityHandler.cs` plus `tests/playback/DistributedWorkerProcessIntegrationTests.cs` cover the specific remote FFmpeg flow, using local temporary files and Coordinator-mediated source/result transfer. This does not prove the approved direct routes or independent Gateway. |
+| Result upload, integrity, size caps, stale lease protection and interrupted upload cleanup | **IMPLEMENTED — NARROW MEDIA SCENARIO** | `DistributedMediaTransferRegistry.cs` and `tests/playback/DistributedMediaTransferTests.cs` cover bounded/hash-checked result publication, stale generation rejection, cleanup and cancellation behavior. Existing results are stored/published by Coordinator broker; limits are not a complete general quota/backpressure policy. |
+| Worker → Client direct | **NOT IMPLEMENTED** | No versioned audience-bound Worker-to-Client transfer endpoint/grant was identified. Current remote FFmpeg results return through Coordinator broker/cache/playback path. |
+| Independent Data Gateway → Client HTTPS | **NOT IMPLEMENTED** | No independently deployable Data Gateway process/contract or route was identified in committed code. Existing client HTTPS/server playback behavior does not demonstrate this approved fallback. |
+| Worker → Worker over LAN/private VPN | **NOT IMPLEMENTED** | No peer transfer contract, authorization route, or end-to-end Worker-to-Worker pipeline was identified. The audited NAS→Worker→Worker→Client path remains planned. |
+| Data Plane protocol version independent of Worker control RPC | **NOT IMPLEMENTED** | Worker protocol V1 exists, but no separate, negotiated/versioned generic Data Plane protocol for these routes was identified. |
+| Cancellation/revocation across all approved routes | **PARTIAL** | Coordinator job cancellation, worker cancellation instructions, generation fencing, job grant revocation, and narrow interrupted-transfer tests exist. Gateway/client/peer-route revocation and end-to-end route-wide behavior are absent. |
+| Streaming, ranges, backpressure, aggregate quotas and observability for all routes | **PARTIAL** | Source reads use capped blocks and result uploads stream to bounded temporary files; current Worker downloads the source to a local temporary file before processing. End-to-end direct stream, resumability policy, global concurrent-transfer quotas, route metrics and Gateway backpressure are not verified/implemented. |
 
-**Codex recommendation:** preserve existing FFmpeg transfer semantics, version and gate them in Phase 5; do not require peer-to-peer or direct client streaming for v1. **Decision: OPEN.**
+The table records present evidence and gaps; it does not authorize implementation during Phase 0 or Phase 1.
+
+#### Roadmap and Phase 1 boundary
+
+Phase 1 is limited to preserving the Control Plane/Data Plane boundary and neutral/versionable contract seams needed later. It must not implement the direct route matrix, Worker-to-Worker data movement, or Data Gateway. Phase 5 is the explicit **Data Plane v1 implementation and validation gate** before v1.0 support: freeze protocol/grant semantics, implement direct and independent Gateway paths, exercise cancellation/revocation/limits/backpressure/fail-closed behavior under network and Worker failure, capture traffic proving Coordinator bypass, and gate the Media reference adapter. Phase 6 integrates Media through those platform contracts; Phase 9 must publish the validated route/support matrix. No existing implementation or test source alone passes these new acceptance gates.
 
 ### 9.7 ARM64 and hardware support
 
@@ -483,7 +557,6 @@ No license change is proposed. Future technical choices affected by legal bounda
 
 ### Pending owner decisions
 
-- **9.6 Data Plane scope — OPEN**
 - **9.7 ARM64 and hardware support — OPEN**
 - **9.8 Authentication for private data — OPEN**
 - **9.9 WASM / sandbox — OPEN**
@@ -537,7 +610,7 @@ Current reusable groundwork: module manifests/packages/signing; module catalogue
 - PostgreSQL Core provider is outside v1.0 by approved decision; this does not restrict module-owned provider choices.
 - Full user roles/SSO and business authorization (but minimal secure platform admin is not deferrable).
 - WASM sandbox, marketplace, public worker listeners, custom CG-NAT traversal/relay, Site Node, multi-coordinator, GPU scoring, AI, distributed models. The approved 9.5 network direction remains architectural; implementing multi-site connectivity is not part of Phase 1.
-- Worker-to-client/worker-to-worker direct streaming; retain existing worker path without expanding it. The approved 9.5 network direction does not decide these Data Plane routes (9.6).
+- The approved 9.6 direct Data Plane and independent Gateway features; implementation belongs to the explicit Phase 5 validation gate, not Phase 1.
 - UI package contribution execution; Phase 1 needs an empty shell and registry surface, not arbitrary dynamic UI scripts.
 - Full cross-module backup/migration; Core own-state backup/restore contract remains in scope before v1 public readiness.
 
@@ -567,7 +640,7 @@ Create a new production composition root and installable Core artifact that star
 ### Out of scope
 
 - Moving/refactoring `apps/server`; deleting or changing current API routes; extracting Media/Inventory; modifying their schemas or migrations.
-- Scheduler scoring redesign, changing worker protocol, Data Plane or grant design, adding AI/GPU/NAS providers.
+- Scheduler scoring redesign, changing worker protocol, implementing Data Plane routes or changing grant semantics, adding AI/GPU/NAS providers.
 - Site Node, site registry/protocol, local worker discovery, WOL, IoT/MQTT/ESP32, locality scoring, public worker WAN listeners, public relay, new tunneling/traversal mechanisms, or a new reverse proxy. These remain outside Phase 1 even though the network direction is approved in 9.5.
 - PostgreSQL Core; Marketplace, public registry, WASM, untrusted native modules, public WAN relay.
 - Any change to the existing Library/Media PostgreSQL provider or its schema/migrations; it remains Media-owned and is not part of Fase 1.
@@ -628,14 +701,13 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 ## 14. Open questions to resolve before contract freeze
 
 1. Design concrete network implementations that satisfy approved 9.5 multi-site private infrastructure and public HTTPS client access; no product-specific VPN or gateway is frozen by that decision.
-2. Approve Data Plane paths required for v1, especially whether worker→storage direct is mandatory for supported sources.
-3. Approve official hardware/platform matrix; current evidence does not justify Pi4/ARM64 as official yet.
-4. Approve authentication-by-default for private data and migration policy from current anonymous reads.
-5. Decide whether a WASM/other sandbox implementation enters v1; the approved 9.2 decision still excludes untrusted native modules and makes no malicious-code isolation promise.
-6. Confirm marketplace scope for v1.
-7. Decide CLI packaging/runtime expectation (side-by-side tool vs bundled) in Phase 1 design.
-8. Confirm minimum Core own-state backup/restore included in Fase 1 or an owner-approved 1.1 gate before module extraction.
-9. Obtain legal guidance on SDK, module redistribution and commercial/proprietary extensions without changing license in this phase.
+2. Approve official hardware/platform matrix; current evidence does not justify Pi4/ARM64 as official yet.
+3. Approve authentication-by-default for private data and migration policy from current anonymous reads.
+4. Decide whether a WASM/other sandbox implementation enters v1; the approved 9.2 decision still excludes untrusted native modules and makes no malicious-code isolation promise.
+5. Confirm marketplace scope for v1.
+6. Decide CLI packaging/runtime expectation (side-by-side tool vs bundled) in Phase 1 design.
+7. Confirm minimum Core own-state backup/restore included in Fase 1 or an owner-approved 1.1 gate before module extraction.
+8. Obtain legal guidance on SDK, module redistribution and commercial/proprietary extensions without changing license in this phase.
 
 ### Gate summary
 
@@ -648,5 +720,5 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 - Independent version planes: **PASS as proposal; public ABI freeze deferred**.
 - Phase 1 contract: **PASS**.
 - Product code unchanged: **PASS**.
-- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, 9.3 Third-party Module Promise, 9.4 Remote Worker Threat Model, and 9.5 Network Supported in v1: **APPROVED**.
-- Owner-only selections 9.6–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
+- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, 9.3 Third-party Module Promise, 9.4 Remote Worker Threat Model, 9.5 Network Supported in v1, and 9.6 Data Plane Architecture: **APPROVED**.
+- Owner-only selections 9.7–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
