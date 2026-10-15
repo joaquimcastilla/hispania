@@ -2,7 +2,7 @@
 
 **Purpose:** freeze the architectural direction and define the acceptance contract for Phase 1 (Empty Core Composition Root). This is an analysis and planning document; it does not authorize implementation of Phase 1.
 
-**Repository evidence:** starting HEAD for this update `9322f51e358afbc5ca3573fcd412078d59796841`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; intervening commits changed only this Phase 0 document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
+**Repository evidence:** starting HEAD for this update `a995c70af92dd6b75dc90d7f80266e75d96d14f7`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; intervening commits changed only this Phase 0 document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
 
 **Phase 0 result:** **TECHNICAL PHASE 0: PASS** for the specified documentation outputs and Phase 1 contract. **OWNER FREEZE: PENDING** because the unresolved decisions in §9 require owner approval. No product code, APIs, databases, scheduler, Data Plane, runtime, or package format were changed; no tests were run.
 
@@ -140,7 +140,7 @@ No forbidden edge above was corrected during Phase 0.
 | Install a compatible signed module | **Required at least for a harmless fixture module** | Proves the Core is extensible. Fixture uses a test publisher explicitly trusted by the operator. Not Media/Inventory installation or general third-party support. |
 | Disable/deactivate a module | **Required for fixture** | Demonstrates failure isolation and lifecycle state. |
 | Recover from module failure | **Required** | Core/admin remain available; restart/disable/rollback path bounded. |
-| Worker administration | **Core API and empty state required; live remote worker may defer** | Worker registry contract is platform. mTLS remote execution is not necessary to prove empty boot; carry forward validated existing implementation after trust review. |
+| Worker administration | **Core API and empty state required; live multi-site execution may defer** | Worker registry contract is platform. Phase 1 need not implement remote connectivity/site topology; preserve current worker identity/capability boundaries and approved owner-managed trust model. |
 | Scheduler/coordinator | **Core boundary/API and no-module initialization required; remote scheduling may defer** | Empty coordinator can have no task providers. Do not add new scoring or change scheduler in Phase 1. |
 | Audit of admin/module lifecycle | **Required minimal** | Record actor/action/result/time/correlation for bootstrap and package lifecycle. |
 | Restart and state recovery | **Required** | Core config, admin identity, module inventory, trust metadata persist. |
@@ -151,7 +151,7 @@ No forbidden edge above was corrected during Phase 0.
 | Marketplace / public registry | **Out of scope** | No need to boot empty Core. |
 | Dynamic module UI | **Extension point only** | UI contribution contract is designed now; runtime loading can follow Inventory reference module phase. |
 
-Phase 1 should not add generic scheduler scoring, Data Plane changes, PostgreSQL Core, WASM, new user-role product features beyond the admin bootstrap boundary, or module-specific persistence. Reuse existing implementations where valid; create a separate composition root and artifact.
+Phase 1 should not add generic scheduler scoring, Data Plane changes, PostgreSQL Core, WASM, Site Node, WOL, IoT, multi-site discovery, new tunneling, or module-specific persistence. It must not make later multi-site owner-managed Workers impossible, but no CG-NAT solution is required in the Empty Core gate. Reuse existing implementations where valid; create a separate composition root and artifact.
 
 ## 7. Architecture Fitness Tests
 
@@ -332,27 +332,77 @@ HISPANIA v1.0 will expose a documented public module API for a limited ecosystem
 
 The selected option is **B**. The recommendation for a small supported API surface and curated/trusted publishers is consistent with the selected scope; it does not expand that scope into full third-party support.
 
-### 9.4 Remote worker threat model
+### 9.4 Remote Worker Threat Model — APPROVED
 
-| Option | Advantages | Disadvantages / short term | v1 effect | Future change difficulty |
-|---|---|---|---|---|
-| A. Owner-managed devices | Trust boundary understandable; current mTLS/pins and allowlists fit. | Admin owns OS patching and physical access; worker sees task bytes. | LAN/VPN first. | Low-to-medium to add stronger isolation. |
-| B. Semi-trusted partner devices | Broader capacity. | Need strict data classification, OS sandbox, signed execution/attestation, audit, quota. | Not evidenced today. | High. |
-| C. Adversarial/untrusted workers | Open compute network. | Workers can inspect/alter input/output; mTLS does not prove integrity; confidential compute is separate problem. | Incompatible with private media/data promises. | Very high. |
+**OWNER DECISION 9.4 — APPROVED: OWNER-MANAGED TRUSTED WORKERS.**
 
-**Codex recommendation:** A for v1; document operator ownership and that mTLS authenticates a machine, not a trustworthy OS. **Decision: OPEN.**
+HISPANIA v1.0 supports workers that the owner/operator explicitly authorizes and trusts. They may be in the Coordinator's LAN, another home or physical site, behind NAT or CG-NAT, connected through an operator-managed VPN, associated with a future local Site Node, or hosted on a remote server controlled by the owner. Physical location is not the trust boundary; explicit operator authorization and trust are. Support for those topologies is an outcome requirement. The mechanism that establishes connectivity remains open under 9.5.
 
-### 9.5 Network supported in v1
+The operator is trusting the worker machine, OS, administrator, execution environment, WorkerAgent software, and the resources accessible to that worker. A trusted remote worker may inspect the private bytes it is authorized to process. HISPANIA does not claim to protect those bytes from the administrator or a compromised OS of an authorized worker.
 
-| Network | Recommendation | Consequence |
+```text
+mTLS != host integrity
+mTLS != attestation
+trusted worker != hostile worker
+```
+
+mTLS authenticates the node, protects the channel, and enables access control/revocation. It does not prove that the OS is uncompromised, prevent a remote administrator from inspecting data, prove hardware executed the expected program, or provide attestation/confidential computing. v1.0 does not support arbitrary Internet workers, hostile workers, open public compute, confidential execution, remote attestation, execution over an adversarial OS, or protection against an authorized worker's administrator.
+
+For each job, the operator's trust in a worker does not grant blanket task authority. Keep these concepts separate:
+
+| Concept | Meaning |
+|---|---|
+| Worker identity | Which enrolled node is connecting. |
+| Worker trust | Whether the operator trusts the machine and its administrators/environment. |
+| Allowed capabilities | Which operations this node is authorized to execute, e.g. FFmpeg or AI; this does not imply storage/admin. |
+| Task authorization | Whether this worker may execute this specific task with these inputs and outputs. |
+
+For private data, the operator accepts that an authorized worker can observe task bytes. HISPANIA should minimize the data sent, issue scoped and short-lived grants, avoid permanent source credentials and unnecessary physical paths, and revoke access when work ends or is revoked. Do not imply protection from the trusted worker's administrator.
+
+v1.0 assumes explicit enrollment, unique worker identity, operator authorization, mTLS, per-node capability allowlists, revocation, certificate rotation, leases/fencing, and audit of enrollment/removal. Reuse existing primitives; do not redesign them in Phase 0. Trust level and capabilities stay distinct. Contracts should leave room for future worker trust classification, but Phase 0 does not add a `WorkerTrustLevel` enum or related implementation.
+
+### 9.4.1 Multi-site direction — future architecture
+
+HISPANIA is intended to span multiple physical sites:
+
+```text
+                    HISPANIA Core
+                         |
+               private control network
+                 /       |       \\
+             Site A    Site B    Site C
+               |         |         |
+            Site Node Site Node Site Node
+               |         |         |
+             Workers   Workers   Workers
+```
+
+A site represents a physical location or LAN. A future **HISPANIA Site Node** may be a lightweight persistent agent on a Raspberry Pi, mini PC, home server, or other always-on device. It is not necessarily a heavy execution Worker. Potential responsibilities include maintaining Core connectivity, representing network locality, local worker discovery/health, Wake-on-LAN, IoT/MQTT gateway, ESP32/sensor telemetry, site health, local control/relay where approved, locality reporting, and bootstrap/recovery support. This is an architectural direction only; no Site Node is implemented or required for v1.0/Phase 1 by this decision.
+
+Wake-on-LAN, if added, should be executed by an authorized Site Node on its own LAN: Coordinator → Site Node wake request → local broadcast to Worker. The Coordinator should not depend on sending broadcasts into remote LANs. Do not implement WOL in Phase 0 or Phase 1.
+
+IoT devices such as ESP32 should normally communicate over local Wi-Fi/MQTT or another local protocol with a Site Node, rather than each connecting directly to Core over the Internet. Future site capabilities/telemetry might be identified as `site.<site-id>.*`; no IoT behavior is part of this freeze.
+
+Future scheduler policy may use a site identifier as a locality hint, e.g. prefer a GPU Worker in the same site as a NAS. Do not implement locality scoring now. Future phases must decide Site identity/registry, Site-to-Core protocol, Site Node package/runtime, local discovery, health/capabilities, WOL/IoT providers and multi-site scheduler hints. These are not Phase 1 P0 requirements.
+
+Endpoint DNS names or public domains may be used for addressing, but a domain name is not a security boundary. Security continues to come from TLS/mTLS, authorization, certificate lifecycle/revocation, firewall and policy. Reverse SSH may be an operator bootstrap/recovery/troubleshooting tool; it is not the primary HISPANIA transport and must not become a Worker protocol or Data Plane dependency.
+
+### 9.5 Network supported in v1 — OPEN
+
+Decision 9.4 requires v1.0 worker support across owner-managed sites, including nodes behind NAT/CG-NAT, but deliberately does not select a transport. The connectivity design must not require inbound port forwarding at every home; worker-initiated outbound connections and private/overlay VPNs are candidate approaches. This compatibility requirement does not itself approve WAN listeners, traversal, relay, reverse SSH, or a particular VPN product.
+
+Keep four network surfaces distinct when deciding 9.5:
+
+| Network surface | Purpose | Considerations for 9.5 |
 |---|---|---|
-| LAN | Include | Primary Coordinator/worker deployment; TLS/mTLS and firewall-limited endpoints. |
-| VPN | Include | Preferred remote-site connection; worker outbound to Coordinator; no unauthenticated port opening. |
-| WAN direct | Exclude as general promise | Requires endpoint advertisement, NAT/firewall, cert lifecycle, abuse/DoS review. A controlled VPN address is still supported. |
-| CG-NAT traversal | Exclude | Hole punching and identity/revocation design absent. |
-| Relay | Exclude from v1 | Additional trusted byte-handling party, encryption, cost, and availability requirements. |
+| Control Plane | Coordinator ↔ workers/Site Nodes: identity, registration, health, assignment, heartbeat, cancellation | Private overlay/VPN, outbound agent connections, TLS/mTLS, endpoint discovery, revocation, intermittent links. |
+| Data Plane | Source/storage ↔ worker ↔ result/client bytes | May use different routes from control; grant scope, bandwidth, locality, NAT reachability, relay cost and privacy. |
+| Client access | Browser/apps/TV ↔ Coordinator or approved stream endpoint | HTTPS public domain, LAN/Wi-Fi, 4G/5G, browser/client compatibility; not the same trust path as worker control. |
+| Recovery/admin | Operator ↔ Core/Site Node for enrollment, diagnostics and recovery | Strong authentication, restricted exposure, emergency access; reverse SSH may be an operator tool only, not protocol dependency. |
 
-**Codex recommendation:** official network topology is LAN or operator-managed VPN only. **Decision: OPEN.**
+Options to evaluate include LAN, administered VPN, WireGuard, Tailscale, Headscale, another private overlay, workers initiating outbound connections, public HTTPS/domain endpoints for clients, direct WAN/port forwarding, custom CG-NAT traversal, relay, and reverse SSH for operations. These options have different trust, availability, privacy, and operating costs and are not interchangeable.
+
+**RECOMMENDATION — NOT APPROVED:** v1.0 should support local LAN plus owner-managed multi-site connectivity through a private/overlay VPN or equivalent authenticated private network, with workers able to initiate outbound control connections and no requirement to open inbound ports at each site. Treat client-facing HTTPS/domain access as a separate surface. Do not require custom CG-NAT traversal, a public worker listener, public relay, or reverse SSH as the HISPANIA transport in v1; decide whether any relay fallback is needed only after Data Plane requirements are frozen. **Decision: OPEN.**
 
 ### 9.6 Data Plane scope
 
@@ -412,7 +462,6 @@ No license change is proposed. Future technical choices affected by legal bounda
 
 ### Pending owner decisions
 
-- **9.4 Remote worker threat model — OPEN**
 - **9.5 Network supported in v1 — OPEN**
 - **9.6 Data Plane scope — OPEN**
 - **9.7 ARM64 and hardware support — OPEN**
@@ -467,7 +516,7 @@ Current reusable groundwork: module manifests/packages/signing; module catalogue
 - SDK packaging, compatibility-window details, and curated external onboarding (Phase 9); the limited public API promise is approved, but this phase does not implement it.
 - PostgreSQL Core provider is outside v1.0 by approved decision; this does not restrict module-owned provider choices.
 - Full user roles/SSO and business authorization (but minimal secure platform admin is not deferrable).
-- WASM sandbox, marketplace, public WAN, CG-NAT/relay, multi-coordinator, GPU scoring, AI, distributed models.
+- WASM sandbox, marketplace, public worker listeners, custom CG-NAT traversal/relay, Site Node, multi-coordinator, GPU scoring, AI, distributed models. The approved multi-site worker support goal remains; its connectivity mechanism is 9.5 and is not part of Phase 1.
 - Worker-to-client/worker-to-worker direct streaming; retain existing worker path without expanding it.
 - UI package contribution execution; Phase 1 needs an empty shell and registry surface, not arbitrary dynamic UI scripts.
 - Full cross-module backup/migration; Core own-state backup/restore contract remains in scope before v1 public readiness.
@@ -499,6 +548,7 @@ Create a new production composition root and installable Core artifact that star
 
 - Moving/refactoring `apps/server`; deleting or changing current API routes; extracting Media/Inventory; modifying their schemas or migrations.
 - Scheduler scoring redesign, changing worker protocol, Data Plane or grant design, adding AI/GPU/NAS providers.
+- Site Node, site registry/protocol, local worker discovery, WOL, IoT/MQTT/ESP32, locality scoring, public worker WAN listeners, or new tunneling/traversal mechanisms.
 - PostgreSQL Core; Marketplace, public registry, WASM, untrusted native modules, public WAN relay.
 - Any change to the existing Library/Media PostgreSQL provider or its schema/migrations; it remains Media-owned and is not part of Fase 1.
 - SDK packaging and general external onboarding; Phase 1 may use the trusted fixture contract, while the approved limited public API is delivered through the later SDK/compatibility work.
@@ -557,7 +607,7 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 
 ## 14. Open questions to resolve before contract freeze
 
-1. Approve remote worker as owner-managed LAN/VPN-only for v1, or define a stronger adversary model.
+1. Select network/control/data/client/admin connectivity mechanisms that meet approved owner-managed multi-site Worker support, including CG-NAT compatibility, without assuming inbound ports at every site.
 2. Approve Data Plane paths required for v1, especially whether worker→storage direct is mandatory for supported sources.
 3. Approve official hardware/platform matrix; current evidence does not justify Pi4/ARM64 as official yet.
 4. Approve authentication-by-default for private data and migration policy from current anonymous reads.
@@ -578,5 +628,5 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 - Independent version planes: **PASS as proposal; public ABI freeze deferred**.
 - Phase 1 contract: **PASS**.
 - Product code unchanged: **PASS**.
-- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, and 9.3 Third-party Module Promise: **APPROVED**.
-- Owner-only selections 9.4–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
+- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, 9.3 Third-party Module Promise, and 9.4 Remote Worker Threat Model: **APPROVED**.
+- Owner-only selections 9.5–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
