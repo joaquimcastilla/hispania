@@ -316,9 +316,13 @@ OOP != Sandbox
 ALC != Sandbox
 ```
 
-This approval governs the trust model only. It does **not** approve a general public third-party support promise, which remains Owner Decision 9.3.
+This approval governs the trust model. It does not by itself define the breadth of the public module ecosystem; that scope is recorded separately in Owner Decision 9.3.
 
-### 9.3 Third-party module promise
+### 9.3 Third-party Module Promise — APPROVED
+
+**OWNER DECISION 9.3 — APPROVED: Public API + limited ecosystem.**
+
+HISPANIA v1.0 will expose a documented public module API for a limited ecosystem. The promise is bounded: it does not mean full support for arbitrary third-party modules, unrestricted publisher enrollment, or a public marketplace. Any third-party native module remains subject to the approved 9.2 trust model: signed, integrity/compatibility checked, and from a publisher the operator explicitly trusts. Marketplace scope remains separately open under 9.10. The SDK packaging, compatibility window, and onboarding/support process must be specified before inviting external module authors; this decision does not implement them.
 
 | Option | Advantages | Disadvantages / short term | v1 effect | Future change difficulty |
 |---|---|---|---|---|
@@ -326,7 +330,7 @@ This approval governs the trust model only. It does **not** approve a general pu
 | B. Public API, limited ecosystem | Establishes compatibility and lets a few trusted integrators test. | Support obligations and compatibility window begin; no marketplace required. | Publish SDK + sample + compatibility policy; curated trust. | Medium. |
 | C. Full third-party support | Strong extensibility promise. | Need docs, registry, signer namespace, support, security response, upgrades, UI and data migrations. | Materially expands v1 scope. | High if later retracted. |
 
-**Codex recommendation:** B, with a small supported API surface and curated/trusted publishers; marketplace not implied. **Decision: OPEN.**
+The selected option is **B**. The recommendation for a small supported API surface and curated/trusted publishers is consistent with the selected scope; it does not expand that scope into full third-party support.
 
 ### 9.4 Remote worker threat model
 
@@ -408,7 +412,6 @@ No license change is proposed. Future technical choices affected by legal bounda
 
 ### Pending owner decisions
 
-- **9.3 Third-party module promise — OPEN**
 - **9.4 Remote worker threat model — OPEN**
 - **9.5 Network supported in v1 — OPEN**
 - **9.6 Data Plane scope — OPEN**
@@ -461,7 +464,7 @@ Current reusable groundwork: module manifests/packages/signing; module catalogue
 ### CAN DEFER from Phase 1
 
 - Media/Inventory extraction and module DB migration (later phases).
-- General third-party SDK public guarantees (can use fixture-only provisional contracts until owner resolves third-party promise).
+- SDK packaging, compatibility-window details, and curated external onboarding (Phase 9); the limited public API promise is approved, but this phase does not implement it.
 - PostgreSQL Core provider is outside v1.0 by approved decision; this does not restrict module-owned provider choices.
 - Full user roles/SSO and business authorization (but minimal secure platform admin is not deferrable).
 - WASM sandbox, marketplace, public WAN, CG-NAT/relay, multi-coordinator, GPU scoring, AI, distributed models.
@@ -498,7 +501,7 @@ Create a new production composition root and installable Core artifact that star
 - Scheduler scoring redesign, changing worker protocol, Data Plane or grant design, adding AI/GPU/NAS providers.
 - PostgreSQL Core; Marketplace, public registry, WASM, untrusted native modules, public WAN relay.
 - Any change to the existing Library/Media PostgreSQL provider or its schema/migrations; it remains Media-owned and is not part of Fase 1.
-- Full third-party stable SDK promise; use only a fixture contract whose provisional status is explicit until §9.3 resolves.
+- SDK packaging and general external onboarding; Phase 1 may use the trusted fixture contract, while the approved limited public API is delivered through the later SDK/compatibility work.
 - Releasing v1.0 or migrating existing user data.
 
 ### Project changes expected in Phase 1
@@ -554,16 +557,15 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 
 ## 14. Open questions to resolve before contract freeze
 
-1. Select whether limited third-party API compatibility is an explicit v1 promise.
-2. Approve remote worker as owner-managed LAN/VPN-only for v1, or define a stronger adversary model.
-3. Approve Data Plane paths required for v1, especially whether worker→storage direct is mandatory for supported sources.
-4. Approve official hardware/platform matrix; current evidence does not justify Pi4/ARM64 as official yet.
-5. Approve authentication-by-default for private data and migration policy from current anonymous reads.
-6. Decide whether a WASM/other sandbox implementation enters v1; the approved 9.2 decision still excludes untrusted native modules and makes no malicious-code isolation promise.
-7. Confirm marketplace scope for v1.
-8. Decide CLI packaging/runtime expectation (side-by-side tool vs bundled) in Phase 1 design.
-9. Confirm minimum Core own-state backup/restore included in Fase 1 or an owner-approved 1.1 gate before module extraction.
-10. Obtain legal guidance on SDK, module redistribution and commercial/proprietary extensions without changing license in this phase.
+1. Approve remote worker as owner-managed LAN/VPN-only for v1, or define a stronger adversary model.
+2. Approve Data Plane paths required for v1, especially whether worker→storage direct is mandatory for supported sources.
+3. Approve official hardware/platform matrix; current evidence does not justify Pi4/ARM64 as official yet.
+4. Approve authentication-by-default for private data and migration policy from current anonymous reads.
+5. Decide whether a WASM/other sandbox implementation enters v1; the approved 9.2 decision still excludes untrusted native modules and makes no malicious-code isolation promise.
+6. Confirm marketplace scope for v1.
+7. Decide CLI packaging/runtime expectation (side-by-side tool vs bundled) in Phase 1 design.
+8. Confirm minimum Core own-state backup/restore included in Fase 1 or an owner-approved 1.1 gate before module extraction.
+9. Obtain legal guidance on SDK, module redistribution and commercial/proprietary extensions without changing license in this phase.
 
 ### Gate summary
 
@@ -576,5 +578,5 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 - Independent version planes: **PASS as proposal; public ABI freeze deferred**.
 - Phase 1 contract: **PASS**.
 - Product code unchanged: **PASS**.
-- Owner Decisions 9.1 Core Persistence and 9.2 Module Trust Model: **APPROVED**.
-- Owner-only selections 9.3–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
+- Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, and 9.3 Third-party Module Promise: **APPROVED**.
+- Owner-only selections 9.4–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
