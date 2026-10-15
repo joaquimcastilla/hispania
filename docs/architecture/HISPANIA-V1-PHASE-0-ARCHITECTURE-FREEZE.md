@@ -2,7 +2,7 @@
 
 **Purpose:** freeze the architectural direction and define the acceptance contract for Phase 1 (Empty Core Composition Root). This is an analysis and planning document; it does not authorize implementation of Phase 1.
 
-**Repository evidence:** starting HEAD for this update `af797295b69bffc24aa582a36deb13b6b65939ed`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; the intervening commit changed only this Phase 0 document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
+**Repository evidence:** starting HEAD for this update `9322f51e358afbc5ca3573fcd412078d59796841`, branch `feature/phase-13-platform-maturity`, observed 2026-10-15. The product-code baseline remains `134076f5ba2894aba216e775c4588cc3c547ee31`; intervening commits changed only this Phase 0 document. `git status` showed pre-existing edits and untracked files in server endpoints, Platform events/identity, SQLite adapters, tests, and `docs/architecture/`. They were not used as shipped implementation evidence and were preserved. The previous audit document is untracked in this worktree; it is treated as the requested source, not overwritten. The working tree has no upstream configured for this branch (no `@{upstream}` resolved); remote state was not fetched.
 
 **Phase 0 result:** **TECHNICAL PHASE 0: PASS** for the specified documentation outputs and Phase 1 contract. **OWNER FREEZE: PENDING** because the unresolved decisions in §9 require owner approval. No product code, APIs, databases, scheduler, Data Plane, runtime, or package format were changed; no tests were run.
 
@@ -137,7 +137,7 @@ No forbidden edge above was corrected during Phase 0.
 | Open Core-owned persistence | **Required** | A provider-neutral Core persistence contract is mandatory; SQLite is the approved official v1.0 provider. Schema version and health are visible. PostgreSQL Core is out of scope. |
 | Register module runtime/catalogue | **Required** | Empty list is valid and observable. Reuse current ModuleRuntime/catalogue after dependency review. |
 | Enumerate installed modules | **Required** | Empty result and health visible. |
-| Install a compatible signed module | **Required at least for a harmless fixture module** | Proves the Core is extensible. Not Media/Inventory installation in Phase 1. Requires trust decision before final signature policy. |
+| Install a compatible signed module | **Required at least for a harmless fixture module** | Proves the Core is extensible. Fixture uses a test publisher explicitly trusted by the operator. Not Media/Inventory installation or general third-party support. |
 | Disable/deactivate a module | **Required for fixture** | Demonstrates failure isolation and lifecycle state. |
 | Recover from module failure | **Required** | Core/admin remain available; restart/disable/rollback path bounded. |
 | Worker administration | **Core API and empty state required; live remote worker may defer** | Worker registry contract is platform. mTLS remote execution is not necessary to prove empty boot; carry forward validated existing implementation after trust review. |
@@ -170,7 +170,7 @@ No fitness tests were implemented in Phase 0. This table gives intended phase an
 | I — Cross-module SQL FK prohibited | Migration/schema integration inspection rejects FK target outside module-owned schema; separate DB connection prevents hidden joins. | **Fase 3** | No global SQL schema can prove this alone; contract plus per-module DB isolation. |
 | J — Empty Core process journey | Clean boot → health → admin auth → module list empty → restart → health, with persistent state. | **Fase 1** | Separate process test, no in-memory test server only. |
 | K — Module fault containment | Fixture crashes/hangs; Core health/admin survive and module can be disabled/recovered. | **Fase 1** | Tests restart/backoff bounds; platform-specific resource enforcement needs OS CI. |
-| L — Package security baseline | Traversal, hash mismatch, signature tamper, revoked signer, unknown signer, incompatible host all fail closed before execution. | **Fase 1** | Reuse current package test suite; publisher scope/permission semantics need Phase 2. |
+| L — Package security baseline | Traversal, hash mismatch/tampering, revoked or unknown publisher, incompatible host all fail closed before execution. | **Fase 1** | Reuse current package test suite; full per-resource permission enforcement remains Phase 2. |
 | M — Worker/Data Plane stale fencing | Old generation/grant/wrong worker/expired token cannot read/publish. | **Existing tests reuse; gate current SHA in Fase 1/5** | Phase 1 must not weaken existing validated guarantees, but no protocol rewrite. |
 | N — Module dependency cycles | Install plan rejects cycles, unsatisfied minimum versions and missing hard dependency before mutation. | **Fase 2** | Existing manifests alone don't prove a complete solver. |
 
@@ -271,16 +271,52 @@ Inventory, ERP, and other modules -> their own persistence policies
 
 This decision selects SQLite-only as the official Core provider for v1.0. It does not constrain module-owned storage choices or approve changes to the existing Media PostgreSQL adapter.
 
-### 9.2 Module trust model
+### 9.2 Module Trust Model — APPROVED
 
 | Option | Advantages | Disadvantages / short term | v1 effect | Future change difficulty |
 |---|---|---|---|---|
-| A. First-party modules only | Small trust namespace and review surface. | Ecosystem limited, still needs signature and update discipline. | Safest scope while contracts stabilize. | Low-to-medium to broaden later. |
-| B. Trusted signed publishers (native code) | Reuses `.hispania`, allows third-party experimentation. | Signature says publisher, not safe; OOP/ALC are not sandbox. Requires publisher authorization, audit and OS privileges. | Admin explicitly trusts executable code. | Medium; signer namespace and permission grants become durable policy. |
-| C. Untrusted native modules | Maximum openness. | No safe isolation in current runtime; privilege and data compromise risk. | Not supportable. | Very high; cannot retrofit security after exposure. |
-| D. Sandboxed untrusted modules (e.g. WASM) | Capability model can bound access. | WASM/WASI runtime is not implemented; host APIs/resource limits/audits need design and platform validation. | Only if separate sandbox project is completed; not current capability. | High if API designed without sandbox assumptions. |
+**OWNER DECISION 9.2 — APPROVED**
 
-**RECOMMENDATION — NOT APPROVED:** v1 supports first-party and explicitly trusted signed native publishers only, OOP restricted OS identity as fault containment, and declares hostile/untrusted modules unsupported until a verified sandbox exists. Signer approval and permission approval remain separate. **Decision: OPEN.**
+For HISPANIA v1.0:
+
+- First-party modules are supported.
+- Native modules from publishers explicitly trusted by the operator are supported.
+- Every installable module must be signed and pass HISPANIA's integrity, compatibility, and publisher-trust checks. The policy fails closed.
+- A valid signature identifies the publisher and artifact integrity; it does **not** establish that the code is safe.
+- Publisher trust and permissions granted to a module are separate decisions. Signing does not grant permissions.
+- Third-party native modules are treated as trusted code only by the operator's explicit decision.
+- Out-of-Process execution provides fault isolation, resource limits, and supervision; it is **not a security sandbox**. Collectible `AssemblyLoadContext` is not a sandbox either.
+- Untrusted or adversarial native modules are **not supported in v1.0**. HISPANIA makes no malicious-code isolation promise for native modules.
+- A future validated sandbox (for example WASM/WASI or another technology) may be added without changing the Core principle of capability/permission enforcement.
+- A module cannot run if its publisher is not authorized. It must declare requested permissions and gets no automatic filesystem, network, secret, database, scheduler, GPU, or other resource access merely because it is signed. The Core enforces each permission wherever resource enforcement exists; a permission without an enforcement path must not be represented as protected.
+
+```text
+Module Trust Tiers
+
+Tier 1: First-party signed module
+        -> trusted
+
+Tier 2: Trusted signed publisher
+        -> operator explicitly trusts publisher/code
+        -> permissions still granted separately
+
+Tier 3: Untrusted native module
+        -> NOT SUPPORTED v1.0
+
+Tier 4: Sandboxed untrusted module
+        -> FUTURE, after sandbox validation
+```
+
+Security shorthand:
+
+```yaml
+Signed != Safe
+Trusted Publisher != Full Permissions
+OOP != Sandbox
+ALC != Sandbox
+```
+
+This approval governs the trust model only. It does **not** approve a general public third-party support promise, which remains Owner Decision 9.3.
 
 ### 9.3 Third-party module promise
 
@@ -372,7 +408,6 @@ No license change is proposed. Future technical choices affected by legal bounda
 
 ### Pending owner decisions
 
-- **9.2 Module Trust Model — OPEN**
 - **9.3 Third-party module promise — OPEN**
 - **9.4 Remote worker threat model — OPEN**
 - **9.5 Network supported in v1 — OPEN**
@@ -421,7 +456,7 @@ Current reusable groundwork: module manifests/packages/signing; module catalogue
 - Core empty boot/admin/persistence/module-list process journey has no acceptance test.
 - Admin bootstrap/auth boundary must be selected sufficiently to prevent an unauthenticated module install/disable API.
 - Product package/service/install layout and Core state/config paths need a Phase 1 design; developer launcher is not a production installer.
-- Publisher trust model decision affects whether the fixture module can be signed and installed in the empty-Core test.
+- Fixture publisher must be explicitly trusted by the test operator; no general publisher or third-party ecosystem trust is implied.
 
 ### CAN DEFER from Phase 1
 
@@ -449,7 +484,10 @@ Create a new production composition root and installable Core artifact that star
 - Reuse Kernel, Runtime/module catalogue/lifecycle, signature/package verification and OOP supervisor as accepted by reuse gates.
 - Core-owned persistence contract and SQLite provider, following approved Owner Decision 9.1. The contract is provider-neutral and limited to demonstrated Core needs; SQLite is the only official Core provider in v1.0.
 - Secure bootstrap administrator and authenticated Core-admin mutation routes, module list, health, readiness and minimal audit.
-- A signed no-business fixture package test covering install, disable, module failure isolation, Core restart and empty data after fixture removal/archive.
+- A signed no-business fixture package from an explicitly trusted test publisher, covering install, disable, module failure isolation, Core restart and empty data after fixture removal/archive.
+- Fail-closed package tests for unknown signer, revoked signer, tampered package/hash/signature, and incompatible host before code execution.
+- Core does not claim OOP or collectible ALC makes hostile native code safe; no arbitrary untrusted modules or WASM/sandbox implementation in Phase 1.
+- Phase 1 proves only the minimum trust path for the signed fixture. Complete per-resource permission enforcement remains a Phase 2 deliverable.
 - Core-only package contents inspection; prove no Media/Inventory DLLs/migrations/routes/web assets.
 - Reuse current tests where they validate behavior; add only the new Core integration/fitness tests necessary to meet this contract.
 - Minimal versioned backup/restore of Core-owned state/config references, or split it into a narrowly scoped Phase 1.1 gate before Module/Inventory work; document a concrete owner-approved boundary.
@@ -473,7 +511,7 @@ Likely **create**: a Core host/composition project; Core admin API/shell project
 - `Hispania.Kernel` and reviewed generic portions of `Hispania.Runtime`.
 - `Hispania.ModuleSystem.Contracts`, `Hispania.Platform.Contracts`, reviewed identity/auth/audit/health/config/backup contracts.
 - provider-neutral Core persistence contract plus its SQLite provider, the single officially supported Core provider for v1.0. Keep the abstraction narrowly matched to actual Core storage operations.
-- package verification/signature and module-host executable for explicitly trusted fixture modules.
+- package verification/signature and module-host executable for explicitly trusted fixture modules; deny unknown/revoked publishers and tampered/incompatible packages before activation.
 - operator CLI only as a client of Core API, not as Core composition dependency.
 
 ### Forbidden dependencies
@@ -490,8 +528,8 @@ Likely **create**: a Core host/composition project; Core admin API/shell project
 2. Project/reference graph fitness A/B/G and content fitness C/D/E.
 3. Route/UI fitness F on clean Core artifact.
 4. Process integration J: boot → health → authenticated admin → module list empty → restart → health.
-5. Install fixture → verify signature/host compatibility → enumerate → disable → force fixture failure → Core still healthy → restart; run only if trust decision permits signed fixture.
-6. Test package traversal/hash/signature/revocation and bounded supervisor lifecycle using existing regression suite.
+5. Install fixture from explicitly trusted test publisher → verify signature/integrity/host compatibility → enumerate → disable → force fixture failure → Core still healthy → restart.
+6. Verify unknown signer, revoked signer, tampered artifact and incompatible host all fail closed before execution; retain package traversal/hash/signature and bounded supervisor regression coverage.
 7. Test Core state backup/restore and reopen; include interrupted/invalid backup behavior within agreed boundary.
 8. Run on Linux x64 and Windows x64; ARM64 build/smoke only if included in approved Phase 1 support target, otherwise track as Phase 8 experiment.
 9. Keep current full product CI jobs passing; do not weaken/remove Media/Inventory regressions to make Core green.
@@ -516,13 +554,13 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 
 ## 14. Open questions to resolve before contract freeze
 
-1. Select module trust model and whether first-party-only or curated third parties are in v1.
-2. Select whether limited third-party API compatibility is an explicit v1 promise.
-3. Approve remote worker as owner-managed LAN/VPN-only for v1, or define a stronger adversary model.
-4. Approve Data Plane paths required for v1, especially whether worker→storage direct is mandatory for supported sources.
-5. Approve official hardware/platform matrix; current evidence does not justify Pi4/ARM64 as official yet.
-6. Approve authentication-by-default for private data and migration policy from current anonymous reads.
-7. Confirm no WASM/untrusted module support and no marketplace in v1.
+1. Select whether limited third-party API compatibility is an explicit v1 promise.
+2. Approve remote worker as owner-managed LAN/VPN-only for v1, or define a stronger adversary model.
+3. Approve Data Plane paths required for v1, especially whether worker→storage direct is mandatory for supported sources.
+4. Approve official hardware/platform matrix; current evidence does not justify Pi4/ARM64 as official yet.
+5. Approve authentication-by-default for private data and migration policy from current anonymous reads.
+6. Decide whether a WASM/other sandbox implementation enters v1; the approved 9.2 decision still excludes untrusted native modules and makes no malicious-code isolation promise.
+7. Confirm marketplace scope for v1.
 8. Decide CLI packaging/runtime expectation (side-by-side tool vs bundled) in Phase 1 design.
 9. Confirm minimum Core own-state backup/restore included in Fase 1 or an owner-approved 1.1 gate before module extraction.
 10. Obtain legal guidance on SDK, module redistribution and commercial/proprietary extensions without changing license in this phase.
@@ -538,5 +576,5 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 - Independent version planes: **PASS as proposal; public ABI freeze deferred**.
 - Phase 1 contract: **PASS**.
 - Product code unchanged: **PASS**.
-- Owner Decision 9.1 Core Persistence: **APPROVED**.
-- Owner-only selections 9.2–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
+- Owner Decisions 9.1 Core Persistence and 9.2 Module Trust Model: **APPROVED**.
+- Owner-only selections 9.3–9.11: **OPEN** → **OWNER FREEZE: PENDING**.
