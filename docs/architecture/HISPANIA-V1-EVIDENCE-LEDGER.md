@@ -1,8 +1,8 @@
 # HISPANIA v1.0 — Evidence Ledger
 
-**Scope:** Gate V reconciliation of evidence available for the baseline at `c4061d899f5a023ea6ee94bf7ad4d60d5cded758` (`codex/hispania-v1-baseline-consolidation`), before this documentation-only update. Evidence from other branches, historical source SHAs, and remote runs is labeled separately. This ledger is not a production-readiness certificate or release approval.
+**Scope:** Gate V reconciliation and Step 0.3-R1 evidence for the isolated baseline branch. Gate V source was `c4061d899f5a023ea6ee94bf7ad4d60d5cded758`; R1 began at `9771b063fefe569a9268fb80cb6789dbc4c043b1`. Evidence from other branches, historical source SHAs, and temporary validation copies is labeled separately. This ledger is not a production-readiness certificate or release approval.
 
-**Phase 0:** PASS. **Owner Decisions 9.1–9.11:** APPROVED. **Phase 1:** NOT READY and not authorized. **Step 0.2:** Gates I–V are documented as completed; owner acceptance of the Step 0.2 closeout is still required before Step 0.3.
+**Phase 0:** PASS. **Owner Decisions 9.1–9.11:** APPROVED. **Step 0.2:** OWNER ACCEPTED — PASS (2026-10-16), based on the owner's explicit statement in the project conversation; this is not a legal act or release approval. **Step 0.3:** R1 audit in progress/completed as documented below; **Phase 1:** NOT READY and NOT AUTHORIZED.
 
 ## Status vocabulary
 
@@ -19,7 +19,7 @@
 | ID | Capability | State | Evidence | Environment / source | Limitation |
 |---|---|---|---|---|---|
 | EV-001 | Phase 0 architecture freeze and owner decisions | VERIFIED | [Phase 0 Architecture Freeze](HISPANIA-V1-PHASE-0-ARCHITECTURE-FREEZE.md), decisions 9.1–9.11 | Baseline documentation and owner approvals | Approval freezes direction; it does not authorize Phase 1 or certify implementation. |
-| EV-002 | Step 0.2 baseline reconciliation | VERIFIED WITH LIMITATIONS | Gates I–IV at commits `f15b8c63d8a03aa16726be42d1e651a5331e7fa9` and `c4061d899f5a023ea6ee94bf7ad4d60d5cded758`; Gate V is this documentation update | Isolated candidate branch | No changes from Gate IV were needed. Gate V changes only documentation. Owner closeout acceptance remains pending. |
+| EV-002 | Step 0.2 baseline reconciliation | VERIFIED WITH LIMITATIONS; OWNER ACCEPTED — PASS | Gates I–IV at commits `f15b8c63d8a03aa16726be42d1e651a5331e7fa9` and `c4061d899f5a023ea6ee94bf7ad4d60d5cded758`; Gate V at `9771b063fefe569a9268fb80cb6789dbc4c043b1`; explicit owner acceptance recorded 2026-10-16 | Isolated candidate branch and current owner statement | Acceptance closes the roadmap gate only; remaining WIP limitations and implementation/release gates remain. |
 | EV-003 | Current Core persistence contract | PLANNED | Decision 9.1 and Phase 1 contract in the Architecture Freeze | Approved architecture | SQLite is the approved Core v1.0 provider direction; a provider-neutral Core contract and Empty Core are not thereby implemented. PostgreSQL Core is out of scope. |
 | EV-004 | Current identity and authorization implementation | VERIFIED WITH LIMITATIONS | Existing canonical session/RBAC implementation and Gate I keep-baseline decision | Candidate baseline | This ledger does not claim complete v1.0 private-by-default authorization coverage. See EV-025. |
 | EV-005 | Durable Platform Events and causation context | VERIFIED WITH LIMITATIONS | Gate II commit `f15b8c63d8a03aa16726be42d1e651a5331e7fa9` | Candidate baseline | Delivery is at-least-once. Exactly-once effects, global transactions, and strict aggregate ordering are not promised. |
@@ -115,4 +115,11 @@ The reviewed WIP texts contained no identified credential/token assignments or e
 
 ## Step 0.2 closeout conditions
 
-Gate V documents the evidence and remaining validation debt; it does not change the architecture or test outcomes. Gates I–V are ready for owner review. Step 0.2 remains subject to explicit owner acceptance. Step 0.3 and Phase 1 remain not started; Phase 1 remains NOT READY pending the separate readiness work and express owner authorization.
+Gate V recorded the evidence and remaining validation debt without changing architecture. The owner explicitly accepted Step 0.2 as PASS on 2026-10-16 and authorized Step 0.3 only. This acceptance is recorded as an owner statement, not a digital signature, legal act, or release approval. The R1 audit files linked below document Step 0.3 findings. Phase 1 remains NOT READY and NOT AUTHORIZED; no Phase 1 work is included here.
+
+## Step 0.3-R1 audit records
+
+- [Dependency/license audit](HISPANIA-V1-DEPENDENCY-LICENSE-AUDIT.md) and reproducible package inventory ([CSV](HISPANIA-V1-DEPENDENCY-INVENTORY.csv)).
+- [Provenance review](HISPANIA-V1-PROVENANCE-REVIEW.md).
+- [Readiness blockers and Freeze mapping](HISPANIA-V1-READINESS-BLOCKERS.md).
+- Runtime individual failure list ([CSV](HISPANIA-V1-RUNTIME-FAILURE-TRIAGE.csv)); reproduction results and environmental diagnosis are in the readiness report.
