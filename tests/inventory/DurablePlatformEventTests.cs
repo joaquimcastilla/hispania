@@ -38,7 +38,7 @@ public sealed class DurablePlatformEventTests
         {
             using (var original = new SqliteDurablePlatformEventBus(path, new DurableEventOptionsV1(MaximumAttempts: 3, RetryDelay: TimeSpan.FromMilliseconds(5))))
             {
-            var id = await original.PublishAsync(new SampleEvent("value"), "test", ["consumer.a", "consumer.b"], new("corr"), "cause");
+            var id = await original.PublishAsync(new SampleEvent("value"), "test", ["consumer.a", "consumer.b"], new EventContext("corr") { CausationId = "cause" });
             using var reopened = new SqliteDurablePlatformEventBus(path, new DurableEventOptionsV1(MaximumAttempts: 3, RetryDelay: TimeSpan.FromMilliseconds(5)));
             Assert.NotNull(await reopened.GetEventAsync(id));
             var firstSubscriberAttempted = false;

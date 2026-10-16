@@ -10,7 +10,7 @@ public sealed class DurablePlatformEventPublisher(IDurablePlatformEventBusV1 dur
     {
         var subscribers = registry.SubscribersFor(eventData.EventType, eventData.Version);
         if (subscribers.Count > 0)
-            await durable.PublishAsync(eventData, "hispania.server", subscribers, context, cancellationToken: cancellationToken).ConfigureAwait(false);
+            await durable.PublishAsync(eventData, "hispania.server", subscribers, context, context?.CausationId, cancellationToken).ConfigureAwait(false);
         return await local.PublishAsync(eventData, context, cancellationToken).ConfigureAwait(false);
     }
 }

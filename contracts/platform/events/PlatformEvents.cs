@@ -7,7 +7,11 @@ public interface IPlatformEvent
     int Version { get; }
 }
 
-public sealed record EventContext(string? CorrelationId);
+public sealed record EventContext(string? CorrelationId)
+{
+    /// <summary>Optional event or operation that directly caused this event.</summary>
+    public string? CausationId { get; init; }
+}
 
 public sealed record EventEnvelope<TEvent>(TEvent Event, EventContext Context)
     where TEvent : IPlatformEvent;

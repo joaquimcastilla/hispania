@@ -37,8 +37,8 @@ public sealed class SqliteDurablePlatformEventBus : IDurablePlatformEventBusV1, 
     public async ValueTask<Guid> PublishAsync<TEvent>(TEvent value, string producer, IReadOnlyCollection<string> subscribers, EventContext? context = null, string? causationId = null, CancellationToken cancellationToken = default) where TEvent : IPlatformEvent
     {
         using var activity = PlatformTracingV1.StartScope("event.publish");
-        context = new(context?.CorrelationId ?? PlatformCorrelationV1.Current?.CorrelationId);
-        causationId ??= PlatformCorrelationV1.Current?.OperationId;
+        causationId ??= context?.CausationId ?? PlatformCorrelationV1.Current?.OperationId;
+        context = new(context?.CorrelationId ?? PlatformCorrelationV1.Current?.CorrelationId) { CausationId = causationId };
         if (context?.CorrelationId is { } correlationId && !PlatformCorrelationV1.IsValidId(correlationId) || causationId is not null && !PlatformCorrelationV1.IsValidId(causationId)) throw new ArgumentException("Invalid correlation metadata.");
         ArgumentNullException.ThrowIfNull(value); ArgumentException.ThrowIfNullOrWhiteSpace(producer);
         if (string.IsNullOrWhiteSpace(value.EventType) || value.EventType.Length > 200 || value.Version < 1) throw new ArgumentException("Invalid stable event identity.");

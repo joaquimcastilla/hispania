@@ -12,17 +12,20 @@ public sealed class PlatformFoundationTests
         var metrics = new RecordingMetrics();
         var bus = new LocalPlatformEventBus(metrics);
         var calls = new List<string>();
-        using var first = bus.Subscribe(new Handler<TestEvent>((_, _) => { calls.Add("first"); return ValueTask.CompletedTask; }));
+        EventContext? deliveredContext = null;
+        using var first = bus.Subscribe(new Handler<TestEvent>((message, _) => { calls.Add("first"); deliveredContext = message.Context; return ValueTask.CompletedTask; }));
         using var failing = bus.Subscribe(new Handler<TestEvent>((_, _) => throw new InvalidOperationException("boom")));
         using var last = bus.Subscribe(new Handler<TestEvent>((_, _) => { calls.Add("last"); return ValueTask.CompletedTask; }));
 
-        var result = await bus.PublishAsync(new TestEvent("created"), new EventContext("corr-7"));
+        var result = await bus.PublishAsync(new TestEvent("created"), new EventContext("corr-7") { CausationId = "cause-4" });
 
         Assert.Equal(["first", "last"], calls);
         Assert.Equal(3, result.HandlerCount);
         Assert.Equal(2, result.SucceededCount);
         Assert.Single(result.Failures);
         Assert.Equal(3, metrics.Count);
+        Assert.Equal("corr-7", deliveredContext!.CorrelationId);
+        Assert.Equal("cause-4", deliveredContext.CausationId);
     }
 
     [Fact]

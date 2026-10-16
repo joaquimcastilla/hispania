@@ -31,7 +31,10 @@ public sealed class LocalPlatformEventBus(IPlatformEventMetrics? metrics = null)
         HandlerEntry[] snapshot;
         lock (sync) snapshot = handlers.TryGetValue(typeof(TEvent), out var entries) ? entries.ToArray() : [];
         if (snapshot.Length == 0) return new EventPublishResult(0, 0, []);
-        var envelope = new EventEnvelope<TEvent>(@event, new EventContext(context?.CorrelationId ?? Hispania.Platform.Contracts.Observability.PlatformCorrelationV1.Current?.CorrelationId ?? Activity.Current?.TraceId.ToString()));
+        var envelope = new EventEnvelope<TEvent>(@event, new EventContext(context?.CorrelationId ?? Hispania.Platform.Contracts.Observability.PlatformCorrelationV1.Current?.CorrelationId ?? Activity.Current?.TraceId.ToString())
+        {
+            CausationId = context?.CausationId ?? Hispania.Platform.Contracts.Observability.PlatformCorrelationV1.Current?.OperationId
+        });
         var failures = new List<EventHandlerFailure>();
         var succeeded = 0;
         foreach (var entry in snapshot)
