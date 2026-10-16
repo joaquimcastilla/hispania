@@ -2,7 +2,7 @@
 
 **Scope:** Gate V reconciliation and Step 0.3-R1 evidence for the isolated baseline branch. Gate V source was `c4061d899f5a023ea6ee94bf7ad4d60d5cded758`; R1 began at `9771b063fefe569a9268fb80cb6789dbc4c043b1`. Evidence from other branches, historical source SHAs, and temporary validation copies is labeled separately. This ledger is not a production-readiness certificate or release approval.
 
-**Phase 0:** PASS. **Owner Decisions 9.1–9.11:** APPROVED. **Step 0.2:** OWNER ACCEPTED — PASS (2026-10-16), based on the owner's explicit statement in the project conversation; this is not a legal act or release approval. **Step 0.3:** R1 audit in progress/completed as documented below; **Phase 1:** NOT READY and NOT AUTHORIZED.
+**Phase 0:** PASS. **Owner Decisions 9.1–9.11:** APPROVED. **Step 0.2:** OWNER ACCEPTED — PASS (2026-10-16), based on the owner's explicit statement in the project conversation; this is not a legal act or release approval. **Step 0.3:** R1/R2 audit scopes PASS with limitations; owner decisions remain pending; **Phase 1:** NOT READY and NOT AUTHORIZED.
 
 ## Status vocabulary
 
@@ -15,6 +15,12 @@
 - **PLANNED:** approved direction or future work without an implementation/acceptance result.
 
 ## Evidence register
+
+| EV-019 | R2 proposed Core dependency boundary | VERIFIED WITH LIMITATIONS | [Proposed Core Dependency Allowlist](HISPANIA-V1-CORE-DEPENDENCY-ALLOWLIST.md), source project references inspected | Candidate source HEAD `118840f934df0783de13bebcd7ea0ac0e66dc9fe` | Static project-graph proposal only; no Core project, restore/build/publish graph, or owner approval. Existing Platform SQLite provider has broader application refs; new Core contract/provider remains planned. |
+| EV-020 | Six unknown-rights artifacts identity/use | VERIFIED WITH LIMITATIONS | [Unknown-rights artifact inventory](HISPANIA-V1-UNKNOWN-RIGHTS-COMPONENTS.csv), SHA-256 and byte size; historical manifests, compatibility test, server project and production script inspected | Candidate source HEAD `118840f934df0783de13bebcd7ea0ac0e66dc9fe` | Hash/use does not establish rights. Consumer07 DLL is loaded by a historical compatibility test; MP4 can be copied by ordinary legacy server publish but is stripped by the production publication script. Proposed Core exclusion is not owner-approved. |
+| EV-021 | R1 Runtime successful Debug test evidence | VERIFIED HISTORICAL EVIDENCE | `%TEMP%\hispania-r1-20261016\trx-temp-root-debug-with-reader\runtime-temp-root-debug-with-reader.trx`; 219 passed, 0 failed, 0 not executed; SHA-256 `D549B6A587DF8ABFC27F563A00801246295A77E8382A245AB8B6EE471B04A7A9` | Temporary tracked-source copy, R1 environment; file remains outside repository | R2 verified evidence-file existence/hash only; did not rerun. This is Debug evidence, not a passing Release claim. |
+| EV-022 | Phase 19 Runtime package lifecycle evidence | VERIFIED HISTORICAL EVIDENCE | `%TEMP%\hispania-r1-20261016\repo-copy\.r1-temp\phase19\phase19-package-lifecycle.trx`; 76 passed; SHA-256 `83FB0545A81F7B83EAC6D44EAE38E616FF97D20F36A4C06EBDFD41B3E79E6CAC` | Temporary tracked-source copy, R1 environment; file remains outside repository | R2 verified evidence-file existence/hash only; did not rerun. |
+| EV-023 | Phase 19 Inventory package backup evidence | VERIFIED HISTORICAL EVIDENCE | `%TEMP%\hispania-r1-20261016\repo-copy\.r1-temp\phase19\phase19-package-backup.trx`; 2 passed; SHA-256 `26C9E91FB785E576E2AA129F7EBB43DFA17C7B4D3D8C378D364B683C71FB3BC4` | Temporary tracked-source copy, R1 environment; file remains outside repository | R2 verified evidence-file existence/hash only; did not rerun. |
 
 | ID | Capability | State | Evidence | Environment / source | Limitation |
 |---|---|---|---|---|---|

@@ -1,4 +1,4 @@
-# HISPANIA v1.0 — Code and Asset Provenance Review (Step 0.3-R1)
+# HISPANIA v1.0 — Code and Asset Provenance Review (Step 0.3-R1/R2)
 
 **Baseline:** `9771b063fefe569a9268fb80cb6789dbc4c043b1`. This is a repository-evidence review only. A Git author record or commit does not prove copyright ownership, assignment, or redistribution permission. No third party was contacted and no content was sent to an external service.
 
@@ -19,4 +19,36 @@
 - No repository-wide `NOTICE`, `AUTHORS`, `CONTRIBUTORS`, or asset provenance inventory was identified by the targeted tracked-file review. Lack of a header is not evidence of infringement; it also does not grant rights.
 - External contributions, copied/derived files and AI-assisted origins cannot be reliably inferred from this repository alone. Their status remains unknown where no specific provenance evidence exists.
 - Do not redistribute the legacy demo media or historical opaque DLLs until their origins and rights are established. Neither is required by the Empty Core contract.
+## R2 observed-use and rights disposition
+
+The R2 artifact inventory is [HISPANIA-V1-UNKNOWN-RIGHTS-COMPONENTS.csv](HISPANIA-V1-UNKNOWN-RIGHTS-COMPONENTS.csv). It records SHA-256 and byte size for five historical compatibility DLLs and `bp48-demo.mp4`. Hashes establish identity only; they do not establish authorship or rights.
+
+- The historical Consumer07 DLL is loaded and executed by `tests/compatibility/Phase15CompatibilityTests.cs::HistoricalIdentityAndAuthorizationBinaryConsumerRunsWithoutRecompilation`. The remaining four DLLs are tracked compatibility/package fixtures referenced by historical baseline/frozen manifests; no direct Core project content inclusion was found. No DLL is required by the Empty Core contract.
+- `apps/server/Hispania.Server.csproj` includes `demo-assets/**` for ordinary build/publish when `PlatformOnly != true`, and `apps/server/Program.cs` reads the MP4 for a demo video route. `tools/publish-production.ps1` strips `server/demo-assets` from its production output. The MP4 is not a Core dependency; direct legacy-server publishing can include it.
+- **Proposed, not owner-approved disposition:** exclude all six items from the Core allowlist and do not use the old module DLL as the Phase 1 fixture. Keep historical test/publish usage held to the owner's rights decision; excluding from Core does not itself clear historical test execution or legacy server distribution.
+- **Distribution scope:** repository inspection and rights review are analysis. Internal compilation, tests and source reuse are conditional on actual owner authority and applicable license terms; this audit does not assert that personal/non-commercial license language authorizes commercial-purpose work. Public source/binary/SDK/`.hispania` distribution remains blocked until file/contribution rights and intended license application are resolved by the owner and qualified review.
+
+## Contributor authority evidence still needed
+
+For files selected for reuse/relicensing, obtain a contribution-level origin register: contributor identity and role; employee/contractor assignment or written permission; third-party/copied/derived source; prior grants; generated-code tool/version/input; AI-assisted origin where known; and creator/source/performer/consent records for assets. Git author identity and signed commits are not substitutes. The owner must identify contributors and available authority evidence; this document does not invent declarations or resolve title.
+
+## Provisional activity policy — not a legal authorization
+
+This separation follows the Freeze's distribution gates only when work stays within rights actually held. Since ownership/authority for all candidate files is not established, internal work is not blanket authorized. The owner must resolve the scope in Decision Packet question 1.
+
+| Action | Permitted with current evidence? | Conditions | Blocking issue |
+|---|---|---|---|
+| Audit | Yes, as repository inspection and rights analysis | Read-only examination; do not distribute unknown artifacts | None for this audit scope. |
+| Compile internally | Conditional | Existing license/right must cover the intended copy/build and purpose; keep outputs private | `LICENSE.md` grants only personal/local/non-commercial use for material the named owner owns or is authorized to license; owner authority/purpose is unconfirmed. |
+| Execute local tests | Conditional | Same rights condition for test source, binary fixtures, and copies; no external publication | Five DLL rights unknown; historical Consumer07 test executes one DLL. |
+| Create new Core code | Conditional | Owner must confirm contributor authority and internal development scope; no Phase 1 until separately authorized | Phase 1 is not authorized; derivative/reuse boundaries and internal license scope need owner decision. |
+| Reuse existing source | Conditional / hold affected files | Use only files with authority for intended purpose; document provenance | File-level origins and current license conflict unresolved. |
+| Incorporate assets | No for the six unknown-rights assets | Use only rights-cleared assets; exclude unknown files from Core proposal | MP4 and five DLLs lack provenance/right evidence. |
+| Share binaries | No | Requires rights, license, notices and intended distribution review | Current license reserves redistribution; dependencies/artifact graph also unresolved. |
+| Publish source | No | Resolve per-file authority and apply owner-approved license to rights-cleared scope after review | Current personal/non-commercial `LICENSE.md` does not grant the intended public source license. |
+| Publish `.hispania` packages | No | Rights for module code/assets/dependencies plus signer trust, integrity, compatibility and permission policy | Signing proves publisher/integrity only, not rights or safety. |
+| Distribute SDK | No | Confirm rights for public contracts/SDK files; review Apache-2.0 boundary and notices | File-level authority and license application not established. |
+
+The owner should confirm whether the proposed internal-only/public-distribution split is acceptable, but that confirmation cannot grant rights held by another contributor or third party.
+
 - This review is not a legal opinion and does not change contributor policy or the approved owner decisions.
