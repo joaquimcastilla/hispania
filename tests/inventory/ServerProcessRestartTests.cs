@@ -214,11 +214,34 @@ public sealed partial class ServerProcessRestartTests
         bootstrap.Headers.Authorization = new AuthenticationHeaderValue("Bootstrap", bootstrapToken);
         using var bootstrapped = await client.SendAsync(bootstrap); Assert.Equal(HttpStatusCode.OK, bootstrapped.StatusCode);
 
+        using var privateAssetUpload = new HttpRequestMessage(HttpMethod.Post, "/api/assets") { Content = new ByteArrayContent(Encoding.ASCII.GetBytes("%PDF-1.4 private inventory asset")) };
+        privateAssetUpload.Content.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+        privateAssetUpload.Headers.Authorization = new AuthenticationHeaderValue("Bearer", legacyToken);
+        privateAssetUpload.Headers.Add("X-Asset-Type", "Document");
+        privateAssetUpload.Headers.Add("X-Asset-Domain", "erp.inventory");
+        privateAssetUpload.Headers.Add("X-Asset-Owner", userId.ToString("D"));
+        using var privateAssetUploadResponse = await client.SendAsync(privateAssetUpload);
+        Assert.Equal(HttpStatusCode.Created, privateAssetUploadResponse.StatusCode);
+        using var privateAssetJson = JsonDocument.Parse(await privateAssetUploadResponse.Content.ReadAsStringAsync());
+        var privateAssetId = ReadWrappedId(privateAssetJson.RootElement.GetProperty("id"));
+        var privateInventoryAssetPath = $"/api/inventory/assets/{privateAssetId:D}";
+
+        using (var anonymousPrivateInventoryAsset = await client.GetAsync(privateInventoryAssetPath))
+            Assert.Equal(HttpStatusCode.Unauthorized, anonymousPrivateInventoryAsset.StatusCode);
+        using (var anonymousPrivateAssetMetadata = await client.GetAsync($"/api/assets/{privateAssetId:D}"))
+            Assert.Equal(HttpStatusCode.Unauthorized, anonymousPrivateAssetMetadata.StatusCode);
+        using (var anonymousPrivateAssetContent = await client.GetAsync($"/api/assets/{privateAssetId:D}/content"))
+            Assert.Equal(HttpStatusCode.Unauthorized, anonymousPrivateAssetContent.StatusCode);
+
         var protectedMediaId = Guid.NewGuid();
-        foreach (var path in new[] { "/api/inventory/items", "/api/v1/media", $"/api/v1/media/{protectedMediaId:D}/stream", $"/api/v1/media/{protectedMediaId:D}/metadata/edit" })
+        foreach (var path in new[] { "/api/inventory/items", privateInventoryAssetPath, "/api/v1/media", $"/api/v1/media/{protectedMediaId:D}/stream", $"/api/v1/media/{protectedMediaId:D}/metadata/edit" })
         {
             using var noSession = await client.GetAsync(path);
             Assert.Equal(HttpStatusCode.Unauthorized, noSession.StatusCode);
+            using var invalidSession = new HttpRequestMessage(HttpMethod.Get, path);
+            invalidSession.Headers.Authorization = new AuthenticationHeaderValue("Session", "invalid-session-token-which-is-long-enough");
+            using var invalidSessionDenied = await client.SendAsync(invalidSession);
+            Assert.Equal(HttpStatusCode.Unauthorized, invalidSessionDenied.StatusCode);
             using var legacyOnly = new HttpRequestMessage(HttpMethod.Get, path);
             legacyOnly.Headers.Authorization = new AuthenticationHeaderValue("Bearer", legacyToken);
             using var legacyDenied = await client.SendAsync(legacyOnly);
@@ -240,6 +263,32 @@ public sealed partial class ServerProcessRestartTests
         await GrantPermissionAsync(client, sessionToken, administratorRoleId, "inventory.read");
         await GrantPermissionAsync(client, sessionToken, administratorRoleId, "media.library.read");
         await GrantPermissionAsync(client, sessionToken, administratorRoleId, "media.playback.use");
+        using (var permittedPrivateInventoryAsset = await SendWithSessionAsync(client, HttpMethod.Get, privateInventoryAssetPath, sessionToken))
+            Assert.Equal(HttpStatusCode.OK, permittedPrivateInventoryAsset.StatusCode);
+        using (var sessionPrivateAssetMetadata = new HttpRequestMessage(HttpMethod.Get, $"/api/assets/{privateAssetId:D}"))
+        {
+            sessionPrivateAssetMetadata.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+            using var response = await client.SendAsync(sessionPrivateAssetMetadata);
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+        using (var sessionPrivateAssetContent = new HttpRequestMessage(HttpMethod.Get, $"/api/assets/{privateAssetId:D}/content"))
+        {
+            sessionPrivateAssetContent.Headers.Authorization = new AuthenticationHeaderValue("Session", sessionToken);
+            using var response = await client.SendAsync(sessionPrivateAssetContent);
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+        using (var administratorPrivateAssetMetadata = new HttpRequestMessage(HttpMethod.Get, $"/api/assets/{privateAssetId:D}"))
+        {
+            administratorPrivateAssetMetadata.Headers.Authorization = new AuthenticationHeaderValue("Bearer", legacyToken);
+            using var response = await client.SendAsync(administratorPrivateAssetMetadata);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+        using (var administratorPrivateAssetContent = new HttpRequestMessage(HttpMethod.Get, $"/api/assets/{privateAssetId:D}/content"))
+        {
+            administratorPrivateAssetContent.Headers.Authorization = new AuthenticationHeaderValue("Bearer", legacyToken);
+            using var response = await client.SendAsync(administratorPrivateAssetContent);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
         using (var eventsLegacy = new HttpRequestMessage(HttpMethod.Get, "/internal/admin/events/deliveries"))
         {
             eventsLegacy.Headers.Authorization = new AuthenticationHeaderValue("Bearer", legacyToken);
