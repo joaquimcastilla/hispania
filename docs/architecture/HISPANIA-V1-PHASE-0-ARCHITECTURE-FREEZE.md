@@ -8,7 +8,7 @@
 
 ## 1. Purpose and evidence rules
 
-The primary input is [HISPANIA v1.0 Deep Architecture Audit](HISPANIA-V1-ROADMAP-AUDIT.md). It is a baseline of observations and proposals, not a set of owner-approved decisions. The principles in §2 and Owner Decisions 9.1–9.11 below are explicitly approved. Recommendations and legal questions remain clearly distinguished from owner decisions.
+The primary input was the historical HISPANIA v1.0 Deep Architecture Audit, preserved in the original main worktree and not included in this consolidation candidate. It is a baseline of observations and proposals, not a set of owner-approved decisions. The principles in §2 and Owner Decisions 9.1–9.11 below are explicitly approved. Recommendations and legal questions remain clearly distinguished from owner decisions.
 
 This document distinguishes:
 
@@ -1087,7 +1087,7 @@ Keep existing `apps/server` runnable and unchanged as the legacy/product composi
 
 ## 15. Baseline reconciliation before Phase 1
 
-The Phase 0 product-code baseline `134076f5ba2894aba216e775c4588cc3c547ee31` and the later Step 2.1 candidate `1463ca5ce47866e8813a3499a34609c723808b2f` were both verified as commits in the local repository at this update. The candidate shares the Phase 0 baseline as merge base and is not an ancestor of the current branch HEAD `0a209bd9cffc89317b447f039e321a44431c7955`. It is not assumed integrated. No merge, cherry-pick, rebase, or replacement of the baseline was performed.
+The Phase 0 product-code baseline `134076f5ba2894aba216e775c4588cc3c547ee31` and the later Step 2.1 candidate `1463ca5ce47866e8813a3499a34609c723808b2f` were both verified as commits in the local repository at this update. The candidate shares the Phase 0 baseline as merge base and is not an ancestor of the current branch HEAD `0a209bd9cffc89317b447f039e321a44431c7955`. It is not assumed integrated. No merge, cherry-pick, rebase, or replacement of the baseline was performed. **This paragraph and the worktree snapshot below are historical evidence from the original 9.11 audit; the separate Step 0.2 reconciliation completed later is recorded in §17 and the [Evidence Ledger](HISPANIA-V1-EVIDENCE-LEDGER.md).**
 
 Before Phase 1, perform a separate, isolated reconciliation that records: authoritative product-code baseline; candidate changes retained/rejected and their commit provenance; reproducible tests/evidence by commit; ARM64 gates still open; every worktree and its local changes; commits requiring integration; and explicit blockers. Preserve unrelated worktrees and uncommitted changes. The current worktree already contains pre-existing local edits/untracked files listed in the repository evidence paragraph; these are not part of committed product state and were not used to claim shipped behavior. Do not infer that other worktrees are clean merely because their branch/commit appears in `git worktree list`.
 
@@ -1139,5 +1139,17 @@ The Owner Architecture Freeze is **APPROVED** because decisions 9.1–9.11 are r
 - Owner decisions: **COMPLETE**; Owner Architecture Freeze: **APPROVED — IMPLEMENTATION GATES PENDING**.
 - License inventory: **STATIC REVIEW COMPLETE, BOUNDED**; legal audit, rights/provenance verification, and license application: **PENDING**. This is not a license compliance certification.
 - Phase 1 readiness: **NOT READY**; §16 entry gates and express owner authorization remain.
-- Baseline reconciliation: **PENDING**; the two commits are verified locally but remain divergent and no integration was performed.
+- Baseline reconciliation at the time of this original 9.11 snapshot: **PENDING**; its historical status is superseded by the later isolated Step 0.2 reconciliation recorded in §17.
 - Product code/license files unchanged; pre-existing worktree changes preserved: **PASS**.
+
+## 17. Step 0.2 consolidation and evidence closeout
+
+This section supersedes the reconciliation status in the historical §15/§16 snapshot; it does not rewrite the original audit observations or imply that other worktrees were integrated.
+
+- Gates I–IV are accepted; Gate V reconciled operational evidence and validation debt. The baseline is the isolated branch `codex/hispania-v1-baseline-consolidation`, whose pre-Gate-V source HEAD was `c4061d899f5a023ea6ee94bf7ad4d60d5cded758`.
+- Gate II's causation-context integration is recorded at `f15b8c63d8a03aa16726be42d1e651a5331e7fa9`; Gate III's private Inventory asset authorization regression and test are recorded at `c4061d899f5a023ea6ee94bf7ad4d60d5cded758`. Gates I and IV required no code changes in this consolidation.
+- The WIP review, operational results, historical CI/soak evidence, exact remaining Deployment Process tests, and explicit target/security/licensing limitations are recorded in the [HISPANIA v1.0 Evidence Ledger](HISPANIA-V1-EVIDENCE-LEDGER.md).
+- The 15 original worktrees were inventoried without modification. Fourteen matched the historical preflight; the additional `phase20-production-validation` worktree remained detached and clean. All 49 preserved WIP source/backup SHA-256 pairs matched at Gate V closeout.
+- **Step 0.2: READY FOR OWNER ACCEPTANCE — NOT YET OWNER-CLOSED.** Do not update the global roadmap from 2/14 to 3/14 until the owner accepts the closeout.
+- **Phase 1 readiness: NOT READY.** Step 0.3 has not started and Phase 1 is not authorized. Legal review, dependency/right provenance, public contract boundaries, remaining validation, and express owner authorization remain separate gates.
+- No license file or production code changed; no remote CI was dispatched for the current candidate; no push or publication occurred.

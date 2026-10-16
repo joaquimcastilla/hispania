@@ -10,8 +10,12 @@ and installation paths must be distinct and nonoverlapping.
 This procedure applies to the complete x64 distribution. The experimental Platform-only
 profile now uses the same Deployment CLI install/bootstrap/backup/upgrade mechanisms for
 the server role and SQLite, but has no packaged OS service installer and ARM64 native
-production lifecycle remains unvalidated. See the [Step 2.1 report](../HISPANIA-0.7.0-STEP-2-1.md)
-and [Platform-only ARM64 validation guide](PLATFORM-ONLY-ARM64.md).
+production lifecycle remains unvalidated. Gate IV verified this profile's bounded local
+lifecycle on Windows x64 at candidate SHA
+`c4061d899f5a023ea6ee94bf7ad4d60d5cded758`; that evidence does not certify native services,
+Linux/ARM64 production operation, or general release support. See the [Step 2.1 report](../HISPANIA-0.7.0-STEP-2-1.md),
+[Platform-only ARM64 validation guide](PLATFORM-ONLY-ARM64.md), and [HISPANIA v1.0 evidence
+ledger](../architecture/HISPANIA-V1-EVIDENCE-LEDGER.md).
 
 ```sh
 dotnet /delivery/deployment/Hispania.Deployment.dll verify /delivery

@@ -5,7 +5,7 @@ This roadmap has ten steps. Steps 1 and 2 have local implementation/evidence rec
 | Step | Planned focus | State |
 |---|---|---|
 | 1 | Audit repository and PR #16; consolidate architecture boundaries, contracts and decisions | PARTIAL; see `HISPANIA-0.7.0-STEP-1.md` |
-| 2 | Make the Platform/Core build and hosting profile autonomous and validate Linux ARM64 resource needs | PARTIAL — see `HISPANIA-0.7.0-STEP-2.md` and corrective [Step 2.1](HISPANIA-0.7.0-STEP-2-1.md); native ARM64 and RC1 compatibility remain open |
+| 2 | Make the Platform/Core build and hosting profile autonomous and validate Linux ARM64 resource needs | PARTIAL — Platform-only build/publish/runtime and isolated Windows x64 install/bootstrap/backup/upgrade/rollback checks pass locally; native ARM64 and production service-manager qualification remain open. See `HISPANIA-0.7.0-STEP-2.md`, corrective [Step 2.1](HISPANIA-0.7.0-STEP-2-1.md), [ARM64 procedure](operations/PLATFORM-ONLY-ARM64.md) and the [v1.0 evidence ledger](architecture/HISPANIA-V1-EVIDENCE-LEDGER.md). |
 | 3 | Define independently installable application packaging and dependency ownership gaps | Not started |
 | 4 | Specify portable node identity, verified capabilities and worker enrollment evolution | Not started |
 | 5 | Specify generic workload requirements and capability-based placement evolution | Not started |
