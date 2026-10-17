@@ -206,6 +206,24 @@ internal sealed class CoreSessionService(ICoreIdentityStore store) : ICoreSessio
     }
 }
 
+internal sealed class CoreHttpAuditService(ICoreIdentityStore store) : ICoreHttpAuditService
+{
+    private static readonly HashSet<string> AllowedEvents = new(StringComparer.Ordinal)
+    {
+        "http.login.succeeded",
+        "http.login.rejected",
+        "http.login.rate_limited",
+        "http.session.logout",
+        "http.session.rejected"
+    };
+
+    public Task RecordAsync(string eventCode, Guid? subjectId, CancellationToken cancellationToken)
+    {
+        if (!AllowedEvents.Contains(eventCode)) throw new ArgumentOutOfRangeException(nameof(eventCode));
+        return store.RecordHttpSecurityEventAsync(eventCode, subjectId, DateTimeOffset.UtcNow, cancellationToken);
+    }
+}
+
 internal sealed class CoreBootstrapService(ICoreIdentityStore store, CoreIdentityService identityService) : ICoreBootstrapService
 {
     public Task<bool> IsPendingAsync(CancellationToken cancellationToken) => store.IsBootstrapPendingAsync(cancellationToken);

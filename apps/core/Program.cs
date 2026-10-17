@@ -44,7 +44,7 @@ internal static class Program
 
     private static async Task<int> BootstrapAdministratorAsync()
     {
-        await using var app = CoreHost.Build();
+        await using var app = CoreHost.Build(httpEnabled: false);
         var persistence = app.Services.GetRequiredService<ICorePersistence>();
         await persistence.InitializeAsync(CancellationToken.None).ConfigureAwait(false);
         var bootstrap = app.Services.GetRequiredService<ICoreBootstrapService>();
@@ -74,7 +74,7 @@ internal static class Program
 
     private static async Task<int> InvalidateSessionsAsync()
     {
-        await using var app = CoreHost.Build();
+        await using var app = CoreHost.Build(httpEnabled: false);
         var persistence = app.Services.GetRequiredService<ICorePersistence>();
         await persistence.InitializeAsync(CancellationToken.None).ConfigureAwait(false);
         var sessions = app.Services.GetRequiredService<ICoreSessionService>();

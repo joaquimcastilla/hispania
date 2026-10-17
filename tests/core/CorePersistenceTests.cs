@@ -6,12 +6,15 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Collections.Concurrent;
 using Xunit;
 
 namespace Hispania.Core.Tests;
 
 public sealed class CorePersistenceTests
 {
+    private static readonly ConcurrentDictionary<int, string> CertificateThumbprints = new();
     [Fact]
     public async Task FreshDatabaseIsMigratedAndInitializedBeforeHostStarts()
     {
@@ -198,7 +201,12 @@ public sealed class CorePersistenceTests
         using var directory = new TemporaryDirectory();
         await using var app = Build(directory.Path);
         await app.StartAsync();
-        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{GetAvailableLoopbackPortFromServer(app)}") };
+        var port = GetAvailableLoopbackPortFromServer(app);
+        using var client = new HttpClient(new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback = (_, certificate, _, _) => certificate is not null &&
+                CertificateThumbprints.TryGetValue(port, out var thumbprint) && string.Equals(certificate.GetCertHashString(), thumbprint, StringComparison.OrdinalIgnoreCase)
+        }) { BaseAddress = new Uri($"https://127.0.0.1:{port}") };
         // CoreHost binds an ephemeral test port through the explicit host override below.
         using var response = await client.GetAsync("/health/live");
         var body = await response.Content.ReadAsStringAsync();
@@ -211,12 +219,27 @@ public sealed class CorePersistenceTests
     private static WebApplication Build(string dataDirectory, int? selectedPort = null)
     {
         var port = selectedPort ?? GetAvailableLoopbackPort();
+        Directory.CreateDirectory(dataDirectory);
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest("CN=localhost", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var san = new SubjectAlternativeNameBuilder();
+        san.AddDnsName("localhost");
+        san.AddIpAddress(System.Net.IPAddress.Loopback);
+        request.CertificateExtensions.Add(san.Build());
+        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new("1.3.6.1.5.5.7.3.1") }, true));
+        using var generated = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(1));
+        var certificatePath = System.IO.Path.Combine(dataDirectory, $"test-{Guid.NewGuid():N}.pfx");
+        var certificatePassword = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        File.WriteAllBytes(certificatePath, generated.Export(X509ContentType.Pfx, certificatePassword));
+        CertificateThumbprints[port] = generated.Thumbprint;
         return CoreHost.Build(new Dictionary<string, string?>
         {
             ["LISTEN_ADDRESS"] = "127.0.0.1",
             ["PORT"] = port.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["SHUTDOWN_TIMEOUT_SECONDS"] = "5",
-            ["DATA_DIRECTORY"] = dataDirectory
+            ["DATA_DIRECTORY"] = dataDirectory,
+            ["HTTPS_CERTIFICATE_PATH"] = certificatePath,
+            ["HTTPS_CERTIFICATE_PASSWORD"] = certificatePassword
         });
     }
 

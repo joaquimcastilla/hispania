@@ -10,6 +10,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Identity;
+using System.Security.Cryptography.X509Certificates;
+using Hispania.Core.Http;
+using System.Threading.RateLimiting;
 
 namespace Hispania.Core.Hosting;
 
@@ -22,8 +25,12 @@ internal static class CoreHost
         LoggerMessage.Define(LogLevel.Information, new EventId(2, "CoreHostStopping"), "Core host stopping.");
     private static readonly Action<ILogger, Exception?> HostStopped =
         LoggerMessage.Define(LogLevel.Information, new EventId(3, "CoreHostStopped"), "Core host stopped.");
+    private static readonly Action<ILogger, string, string, Exception?> HttpRequestFailed = LoggerMessage.Define<string, string>(
+        LogLevel.Error, new EventId(4, "CoreHttpRequestFailed"), "Core request failed with {ExceptionType}. CorrelationId {CorrelationId}.");
+    private static readonly Action<ILogger, string, Exception?> LoginRateLimited = LoggerMessage.Define<string>(
+        LogLevel.Warning, new EventId(5, "CoreLoginRateLimited"), "Core login rate limit activated. CorrelationId {CorrelationId}.");
 
-    internal static WebApplication Build(IReadOnlyDictionary<string, string?>? overrides = null)
+    internal static WebApplication Build(IReadOnlyDictionary<string, string?>? overrides = null, bool httpEnabled = true)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
@@ -57,20 +64,81 @@ internal static class CoreHost
         builder.Services.AddSingleton<ICoreIdentityService>(services => services.GetRequiredService<CoreIdentityService>());
         builder.Services.AddSingleton<ICoreAuthorizationService, CoreAuthorizationService>();
         builder.Services.AddSingleton<ICoreSessionService, CoreSessionService>();
+        builder.Services.AddSingleton<ICoreHttpAuditService, CoreHttpAuditService>();
         builder.Services.AddSingleton<ICoreBootstrapService, CoreBootstrapService>();
+        if (httpEnabled)
+        {
+            builder.Services.AddAntiforgery(options =>
+            {
+                options.HeaderName = "X-Hispania-CSRF";
+                options.Cookie.Name = "__Secure-HispaniaCsrf";
+                options.Cookie.HttpOnly = true;
+                options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+                options.Cookie.SameSite = SameSiteMode.Strict;
+                options.Cookie.Path = "/api/v1/auth";
+            });
+            builder.Services.AddRateLimiter(options =>
+            {
+                options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                options.AddPolicy("core-login", context => RateLimitPartition.GetFixedWindowLimiter(
+                    context.Connection.RemoteIpAddress?.ToString() ?? "unknown-origin",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = hostOptions.LoginRateLimit,
+                        Window = TimeSpan.FromSeconds(hostOptions.LoginRateWindowSeconds),
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    }));
+                options.OnRejected = HandleRateLimitRejectedAsync;
+            });
+        }
         // IHostedLifecycleService.StartingAsync runs before any IHostedService.StartAsync,
         // including Kestrel's listener, so storage must pass before the host can accept traffic.
         builder.Services.AddHostedService<CorePersistenceLifecycle>();
-        builder.WebHost.ConfigureKestrel(options =>
+        X509Certificate2? httpsCertificate = null;
+        if (httpEnabled)
         {
-            options.AddServerHeader = false;
-            options.Listen(hostOptions.ListenAddress, hostOptions.Port);
-        });
+            httpsCertificate = hostOptions.LoadHttpsCertificate(builder.Configuration["HTTPS_CERTIFICATE_PASSWORD"]);
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                options.AddServerHeader = false;
+                options.Limits.MaxRequestBodySize = 4096;
+                options.Listen(hostOptions.ListenAddress, hostOptions.Port, listen => listen.UseHttps(httpsCertificate));
+            });
+        }
 
         var app = builder.Build();
-        app.MapGet("/health/live", static () => Results.Json(new LiveStatus("healthy")))
-            .WithName("CoreLiveness")
-            .Produces<LiveStatus>(StatusCodes.Status200OK, "application/json");
+        if (httpEnabled)
+        {
+            app.Use(async (context, next) =>
+            {
+                context.TraceIdentifier = Guid.NewGuid().ToString("N");
+                context.Response.Headers["X-Correlation-ID"] = context.TraceIdentifier;
+                try { await next(context); }
+                catch (Exception exception) when (!context.Response.HasStarted)
+                {
+                    HttpRequestFailed(app.Logger, exception.GetType().Name, context.TraceIdentifier, null);
+                    context.Response.Clear();
+                    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                    await context.Response.WriteAsJsonAsync(new CoreAuthEndpoints.ErrorResponse("internal_error"));
+                }
+            });
+            app.Use(async (context, next) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                context.Response.Headers.Pragma = "no-cache";
+                context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+                context.Response.Headers["Referrer-Policy"] = "no-referrer";
+                await next(context);
+            });
+            app.UseRouting();
+            app.UseRateLimiter();
+            CoreAuthEndpoints.Map(app);
+            app.MapGet("/health/live", static () => Results.Json(new LiveStatus("healthy")))
+                .WithName("CoreLiveness")
+                .Produces<LiveStatus>(StatusCodes.Status200OK, "application/json");
+            app.Lifetime.ApplicationStopped.Register(() => httpsCertificate!.Dispose());
+        }
 
         app.Lifetime.ApplicationStarted.Register(() =>
             HostStarted(app.Logger, hostOptions.Version, hostOptions.EnvironmentName, hostOptions.ListenAddress, hostOptions.Port, null));
@@ -80,4 +148,20 @@ internal static class CoreHost
     }
 
     private sealed record LiveStatus(string Status);
+
+    private static async ValueTask HandleRateLimitRejectedAsync(Microsoft.AspNetCore.RateLimiting.OnRejectedContext context, CancellationToken cancellationToken)
+    {
+        var retryAfter = context.Lease.TryGetMetadata(System.Threading.RateLimiting.MetadataName.RetryAfter, out TimeSpan duration)
+            ? Math.Max(1, (int)Math.Ceiling(duration.TotalSeconds))
+            : 60;
+        context.HttpContext.Response.Headers.RetryAfter = retryAfter.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var services = context.HttpContext.RequestServices;
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("Hispania.Core.Security");
+        LoginRateLimited(logger, context.HttpContext.TraceIdentifier, null);
+        try { await services.GetRequiredService<ICoreHttpAuditService>().RecordAsync("http.login.rate_limited", null, cancellationToken).ConfigureAwait(false); }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            HttpRequestFailed(logger, exception.GetType().Name, context.HttpContext.TraceIdentifier, null);
+        }
+    }
 }

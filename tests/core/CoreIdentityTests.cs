@@ -327,7 +327,7 @@ public sealed class CoreIdentityTests
         ["LISTEN_ADDRESS"] = "127.0.0.1",
         ["PORT"] = "5070",
         ["DATA_DIRECTORY"] = dataDirectory
-    });
+    }, httpEnabled: false);
 
     private sealed class TemporaryDirectory : IDisposable
     {

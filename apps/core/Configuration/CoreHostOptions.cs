@@ -3,10 +3,12 @@ using System.Net;
 using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Security.Cryptography.X509Certificates;
+using System.Security.Cryptography;
 
 namespace Hispania.Core.Configuration;
 
-internal sealed record CoreHostOptions(IPAddress ListenAddress, int Port, TimeSpan ShutdownTimeout, LogLevel MinimumLogLevel, string Version, string EnvironmentName, CoreStorageOptions Storage)
+internal sealed record CoreHostOptions(IPAddress ListenAddress, int Port, TimeSpan ShutdownTimeout, LogLevel MinimumLogLevel, int LoginRateLimit, int LoginRateWindowSeconds, string Version, string EnvironmentName, CoreStorageOptions Storage, string? HttpsCertificatePath)
 {
     public const string DefaultListenAddress = "127.0.0.1";
     public const int DefaultPort = 5070;
@@ -33,9 +35,52 @@ internal sealed record CoreHostOptions(IPAddress ListenAddress, int Port, TimeSp
             !Enum.IsDefined(minimumLogLevel) || minimumLogLevel == LogLevel.None)
             throw new CoreConfigurationException("LOG_LEVEL must be Trace, Debug, Information, Warning, Error, or Critical.");
 
+        var loginLimitText = configuration["LOGIN_RATE_LIMIT"];
+        if (loginLimitText is not null && (!int.TryParse(loginLimitText, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedLoginLimit) || parsedLoginLimit is < 1 or > 1000))
+            throw new CoreConfigurationException("LOGIN_RATE_LIMIT must be an integer between 1 and 1000.");
+        var loginLimit = loginLimitText is null ? 20 : int.Parse(loginLimitText, NumberStyles.None, CultureInfo.InvariantCulture);
+        var loginWindowText = configuration["LOGIN_RATE_WINDOW_SECONDS"];
+        if (loginWindowText is not null && (!int.TryParse(loginWindowText, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedLoginWindow) || parsedLoginWindow is < 1 or > 3600))
+            throw new CoreConfigurationException("LOGIN_RATE_WINDOW_SECONDS must be an integer between 1 and 3600.");
+        var loginWindow = loginWindowText is null ? 60 : int.Parse(loginWindowText, NumberStyles.None, CultureInfo.InvariantCulture);
+
         var version = typeof(CoreHostOptions).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
         var storage = CoreStorageOptions.Read(configuration, AppContext.BaseDirectory);
-        return new CoreHostOptions(address, port, TimeSpan.FromSeconds(timeout), minimumLogLevel, version, environmentName, storage);
+        var certificatePath = configuration["HTTPS_CERTIFICATE_PATH"];
+        return new CoreHostOptions(address, port, TimeSpan.FromSeconds(timeout), minimumLogLevel, loginLimit, loginWindow, version, environmentName, storage, certificatePath);
+    }
+
+    public X509Certificate2 LoadHttpsCertificate(string? certificatePassword)
+    {
+        if (string.IsNullOrWhiteSpace(HttpsCertificatePath))
+            throw new CoreConfigurationException("HTTPS_CERTIFICATE_PATH must identify a locally protected TLS certificate.");
+        if (!Path.IsPathFullyQualified(HttpsCertificatePath))
+            throw new CoreConfigurationException("HTTPS_CERTIFICATE_PATH must be an absolute file path.");
+        try
+        {
+            if (!File.Exists(HttpsCertificatePath) || (File.GetAttributes(HttpsCertificatePath) & FileAttributes.ReparsePoint) != 0)
+                throw new CoreConfigurationException("The configured HTTPS certificate must be an existing regular file.");
+            var certificate = X509CertificateLoader.LoadPkcs12FromFile(HttpsCertificatePath, certificatePassword,
+                X509KeyStorageFlags.UserKeySet);
+            var hasServerAuthenticationUsage = certificate.Extensions.OfType<X509EnhancedKeyUsageExtension>()
+                .Any(extension => extension.EnhancedKeyUsages.Cast<Oid>().Any(usage => usage.Value == "1.3.6.1.5.5.7.3.1"));
+            if (!certificate.HasPrivateKey || certificate.NotBefore.ToUniversalTime() > DateTime.UtcNow || certificate.NotAfter.ToUniversalTime() <= DateTime.UtcNow)
+            {
+                certificate.Dispose();
+                throw new CoreConfigurationException("The configured HTTPS certificate must have a valid private key and be within its validity period.");
+            }
+            if (!hasServerAuthenticationUsage)
+            {
+                certificate.Dispose();
+                throw new CoreConfigurationException("The configured HTTPS certificate must be valid for TLS server authentication.");
+            }
+            return certificate;
+        }
+        catch (CoreConfigurationException) { throw; }
+        catch (Exception exception) when (exception is CryptographicException or IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            throw new CoreConfigurationException("The configured HTTPS certificate could not be loaded.");
+        }
     }
 }
 

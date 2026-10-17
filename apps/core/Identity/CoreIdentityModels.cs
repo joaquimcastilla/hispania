@@ -128,6 +128,11 @@ internal interface ICoreSessionService
     Task<int> InvalidateAllForLocalRecoveryAsync(DateTimeOffset nowUtc, CancellationToken cancellationToken);
 }
 
+internal interface ICoreHttpAuditService
+{
+    Task RecordAsync(string eventCode, Guid? subjectId, CancellationToken cancellationToken);
+}
+
 internal interface ICoreBootstrapService
 {
     Task<bool> IsPendingAsync(CancellationToken cancellationToken);
@@ -154,4 +159,5 @@ internal interface ICoreIdentityStore
     Task<CoreSessionValidation> ValidateSessionAsync(byte[] tokenHash, DateTimeOffset nowUtc, CancellationToken cancellationToken);
     Task<bool> RevokeSessionAsync(Guid actorSubjectId, byte[] tokenHash, DateTimeOffset nowUtc, CancellationToken cancellationToken);
     Task<int> InvalidateAllSessionsAsync(DateTimeOffset nowUtc, CancellationToken cancellationToken);
+    Task RecordHttpSecurityEventAsync(string eventCode, Guid? subjectId, DateTimeOffset nowUtc, CancellationToken cancellationToken);
 }

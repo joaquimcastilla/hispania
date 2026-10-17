@@ -409,6 +409,15 @@ internal sealed class SqliteCoreIdentityStore : ICoreIdentityStore
         return count;
     }
 
+    public async Task RecordHttpSecurityEventAsync(string eventCode, Guid? subjectId, DateTimeOffset nowUtc, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await BeginImmediateAsync(connection, cancellationToken).ConfigureAwait(false);
+        await InsertAuditAsync(connection, transaction, eventCode, FormatUtc(nowUtc), null,
+            subjectId?.ToString("N"), cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private static async Task<bool> IsBootstrapPendingAsync(SqliteConnection connection, SqliteTransaction transaction, CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
