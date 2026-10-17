@@ -1,0 +1,30 @@
+package,version,dependency_scope,license,evidence,source
+Microsoft.CodeCoverage,17.11.1,transitive,MIT,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/Microsoft.CodeCoverage/17.11.1
+Microsoft.Data.Sqlite.Core,10.0.12,transitive,MIT,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/Microsoft.Data.Sqlite.Core/10.0.12
+Microsoft.Data.Sqlite,10.0.12,transitive,MIT,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/Microsoft.Data.Sqlite/10.0.12
+Microsoft.EntityFrameworkCore.Abstractions,10.0.12,transitive,MIT,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/Microsoft.EntityFrameworkCore.Abstractions/10.0.12
+Microsoft.EntityFrameworkCore.Analyzers,10.0.12,transitive,MIT,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/Microsoft.EntityFrameworkCore.Analyzers/10.0.12
+Microsoft.EntityFrameworkCore.Relational,10.0.12,transitive,MIT,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/Microsoft.EntityFrameworkCore.Relational/10.0.12
+Microsoft.EntityFrameworkCore.Sqlite.Core,10.0.12,transitive,MIT,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/Microsoft.EntityFrameworkCore.Sqlite.Core/10.0.12
+Microsoft.EntityFrameworkCore.Sqlite,10.0.12,transitive,MIT,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/Microsoft.EntityFrameworkCore.Sqlite/10.0.12
+Microsoft.EntityFrameworkCore,10.0.12,transitive,MIT,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/Microsoft.EntityFrameworkCore/10.0.12
+Microsoft.Extensions.DependencyModel,10.0.12,transitive,MIT,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/Microsoft.Extensions.DependencyModel/10.0.12
+Microsoft.NET.Test.Sdk,17.11.1,direct,MIT,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/Microsoft.NET.Test.Sdk/17.11.1
+Microsoft.TestPlatform.ObjectModel,17.11.1,transitive,MIT,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/Microsoft.TestPlatform.ObjectModel/17.11.1
+Microsoft.TestPlatform.TestHost,17.11.1,transitive,MIT,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/Microsoft.TestPlatform.TestHost/17.11.1
+Newtonsoft.Json,13.0.1,transitive,MIT,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/Newtonsoft.Json/13.0.1
+Npgsql.EntityFrameworkCore.PostgreSQL,10.0.0,transitive,PostgreSQL License,Exact resolved package nuspec and NuGet package license metadata; module/provider dependency only,https://www.nuget.org/packages/Npgsql.EntityFrameworkCore.PostgreSQL/10.0.0
+Npgsql,10.0.0,transitive,PostgreSQL License,Exact resolved package nuspec and NuGet package license metadata; module/provider dependency only,https://www.nuget.org/packages/Npgsql/10.0.0
+NuGet.Versioning,7.9.0,transitive,Apache-2.0,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/NuGet.Versioning/7.9.0
+SQLitePCLRaw.bundle_e_sqlite3,2.1.12,transitive,Apache-2.0,Exact resolved package nuspec and NuGet package license metadata; local test runtime bundle,https://www.nuget.org/packages/SQLitePCLRaw.bundle_e_sqlite3/2.1.12
+SQLitePCLRaw.core,2.1.12,transitive,Apache-2.0,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/SQLitePCLRaw.core/2.1.12
+SQLitePCLRaw.lib.e_sqlite3,2.1.12,transitive,Apache-2.0,Exact resolved package nuspec and NuGet package license metadata; native SQLite library is public domain per SQLite,https://www.nuget.org/packages/SQLitePCLRaw.lib.e_sqlite3/2.1.12
+SQLitePCLRaw.provider.e_sqlite3,2.1.12,transitive,Apache-2.0,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/SQLitePCLRaw.provider.e_sqlite3/2.1.12
+xunit.abstractions,2.0.3,transitive,Apache-2.0 (upstream project; nuspec has no license expression),NuGet package License Info links to xUnit source license; exact nuspec lacks SPDX field,https://www.nuget.org/packages/xunit.abstractions/2.0.3
+xunit.analyzers,1.16.0,transitive,Apache-2.0,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/xunit.analyzers/1.16.0
+xunit.assert,2.9.2,transitive,Apache-2.0,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/xunit.assert/2.9.2
+xunit.core,2.9.2,transitive,Apache-2.0,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/xunit.core/2.9.2
+xunit.extensibility.core,2.9.2,transitive,Apache-2.0,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/xunit.extensibility.core/2.9.2
+xunit.extensibility.execution,2.9.2,transitive,Apache-2.0,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/xunit.extensibility.execution/2.9.2
+xunit.runner.visualstudio,2.8.2,direct,Apache-2.0,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/xunit.runner.visualstudio/2.8.2
+xunit,2.9.2,direct,Apache-2.0,Exact resolved package nuspec and NuGet package license metadata,https://www.nuget.org/packages/xunit/2.9.2
