@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace Hispania.Core.Tests;
@@ -19,6 +20,7 @@ public sealed class CoreHostTests
         Assert.Equal(IPAddress.Loopback, options.ListenAddress);
         Assert.Equal(5070, options.Port);
         Assert.Equal(TimeSpan.FromSeconds(10), options.ShutdownTimeout);
+        Assert.Equal(LogLevel.Information, options.MinimumLogLevel);
         Assert.False(string.IsNullOrWhiteSpace(options.Version));
         Assert.DoesNotContain(typeof(CoreHost).Assembly.GetReferencedAssemblies(), reference =>
             new[] { "Hispania.Server", "Hispania.Inventory", "Hispania.Media", "Hispania.WorkerAgent", "Npgsql", "Microsoft.Data.Sqlite" }
@@ -53,6 +55,22 @@ public sealed class CoreHostTests
     {
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["SHUTDOWN_TIMEOUT_SECONDS"] = timeout }).Build();
         Assert.Throws<CoreConfigurationException>(() => CoreHostOptions.Read(config, "Production"));
+    }
+
+    [Theory]
+    [InlineData("None")]
+    [InlineData("invalid")]
+    public void InvalidLogLevelFailsConfiguration(string logLevel)
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["LOG_LEVEL"] = logLevel }).Build();
+        Assert.Throws<CoreConfigurationException>(() => CoreHostOptions.Read(config, "Production"));
+    }
+
+    [Fact]
+    public void LogLevelCanBeConfiguredExplicitly()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["LOG_LEVEL"] = "Debug" }).Build();
+        Assert.Equal(LogLevel.Debug, CoreHostOptions.Read(config, "Development").MinimumLogLevel);
     }
 
     [Fact]

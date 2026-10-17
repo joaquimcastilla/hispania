@@ -37,6 +37,7 @@ internal static class CoreHost
 
         var hostOptions = CoreHostOptions.Read(builder.Configuration, builder.Environment.EnvironmentName);
         builder.Logging.ClearProviders();
+        builder.Logging.SetMinimumLevel(hostOptions.MinimumLogLevel);
         builder.Logging.AddJsonConsole();
         builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = hostOptions.ShutdownTimeout);
         builder.WebHost.ConfigureKestrel(options =>
