@@ -3,6 +3,8 @@
 **Audit source HEAD:** `118840f934df0783de13bebcd7ea0ac0e66dc9fe`
 **Status:** OWNER APPROVED — PROVISIONAL under Decision 0.3-D3; no Core project or artifact is implemented here.
 
+**Slice 2 update (2026-10-17):** This proposal is now realized as an executable, fail-closed policy v1 over synthetic fixtures. See [Core Artifact Policy](HISPANIA-V1-PHASE1-SLICE2-CORE-ARTIFACT-POLICY.md), the [versioned JSON allowlist](HISPANIA-V1-CORE-ARTIFACT-ALLOWLIST-v1.json), and the [dependency classification inventory](HISPANIA-V1-CORE-DEPENDENCY-CLASSIFICATION.csv). Conditional entries remain rejected; no Core artifact has been validated.
+
 This is a bounded source-graph proposal for the Phase 1 Empty Core contract in Architecture Freeze §13. The owner provisionally approved this allowlist under Decision 0.3-D3. It is not authorization to create those projects. Verify actual direct/transitive references, rights and per-RID publish contents during an expressly authorized Phase 1. Exact project names and final manifest remain Phase 1 design outputs.
 
 ## Candidate allowlist
@@ -58,4 +60,4 @@ The package/license values below are the R1 resolved inventory's declared metada
 
 ## Owner action requested
 
-The allowlist is provisionally approved, subject to the verification gates above. It is not an accepted final artifact graph, legal distribution clearance or Phase 1 authorization. Rights-cleared source projects must be identified before reuse; see [R3 owner decisions and execution plan](HISPANIA-V1-STEP-0.3-R3-OWNER-DECISIONS-AND-PHASE1-PLAN.md).
+The original R3 allowlist was provisional and was not Phase 1 authorization at that time. Slice 2 has now authorized and implemented a versioned candidate policy and manifest validator, but the graph remains unverified against a real Core publish and is not legal distribution clearance. Rights-cleared inputs and actual per-RID artifacts remain later-slice gates; see [R3 owner decisions and execution plan](HISPANIA-V1-STEP-0.3-R3-OWNER-DECISIONS-AND-PHASE1-PLAN.md) and the Slice 2 policy report.
