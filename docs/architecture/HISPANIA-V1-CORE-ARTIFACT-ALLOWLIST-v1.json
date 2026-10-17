@@ -1,0 +1,227 @@
+{
+  "schemaVersion": 1,
+  "policyId": "hispania-core-v1.0.0",
+  "supportedTargetFrameworks": ["net10.0"],
+  "supportedRuntimeIdentifiers": ["win-x64", "linux-x64", "linux-arm64"],
+  "supportedPublishModes": ["framework-dependent"],
+  "requiredFiles": [
+    "Hispania.Core.dll",
+    "Hispania.Core.deps.json",
+    "Hispania.Core.runtimeconfig.json"
+  ],
+  "allowedDependencies": [
+    {
+      "kind": "project",
+      "id": "contracts/module-system/Hispania.ModuleSystem.Contracts.csproj",
+      "version": "source",
+      "phases": ["build", "runtime", "publish"],
+      "status": "allowed",
+      "rationale": "Minimal stable module contracts; include only types consumed by Core.",
+      "assemblyName": "Hispania.ModuleSystem.Contracts"
+    },
+    {
+      "kind": "project",
+      "id": "contracts/platform/Hispania.Platform.Contracts.csproj",
+      "version": "source",
+      "phases": ["build", "runtime", "publish"],
+      "status": "allowed",
+      "rationale": "Current platform identity, authorization, audit and host-facing contracts.",
+      "assemblyName": "Hispania.Platform.Contracts"
+    },
+    {
+      "kind": "project",
+      "id": "core/runtime/Hispania.Runtime.csproj",
+      "version": "source",
+      "phases": ["build", "runtime", "publish"],
+      "status": "conditional",
+      "rationale": "No domain project reference is present, but the assembly also contains web contribution, experiment and distributed-worker surfaces. Slice 3 must justify the full assembly before admission.",
+      "assemblyName": "Hispania.Runtime"
+    },
+    {
+      "kind": "project",
+      "id": "application/identity/Hispania.Identity.Application.csproj",
+      "version": "source",
+      "phases": ["build", "runtime", "publish"],
+      "status": "conditional",
+      "rationale": "Identity implementation belongs to Slice 5 and is not admitted before its explicit composition review.",
+      "assemblyName": "Hispania.Identity.Application"
+    },
+    {
+      "kind": "project",
+      "id": "application/authorization/Hispania.Authorization.Application.csproj",
+      "version": "source",
+      "phases": ["build", "runtime", "publish"],
+      "status": "conditional",
+      "rationale": "Authorization implementation belongs to Slice 5 and is not admitted before its explicit composition review.",
+      "assemblyName": "Hispania.Authorization.Application"
+    },
+    {
+      "kind": "project",
+      "id": "infrastructure/platform/persistence-sqlite/Hispania.Platform.Persistence.Sqlite.csproj",
+      "version": "source",
+      "phases": ["build", "runtime", "publish"],
+      "status": "forbidden",
+      "rationale": "Current graph pulls Identity, Authorization, Jobs and Maintenance applications; it is not a clean provider-neutral Core adapter."
+    },
+    {
+      "kind": "project",
+      "id": "planned:core/persistence/Hispania.Core.Persistence.Contracts.csproj",
+      "version": "source",
+      "phases": ["build", "runtime", "publish"],
+      "status": "conditional",
+      "rationale": "A narrow provider-neutral Core persistence contract may be introduced in Slice 4; no such project exists yet."
+    },
+    {
+      "kind": "project",
+      "id": "planned:core/persistence-sqlite/Hispania.Core.Persistence.Sqlite.csproj",
+      "version": "source",
+      "phases": ["build", "runtime", "publish"],
+      "status": "conditional",
+      "rationale": "A dedicated Core SQLite provider may be introduced in Slice 4 after the provider-neutral boundary is defined."
+    },
+    {
+      "kind": "project",
+      "id": "apps/module-host/Hispania.ModuleHost.csproj",
+      "version": "source",
+      "phases": ["build", "runtime", "publish"],
+      "status": "deferred",
+      "rationale": "Separate module worker executable is deferred to Module Manager/trust work in Slice 7; OOP is not a sandbox.",
+      "assemblyName": "Hispania.ModuleHost"
+    },
+    {
+      "kind": "project",
+      "id": "apps/core/Hispania.Core.csproj",
+      "version": "source",
+      "phases": ["build", "runtime", "publish"],
+      "status": "conditional",
+      "rationale": "The host is not created in Slice 2; Slice 3 must validate the first real Core project against this policy.",
+      "assemblyName": "Hispania.Core"
+    },
+    {
+      "kind": "framework",
+      "id": "Microsoft.AspNetCore.App",
+      "version": "10.0.*",
+      "phases": ["build", "runtime", "publish"],
+      "status": "allowed",
+      "rationale": "Existing .NET 10 shared framework for host, HTTP, DI and logging; framework-dependent artifacts rely on the installed framework."
+    },
+    {
+      "kind": "framework",
+      "id": "Microsoft.NETCore.App",
+      "version": "10.0.*",
+      "phases": ["build", "runtime", "publish"],
+      "status": "allowed",
+      "rationale": ".NET 10 base shared framework required by the supported framework-dependent artifacts."
+    },
+    {
+      "kind": "package",
+      "id": "NuGet.Versioning",
+      "version": "7.9.0",
+      "phases": ["build", "runtime", "publish"],
+      "status": "conditional",
+      "rationale": "Only needed if Runtime is admitted; exact version 7.9.0 is pinned. Declared upstream license: Apache-2.0; artifact notices remain a release gate."
+    },
+    {
+      "kind": "package",
+      "id": "Microsoft.Data.Sqlite",
+      "version": "10.0.12",
+      "phases": ["build", "runtime", "publish"],
+      "status": "conditional",
+      "rationale": "Approved Core provider direction, but admit only in Slice 4 after real Core graph and RID assets are reviewed."
+    },
+    {
+      "kind": "package",
+      "id": "Microsoft.Data.Sqlite.Core",
+      "version": "10.0.12",
+      "phases": ["build", "runtime", "publish"],
+      "status": "conditional",
+      "rationale": "Expected SQLite transitive package; must be present at the exact resolved version when used."
+    },
+    {
+      "kind": "package",
+      "id": "SQLitePCLRaw.bundle_e_sqlite3",
+      "version": "2.1.12",
+      "phases": ["build", "runtime", "publish"],
+      "status": "conditional",
+      "rationale": "Candidate managed/native bundle; verify actual package and per-RID publish assets in Slice 4."
+    },
+    {
+      "kind": "package",
+      "id": "SQLitePCLRaw.core",
+      "version": "2.1.12",
+      "phases": ["build", "runtime", "publish"],
+      "status": "conditional",
+      "rationale": "Expected SQLite transitive package; exact version and license metadata recorded in R5."
+    },
+    {
+      "kind": "package",
+      "id": "SQLitePCLRaw.lib.e_sqlite3",
+      "version": "2.1.12",
+      "phases": ["build", "runtime", "publish"],
+      "status": "conditional",
+      "rationale": "Carries native SQLite assets; enumerate actual selected RID payload and notices before admission."
+    },
+    {
+      "kind": "package",
+      "id": "SQLitePCLRaw.provider.e_sqlite3",
+      "version": "2.1.12",
+      "phases": ["build", "runtime", "publish"],
+      "status": "conditional",
+      "rationale": "Expected SQLite provider package; exact version and license metadata recorded in R5."
+    },
+    {
+      "kind": "runtimeAsset",
+      "id": "SQLitePCLRaw.lib.e_sqlite3:runtimes/win-x64/native/e_sqlite3.dll",
+      "version": "2.1.12",
+      "phases": ["publish"],
+      "status": "conditional",
+      "rationale": "Expected native SQLite runtime asset for win-x64; confirm exact published relative path and hash in Slice 4/9."
+    },
+    {
+      "kind": "runtimeAsset",
+      "id": "SQLitePCLRaw.lib.e_sqlite3:runtimes/linux-x64/native/libe_sqlite3.so",
+      "version": "2.1.12",
+      "phases": ["publish"],
+      "status": "conditional",
+      "rationale": "Expected native SQLite runtime asset for linux-x64; confirm exact published relative path and hash in Slice 4/9."
+    },
+    {
+      "kind": "runtimeAsset",
+      "id": "SQLitePCLRaw.lib.e_sqlite3:runtimes/linux-arm64/native/libe_sqlite3.so",
+      "version": "2.1.12",
+      "phases": ["publish"],
+      "status": "conditional",
+      "rationale": "Expected native SQLite runtime asset for linux-arm64; confirm exact published relative path and hash in Slice 4/9."
+    }
+  ],
+  "forbiddenDependencyPrefixes": [
+    "apps/server/", "Hispania.Server", "Hispania.Inventory", "Hispania.Media", "Hispania.Library",
+    "Hispania.Playback", "Hispania.Transcoding", "Hispania.WorkerAgent", "Hispania.DistributedWork",
+    "Hispania.Metadata.Tmdb", "Hispania.Library.FFprobe", "Npgsql", "Microsoft.EntityFrameworkCore",
+    "FFmpeg", "ffprobe"
+  ],
+  "allowedFilePatterns": [
+    "Hispania.Core.dll", "Hispania.Core.deps.json", "Hispania.Core.runtimeconfig.json", "Hispania.Core", "Hispania.Core.exe",
+    "Hispania.ModuleSystem.Contracts.dll", "Hispania.Platform.Contracts.dll"
+  ],
+  "conditionalFilePatterns": [
+    "Hispania.Runtime.dll",
+    "Hispania.Identity.Application.dll", "Hispania.Authorization.Application.dll",
+    "Hispania.Core.Persistence.Contracts.dll", "Hispania.Core.Persistence.Sqlite.dll",
+    "NuGet.Versioning.dll", "NuGet.Common.dll", "Microsoft.Data.Sqlite.dll", "Microsoft.Data.Sqlite.Core.dll",
+    "SQLitePCLRaw.bundle_e_sqlite3.dll", "SQLitePCLRaw.core.dll", "SQLitePCLRaw.provider.e_sqlite3.dll",
+    "runtimes/win-x64/native/e_sqlite3.dll", "runtimes/linux-x64/native/libe_sqlite3.so", "runtimes/linux-arm64/native/libe_sqlite3.so"
+  ],
+  "excludedSha256": [
+    "FCB341C4F3504B8FA85C75E32F386A3251B5CC31A55385B0B6B45FB4A9AF540E",
+    "BD059255E0CD308ED1E4643287DE911BF9A96524FEC29B69BD9074D1F0BFC243",
+    "AE16C3C87A374A59889D7F13AB5CB26E38A96641470045BF80E9D5BF45910CEB",
+    "D21D7B5AC7CACF15503FA711F32DEF540FC4C8AAA0A86D6AFF735EB76F262951",
+    "AFE8836CF7988DF26ECCC091C4C222E896AA9930BF203C8CDFA4CCB719315710",
+    "BDB067DD7FD2A9D1C75185BBE3F30839B53BF30FF5C45B276D2E7DD5B51E2434"
+  ],
+  "forbiddenPathPatterns": [
+    "**/demo-assets/**", "**/compatibility/**", "**/fixtures/**", "**/testdata/**",
+    "**/*.pdb", "**/*.user", "**/*.suo", "**/*.mp4", "**/*.mkv", "**/*.avi"
+  ]
+}
