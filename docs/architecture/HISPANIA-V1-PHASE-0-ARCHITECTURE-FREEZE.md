@@ -1106,7 +1106,7 @@ No upstream is configured for the primary branch. No push was made or attempted.
 
 ## 16. Phase 1 entry gates and v1.0 release gates
 
-**PHASE 1 READINESS: NOT READY.** Owner architecture approval does not authorize implementation. The following entry gates must be completed in the later, explicitly authorized Phase 1 preparation/implementation task:
+**Original Freeze snapshot status (2026-10-15): PHASE 1 READINESS NOT YET ACCEPTED.** This was the status before the later R1–R5 readiness work and the owner's final acceptance in §20. The owner-approved 0.3-D2 clarification in §18 governs §12 timing: its seven items are Phase 1 implementation/acceptance requirements, not blanket pre-code blockers; the D2 preconditions still apply. The following §16 gates remain applicable at the corresponding preparation, implementation, acceptance, and release points and do not override D2:
 
 1. Reconcile the baseline according to §15 in an isolated worktree/task.
 2. Inventory all worktrees, branches, dirty/untracked files and commits; decide which work is relevant without overwriting unrelated work.
@@ -1124,7 +1124,9 @@ No upstream is configured for the primary branch. No push was made or attempted.
 
 The Owner Architecture Freeze is **APPROVED** because decisions 9.1–9.11 are recorded and no blocking contradiction was identified in this documentation review. This status means the architectural decisions are frozen subject to later evidence and gates. It does not mean **LEGAL AUDIT PASSED**, **LICENSES APPLIED**, **PHASE 1 READY**, or **PHASE 1 AUTHORIZED**.
 
-### Gate summary
+### Original 9.11 snapshot gate summary — historical
+
+The following table records the assessment at the original 9.11 architecture-freeze snapshot, before later Step 0.2/0.3 evidence and owner acceptance. The current readiness and roadmap state is in §20 and the [final acceptance record](HISPANIA-V1-STEP-0.3-FINAL-ACCEPTANCE.md).
 
 - Owner-approved architectural principles: **PASS** (provided in user request).
 - Current-state evidence and important deltas: **PASS**, bounded to versioned HEAD; uncommitted work excluded.
@@ -1138,7 +1140,7 @@ The Owner Architecture Freeze is **APPROVED** because decisions 9.1–9.11 are r
 - Owner Decisions 9.1 Core Persistence, 9.2 Module Trust Model, 9.3 Third-party Module Promise, 9.4 Remote Worker Threat Model, 9.5 Network Supported in v1, 9.6 Data Plane Architecture, 9.7 ARM64 / Hardware Support, 9.8 Authentication for Private Data, 9.9 WASM / Untrusted Modules, 9.10 Marketplace, and 9.11 Licensing/Open Source/Funding: **APPROVED — 11/11**.
 - Owner decisions: **COMPLETE**; Owner Architecture Freeze: **APPROVED — IMPLEMENTATION GATES PENDING**.
 - License inventory: **STATIC REVIEW COMPLETE, BOUNDED**; legal audit, rights/provenance verification, and license application: **PENDING**. This is not a license compliance certification.
-- Phase 1 readiness: **NOT READY**; §16 entry gates and express owner authorization remain.
+- Phase 1 readiness at the original snapshot: **NOT YET ACCEPTED**; this historical status was superseded by the final Step 0.3 owner acceptance in §20. Express Phase 1 authorization remains absent.
 - Baseline reconciliation at the time of this original 9.11 snapshot: **PENDING**; its historical status is superseded by the later isolated Step 0.2 reconciliation recorded in §17.
 - Product code/license files unchanged; pre-existing worktree changes preserved: **PASS**.
 
@@ -1166,7 +1168,7 @@ This supplementary section records the owner's written decisions 0.3-D1 through 
 - **0.3-D5 — Contributor authority: APPROVED.** Maintain the evidence-based [Contributor Rights Register](HISPANIA-V1-CONTRIBUTOR-RIGHTS-REGISTER.csv). Do not presume ownership from commits, relicensing authority, asset redistribution rights, or sufficient rights in generated components. Record authors, sources, permissions and licenses when evidence exists; do not invent authorization. Keep material with insufficient rights out of Core until clarified.
 - **0.3-D6 — License/distribution: APPROVED.** Keep `LICENSE.md` unchanged. AGPLv3 Core / Apache-2.0 SDK remains an architectural target, not completed relicensing. No public distribution until authority, dependency/assets/binary licenses, notices and legal compatibility are reviewed and the owner expressly approves distribution. No release or package publication.
 
-The detailed [R3 owner decision record and ten-slice Phase 1 plan](HISPANIA-V1-STEP-0.3-R3-OWNER-DECISIONS-AND-PHASE1-PLAN.md) preserves the exact conditions, entry gates, acceptance checks, rollback approach and evidence needs. **Step 0.3 final owner acceptance remains pending; Phase 1 remains NOT AUTHORIZED.** A separate owner authorization is required after Step 0.3 acceptance.
+The detailed [R3 owner decision record and ten-slice Phase 1 plan](HISPANIA-V1-STEP-0.3-R3-OWNER-DECISIONS-AND-PHASE1-PLAN.md) preserves the exact conditions, entry gates, acceptance checks, rollback approach and evidence needs. At the time of the R3 record, final Step 0.3 acceptance remained pending. That state was superseded by the explicit owner acceptance recorded in §20. **Phase 1 remains NOT AUTHORIZED** and requires a separate owner instruction.
 
 ## 19. Step 0.3-R5 owner attestation and future language option — 2026-10-17
 
@@ -1174,4 +1176,10 @@ The owner stated in the R5 task: “Soy el autor o tengo autorización para usar
 
 The owner's statement that Rust may be a future possibility is recorded as a future option only. It does not approve a rewrite, alter the v1.0 C#/.NET architecture, change public contracts, or authorize implementation. A rewrite would still require review of the rights and terms for any code or components carried forward; new Rust crates require their own exact-version license/provenance review. Reconsidering the implementation language requires a separate owner decision supported by compatibility, migration, and maintenance evidence. No Rust work is included in Phase 0 or authorized for Phase 1.
 
-The R5 validation report records a bounded current-HEAD test run and package review. It does not supersede the approved architecture or satisfy the separate Step 0.3 owner acceptance and Phase 1 authorization gates.
+At the R5 checkpoint, its report recorded bounded current-HEAD tests and a package review; final Step 0.3 owner acceptance was still pending then. The subsequent owner acceptance is recorded in §20. The R5 report does not supersede the approved architecture or authorize Phase 1.
+
+## 20. Step 0.3 final owner acceptance and Phase 0 closure — 2026-10-17
+
+The owner expressly accepted **Step 0.3 — Phase 1 Readiness: PASS** and authorized only documentary closure and recording roadmap progress **4/14 — 28.6%**. The acceptance is recorded as `HISPANIA-V1-STEP-0.3-OWNER-ACCEPTANCE` in the [final acceptance record](HISPANIA-V1-STEP-0.3-FINAL-ACCEPTANCE.md) and Evidence Ledger EV-041. Phase 0 and Steps 0.1, 0.2, and 0.3 are now recorded complete. This is an owner statement, not a digital signature, legal review, or independent proof of title.
+
+The owner explicitly did **not** authorize Phase 1, code changes, license changes, or public distribution. Decisions 9.1–9.11 and D1–D6 remain unchanged; `LICENSE.md`, rights restrictions, and D6 distribution gates remain in force. The R5 tests and limitations remain as recorded in EV-038–EV-040. The roadmap is 4/14; Phase 1 and all subsequent phases remain unstarted.

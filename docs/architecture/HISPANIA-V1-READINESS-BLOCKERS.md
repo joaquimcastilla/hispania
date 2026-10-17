@@ -2,7 +2,7 @@
 
 **Audit source HEAD:** `9771b063fefe569a9268fb80cb6789dbc4c043b1`
 
-**R1 result:** PASS for the R1 corrective audit scope. **R2 result:** PASS for its audit scope with limitations. **R3 result:** CONDITIONAL — SPECIFIC PRE-IMPLEMENTATION ISSUE. Final Step 0.3 owner acceptance remains pending. **Phase 1:** NOT AUTHORIZED.
+**R1 result:** PASS for the R1 corrective audit scope. **R2 result:** PASS for its audit scope with limitations. **R3 result:** CONDITIONAL — SPECIFIC PRE-IMPLEMENTATION ISSUE (historical, superseded by R5 and final acceptance). **Step 0.3:** OWNER ACCEPTED — PASS (2026-10-17), technical readiness accepted; final record linked below. **Phase 1:** NOT AUTHORIZED.
 
 ## R4 evidence recovery and Slice 1 addendum — 2026-10-17
 
@@ -110,7 +110,7 @@ The existing `LICENSE.md` is explicit personal/local/non-commercial permission f
 
 ## Entry conclusion and remaining blockers
 
-The R1 corrective audit can pass independently of overall Step 0.3 readiness. Current Step 0.3 remains **NOT READY** because §16 gates 4–7 and 10 are incomplete/blocked and gate 11 (express Phase 1 authorization) is intentionally absent. The public release is also blocked by unresolved provenance/license boundaries. The Evidence Ledger's nine historical Deployment Process test cases remain a separate explicit debt; R1 did not rerun or claim them. Internal preparation may continue only under a later explicit task authorization; this report does not start Phase 1. No PostgreSQL Core, Pi 4B sustained Coordinator, remote Worker or Data Plane is required to build the first Empty Core unless §12–§13 state otherwise.
+At the R1 checkpoint, Step 0.3 was **NOT READY** because §16 gates 4–7 and 10 were incomplete and gate 11 (express Phase 1 authorization) was intentionally absent. That historical readiness status was later addressed by the R2–R5 evidence and superseded by the owner's final Step 0.3 acceptance recorded below. The public release remains blocked by unresolved provenance/license boundaries. The Evidence Ledger's nine historical Deployment Process test cases remain a separate debt; R1 did not rerun or claim them. Phase 1 is not authorized. No PostgreSQL Core, Pi 4B sustained Coordinator, remote Worker or Data Plane is required to build the first Empty Core unless §12–§13 state otherwise.
 
 ## R2 corrective audit addendum — 2026-10-16
 
@@ -191,3 +191,9 @@ The five selected Identity, Authorization, Events, Jobs and Platform Persistence
 | Phase 1 authorization | **NOT GRANTED** | Requires a separate express owner authorization after Step 0.3 acceptance. |
 
 R5 does not approve or resolve any other owner decision, modify the architecture, implement Fase 1, or authorize a release. The original R3/R4 observations remain historical; the new scope-specific evidence is separately ledgered.
+
+## Final acceptance and Phase 0 closure — 2026-10-17
+
+The owner has now expressly accepted **Step 0.3 — Phase 1 Readiness: PASS** and authorized documentary closure only. See [HISPANIA-V1-STEP-0.3-FINAL-ACCEPTANCE.md](HISPANIA-V1-STEP-0.3-FINAL-ACCEPTANCE.md) and Evidence Ledger EV-041. The earlier R3 conditional readiness and R5 “ready for owner acceptance” entries describe their respective historical checkpoints and are superseded as to the current Step 0.3 status. The R5 test/package limits and all unresolved technical/deployment/license debts remain visible.
+
+This closure does not authorize Phase 1, code modification, license changes, or distribution. The implementation gates, D1–D6 conditions, component-rights checks, and D6 public-distribution restrictions remain in force. Phase 1 requires a new express owner authorization and separate implementation prompt.

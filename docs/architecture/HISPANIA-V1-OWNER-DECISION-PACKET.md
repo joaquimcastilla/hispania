@@ -4,6 +4,8 @@
 **Original R2 status:** REQUEST FOR OWNER INPUT.
 **Phase 1:** NOT READY; NOT AUTHORIZED.
 
+**Current status after Step 0.3 final acceptance (2026-10-17):** Step 0.3 OWNER ACCEPTED — PASS; roadmap 4/14 — 28.6%; Phase 1 remains NOT AUTHORIZED. See [Final Acceptance Record](HISPANIA-V1-STEP-0.3-FINAL-ACCEPTANCE.md). The original R2/R3 status and questions below are historical context.
+
 ## R3 owner response — resolved
 
 The owner explicitly approved all six decisions as **0.3-D1 through 0.3-D6** in the R3 instruction. Their exact approved scope and conditions are recorded in [R3 Owner Decisions and Phase 1 Plan](HISPANIA-V1-STEP-0.3-R3-OWNER-DECISIONS-AND-PHASE1-PLAN.md) and linked from the Architecture Freeze's supplementary §18. All six questions below are **CLOSED — OWNER APPROVED**. Their original alternatives/recommendations are retained as historical context and are superseded by the owner's exact decisions, not expanded by them.
@@ -17,7 +19,7 @@ The owner explicitly approved all six decisions as **0.3-D1 through 0.3-D6** in 
 | 5. Contributor authority evidence | 0.3-D5: maintain evidence-based provenance/permission register; no presumptions or invented grants; unclear-rights materials cannot enter Core before clarification. | **OWNER APPROVED** |
 | 6. Legal review and distribution | 0.3-D6: keep `LICENSE.md`; no public distribution/release until rights, dependency/assets/binaries, notices, compatibility/legal review and explicit owner distribution approval. | **OWNER APPROVED** |
 
-The approvals are owner statements in the project conversation, not a digital signature, legal opinion, evidence of title, final Step 0.3 acceptance, Phase 1 authorization, or distribution approval.
+The R3 approvals were owner statements in the project conversation, not a digital signature, legal opinion, evidence of title, Phase 1 authorization, or distribution approval. Final Step 0.3 acceptance was separately given and is recorded in [the final acceptance record](HISPANIA-V1-STEP-0.3-FINAL-ACCEPTANCE.md); it does not authorize Phase 1 or distribution.
 
 ## 1. Phase 1 internal development and rights boundary
 
