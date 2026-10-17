@@ -131,7 +131,7 @@ Created this report; added EV-046 to the Evidence Ledger; updated the Phase 1 st
 
 ## S. COMMITS AND FINAL STATE
 
-The code/tests and documentation/evidence are separated from unrelated history. Implementation commit: `1125be76906b8411dee6f6d54b12eaf341eee9f2` (`feat(core): add identity and authorization foundation`). Documentation/evidence closeout commit: `29941bb98d1e75a808f22f6ac143ad898cb596d5`; a final documentation-only correction binds the artifact manifest to the implementation commit and updates its hashes. The final correction commit's exact SHA is supplied in the final A–T closeout to avoid embedding a self-referential hash in this report.
+The code/tests and documentation/evidence are separated from unrelated history. Implementation commit: `1125be76906b8411dee6f6d54b12eaf341eee9f2` (`feat(core): add identity and authorization foundation`). The report and EV-046 were then committed and refined in documentation-only commits covering source-to-manifest binding, migration evidence precision, and exact regression commands. The final A–T closeout lists the documentation commit IDs and final HEAD; this report does not embed its own final commit hash.
 
 ## T. STOP
 
