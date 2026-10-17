@@ -131,6 +131,15 @@ internal static class CoreHost
                 context.Response.Headers["Referrer-Policy"] = "no-referrer";
                 await next(context);
             });
+            app.Use(async (context, next) =>
+            {
+                if (!HasExpectedHost(context, hostOptions))
+                {
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    return;
+                }
+                await next(context);
+            });
             app.UseRouting();
             app.UseRateLimiter();
             CoreAuthEndpoints.Map(app);
@@ -148,6 +157,17 @@ internal static class CoreHost
     }
 
     private sealed record LiveStatus(string Status);
+
+    private static bool HasExpectedHost(HttpContext context, CoreHostOptions options)
+    {
+        if (!context.Request.IsHttps || !context.Request.Host.HasValue ||
+            !IPAddress.TryParse(context.Request.Host.Host, out var requestedAddress) ||
+            !requestedAddress.Equals(options.ListenAddress))
+            return false;
+
+        var requestedPort = context.Request.Host.Port ?? (context.Request.IsHttps ? 443 : 80);
+        return requestedPort == options.Port;
+    }
 
     private static async ValueTask HandleRateLimitRejectedAsync(Microsoft.AspNetCore.RateLimiting.OnRejectedContext context, CancellationToken cancellationToken)
     {

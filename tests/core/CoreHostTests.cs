@@ -20,9 +20,9 @@ namespace Hispania.Core.Tests;
 
 public sealed class CoreHostTests : IDisposable
 {
-    private readonly List<string> _temporaryDataDirectories = [];
-    private readonly List<string> _temporaryCertificateFiles = [];
     private readonly Dictionary<int, string> _certificateThumbprints = [];
+    private readonly Dictionary<int, CookieContainer> _cookieContainers = [];
+    private string? _temporaryRootDirectory;
     private string? _lastDataDirectory;
 
     [Fact]
@@ -245,6 +245,17 @@ public sealed class CoreHostTests : IDisposable
         Assert.Contains("secure", sessionCookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("httponly", sessionCookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("samesite=strict", sessionCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("path=/api/v1/auth", sessionCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("domain=", sessionCookie, StringComparison.OrdinalIgnoreCase);
+        var csrfCookie = Assert.Single(setCookies, value => value.StartsWith("__Secure-HispaniaCsrf=", StringComparison.Ordinal));
+        Assert.Contains("secure", csrfCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("httponly", csrfCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("samesite=strict", csrfCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("path=/api/v1/auth", csrfCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("domain=", csrfCookie, StringComparison.OrdinalIgnoreCase);
+        var cookieJar = _cookieContainers[port];
+        Assert.Equal(2, cookieJar.GetCookies(new Uri(origin + "/api/v1/auth/me")).Count);
+        Assert.Empty(cookieJar.GetCookies(new Uri(origin + "/health/live")));
         var sessionSecretForReplayTest = sessionCookie.Split(';', 2)[0].Split('=', 2)[1];
         var loginBody = await loginResponse.Content.ReadFromJsonAsync<CoreAuthEndpoints.LoginResponse>();
         Assert.NotNull(loginBody);
@@ -301,6 +312,12 @@ public sealed class CoreHostTests : IDisposable
         using var csrfInvalidResponse = await client.SendAsync(csrfInvalidLogout);
         Assert.Equal(HttpStatusCode.BadRequest, csrfInvalidResponse.StatusCode);
 
+        using var csrfWrongLogout = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/logout");
+        csrfWrongLogout.Headers.TryAddWithoutValidation("Origin", origin);
+        csrfWrongLogout.Headers.TryAddWithoutValidation("X-Hispania-CSRF", "invalid-antiforgery-token");
+        using var csrfWrongResponse = await client.SendAsync(csrfWrongLogout);
+        Assert.Equal(HttpStatusCode.BadRequest, csrfWrongResponse.StatusCode);
+
         using var crossSiteLogout = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/logout");
         crossSiteLogout.Headers.TryAddWithoutValidation("Origin", "https://attacker.invalid");
         crossSiteLogout.Headers.TryAddWithoutValidation("X-Hispania-CSRF", loginBody.CsrfToken);
@@ -350,19 +367,68 @@ public sealed class CoreHostTests : IDisposable
     }
 
     [Fact]
+    public async Task LoginFailsClosedForMissingNullMalformedAndForeignOriginsAndUntrustedHost()
+    {
+        var port = GetAvailableLoopbackPort();
+        await using var app = Build(port);
+        await app.StartAsync();
+        Assert.Equal(CoreBootstrapResult.Created,
+            await app.Services.GetRequiredService<ICoreBootstrapService>()
+                .CreateInitialAdministratorAsync("origin-owner", "origin-test-password-2026", CancellationToken.None));
+        using var client = CreateClient(port);
+        var invalidOrigins = new string?[] { null, "null", "not-an-origin", "https://attacker.invalid" };
+        foreach (var origin in invalidOrigins)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/login")
+            {
+                Content = JsonContent.Create(new { username = "origin-owner", password = "origin-test-password-2026" })
+            };
+            if (origin is not null) request.Headers.TryAddWithoutValidation("Origin", origin);
+            using var response = await client.SendAsync(request);
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            Assert.False(response.Headers.Contains("Set-Cookie"));
+        }
+
+        using (var spoofedHost = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/login")
+        {
+            Content = JsonContent.Create(new { username = "origin-owner", password = "origin-test-password-2026" })
+        })
+        {
+            spoofedHost.Headers.Host = $"attacker.invalid:{port}";
+            spoofedHost.Headers.TryAddWithoutValidation("Origin", $"https://attacker.invalid:{port}");
+            using var rejectedHost = await client.SendAsync(spoofedHost);
+            Assert.Equal(HttpStatusCode.BadRequest, rejectedHost.StatusCode);
+            Assert.False(rejectedHost.Headers.Contains("Set-Cookie"));
+        }
+
+        await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = Path.Combine(_lastDataDirectory!, "core.db"),
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false
+        }.ToString());
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM core_sessions;";
+        Assert.Equal(0L, await command.ExecuteScalarAsync());
+        await app.StopAsync();
+    }
+
+    [Fact]
     public async Task ProcessLoginRateLimitIsConcurrentAndRecoversAfterItsWindow()
     {
         var port = GetAvailableLoopbackPort();
         await using var app = Build(port, loginRateLimit: 2, loginRateWindowSeconds: 2);
         await app.StartAsync();
         using var client = CreateClient(port);
-        var requests = Enumerable.Range(0, 8).Select(_ =>
+        var requests = Enumerable.Range(0, 8).Select(index =>
         {
             var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/login")
             {
                 Content = JsonContent.Create(new { username = "no-user", password = "not the password at all" })
             };
             request.Headers.TryAddWithoutValidation("Origin", $"https://127.0.0.1:{port}");
+            request.Headers.TryAddWithoutValidation("X-Forwarded-For", $"198.51.100.{index + 1}");
             return client.SendAsync(request);
         }).ToArray();
         var responses = await Task.WhenAll(requests);
@@ -501,8 +567,9 @@ public sealed class CoreHostTests : IDisposable
 
     private WebApplication Build(int port, int loginRateLimit = 20, int loginRateWindowSeconds = 60, string? dataDirectory = null)
     {
-        dataDirectory ??= Path.Combine(Path.GetTempPath(), "hispania-core-host-tests", Guid.NewGuid().ToString("N"));
-        _temporaryDataDirectories.Add(dataDirectory);
+        var temporaryRoot = GetTemporaryRootDirectory();
+        dataDirectory ??= Path.Combine(temporaryRoot, $"data-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataDirectory);
         _lastDataDirectory = dataDirectory;
         using var rsa = RSA.Create(2048);
         var request = new CertificateRequest("CN=localhost", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -514,10 +581,9 @@ public sealed class CoreHostTests : IDisposable
         request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
         request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new("1.3.6.1.5.5.7.3.1") }, true));
         using var generated = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(1));
-        var certificatePath = Path.Combine(Path.GetTempPath(), $"hispania-core-test-{Guid.NewGuid():N}.pfx");
+        var certificatePath = Path.Combine(temporaryRoot, $"certificate-{Guid.NewGuid():N}.pfx");
         var certificatePassword = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         File.WriteAllBytes(certificatePath, generated.Export(X509ContentType.Pfx, certificatePassword));
-        _temporaryCertificateFiles.Add(certificatePath);
         _certificateThumbprints[port] = generated.Thumbprint;
         return CoreHost.Build(new Dictionary<string, string?>
         {
@@ -535,19 +601,42 @@ public sealed class CoreHostTests : IDisposable
     private HttpClient CreateClient(int port) => new(new HttpClientHandler
     {
         UseCookies = true,
-        CookieContainer = new CookieContainer(),
+        CookieContainer = RegisterCookieContainer(port),
         ServerCertificateCustomValidationCallback = (_, certificate, _, _) =>
             certificate is not null && string.Equals(certificate.GetCertHashString(), _certificateThumbprints[port], StringComparison.OrdinalIgnoreCase)
     }) { BaseAddress = new Uri($"https://127.0.0.1:{port}") };
 
+    private CookieContainer RegisterCookieContainer(int port)
+    {
+        var cookies = new CookieContainer();
+        _cookieContainers[port] = cookies;
+        return cookies;
+    }
+
     public void Dispose()
     {
-        foreach (var directory in _temporaryDataDirectories)
+        if (_temporaryRootDirectory is not null && Directory.Exists(_temporaryRootDirectory))
         {
-            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+            try
+            {
+                Directory.Delete(_temporaryRootDirectory, recursive: true);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                throw new IOException("Core host test cleanup failed; temporary certificate or session/database material may remain.", exception);
+            }
         }
-        foreach (var file in _temporaryCertificateFiles)
-            if (File.Exists(file)) File.Delete(file);
+    }
+
+    private string GetTemporaryRootDirectory()
+    {
+        if (_temporaryRootDirectory is not null) return _temporaryRootDirectory;
+        var path = Path.Combine(Path.GetTempPath(), $"hispania-core-host-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(path);
+        _temporaryRootDirectory = path;
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return path;
     }
 
     private static int GetAvailableLoopbackPort()
