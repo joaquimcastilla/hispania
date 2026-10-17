@@ -126,56 +126,56 @@
       "id": "Microsoft.Data.Sqlite",
       "version": "10.0.12",
       "phases": ["build", "runtime", "publish"],
-      "status": "conditional",
-      "rationale": "Approved Core provider direction, but admit only in Slice 4 after real Core graph and RID assets are reviewed."
+      "status": "allowed",
+      "rationale": "Direct Core SQLite ADO.NET provider; exact real win-x64 graph and native runtime payload were validated in Slice 4. MIT package metadata; distribution notices remain a later gate."
     },
     {
       "kind": "package",
       "id": "Microsoft.Data.Sqlite.Core",
       "version": "10.0.12",
       "phases": ["build", "runtime", "publish"],
-      "status": "conditional",
-      "rationale": "Expected SQLite transitive package; must be present at the exact resolved version when used."
+      "status": "allowed",
+      "rationale": "Exact transitive provider implementation used by Microsoft.Data.Sqlite 10.0.12 in the validated win-x64 graph; MIT package metadata."
     },
     {
       "kind": "package",
       "id": "SQLitePCLRaw.bundle_e_sqlite3",
       "version": "2.1.12",
       "phases": ["build", "runtime", "publish"],
-      "status": "conditional",
-      "rationale": "Candidate managed/native bundle; verify actual package and per-RID publish assets in Slice 4."
+      "status": "allowed",
+      "rationale": "Exact transitive provider/native bundle used by the validated win-x64 graph; Apache-2.0 package metadata."
     },
     {
       "kind": "package",
       "id": "SQLitePCLRaw.core",
       "version": "2.1.12",
       "phases": ["build", "runtime", "publish"],
-      "status": "conditional",
-      "rationale": "Expected SQLite transitive package; exact version and license metadata recorded in R5."
+      "status": "allowed",
+      "rationale": "Exact transitive SQLitePCLRaw API package in the validated win-x64 graph; Apache-2.0 package metadata."
     },
     {
       "kind": "package",
       "id": "SQLitePCLRaw.lib.e_sqlite3",
       "version": "2.1.12",
       "phases": ["build", "runtime", "publish"],
-      "status": "conditional",
-      "rationale": "Carries native SQLite assets; enumerate actual selected RID payload and notices before admission."
+      "status": "allowed",
+      "rationale": "Exact transitive SQLite native package in the validated win-x64 graph; Apache-2.0 package metadata, native SQLite source is public domain per upstream; per-RID artifact hashes and notices remain recorded separately."
     },
     {
       "kind": "package",
       "id": "SQLitePCLRaw.provider.e_sqlite3",
       "version": "2.1.12",
       "phases": ["build", "runtime", "publish"],
-      "status": "conditional",
-      "rationale": "Expected SQLite provider package; exact version and license metadata recorded in R5."
+      "status": "allowed",
+      "rationale": "Exact transitive SQLitePCLRaw provider package in the validated win-x64 graph; Apache-2.0 package metadata."
     },
     {
       "kind": "runtimeAsset",
       "id": "SQLitePCLRaw.lib.e_sqlite3:runtimes/win-x64/native/e_sqlite3.dll",
       "version": "2.1.12",
       "phases": ["publish"],
-      "status": "conditional",
-      "rationale": "Expected native SQLite runtime asset for win-x64; confirm exact published relative path and hash in Slice 4/9."
+      "status": "allowed",
+      "rationale": "Native e_sqlite3.dll is present in the real framework-dependent win-x64 publish and required by the resolved SQLitePCLRaw native dependency; exact file hash and size are recorded in Slice 4 evidence."
     },
     {
       "kind": "runtimeAsset",
@@ -202,15 +202,17 @@
   ],
   "allowedFilePatterns": [
     "Hispania.Core.dll", "Hispania.Core.deps.json", "Hispania.Core.runtimeconfig.json", "Hispania.Core", "Hispania.Core.exe",
-    "Hispania.ModuleSystem.Contracts.dll", "Hispania.Platform.Contracts.dll"
+    "Hispania.ModuleSystem.Contracts.dll", "Hispania.Platform.Contracts.dll",
+    "Microsoft.Data.Sqlite.dll", "SQLitePCLRaw.batteries_v2.dll", "SQLitePCLRaw.core.dll",
+    "SQLitePCLRaw.provider.e_sqlite3.dll", "e_sqlite3.dll"
   ],
   "conditionalFilePatterns": [
     "Hispania.Runtime.dll",
     "Hispania.Identity.Application.dll", "Hispania.Authorization.Application.dll",
     "Hispania.Core.Persistence.Contracts.dll", "Hispania.Core.Persistence.Sqlite.dll",
-    "NuGet.Versioning.dll", "NuGet.Common.dll", "Microsoft.Data.Sqlite.dll", "Microsoft.Data.Sqlite.Core.dll",
-    "SQLitePCLRaw.bundle_e_sqlite3.dll", "SQLitePCLRaw.core.dll", "SQLitePCLRaw.provider.e_sqlite3.dll",
-    "runtimes/win-x64/native/e_sqlite3.dll", "runtimes/linux-x64/native/libe_sqlite3.so", "runtimes/linux-arm64/native/libe_sqlite3.so"
+    "NuGet.Versioning.dll", "NuGet.Common.dll", "Microsoft.Data.Sqlite.Core.dll",
+    "SQLitePCLRaw.bundle_e_sqlite3.dll",
+    "runtimes/linux-x64/native/libe_sqlite3.so", "runtimes/linux-arm64/native/libe_sqlite3.so"
   ],
   "excludedSha256": [
     "FCB341C4F3504B8FA85C75E32F386A3251B5CC31A55385B0B6B45FB4A9AF540E",

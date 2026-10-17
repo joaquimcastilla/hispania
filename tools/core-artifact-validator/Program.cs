@@ -346,7 +346,7 @@ public static class ArtifactValidator
             {
                 var separator = asset.Id.IndexOf(':');
                 var relativeAssetPath = separator < 0 ? string.Empty : asset.Id[(separator + 1)..];
-                if (!manifest.Files.Any(file => string.Equals(file.Path, relativeAssetPath, StringComparison.Ordinal)))
+                if (!HasPublishedNativeAsset(relativeAssetPath, manifest.RuntimeIdentifier, manifest.Files))
                     issues.Add($"Resolved native runtime asset is absent from the artifact file list: {relativeAssetPath}.");
             }
         }
@@ -386,6 +386,20 @@ public static class ArtifactValidator
 
     private static string DependencyKey(ResolvedDependency item) =>
         $"{item.Kind}|{item.Id}|{item.Version}|{item.Phase}|{item.Direct}";
+
+    private static bool HasPublishedNativeAsset(string packageAssetPath, string runtimeIdentifier, IReadOnlyList<ArtifactFile> files)
+    {
+        if (files.Any(file => string.Equals(file.Path, packageAssetPath, StringComparison.Ordinal))) return true;
+
+        // dotnet publish flattens RID-native package assets into the artifact root. Keep this
+        // mapping narrow to runtimes/<selected RID>/native/<single filename>; no basename-only
+        // matching is accepted for arbitrary package paths.
+        var prefix = $"runtimes/{runtimeIdentifier}/native/";
+        if (!packageAssetPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
+        var fileName = packageAssetPath[prefix.Length..];
+        if (fileName.Length == 0 || fileName.Contains('/')) return false;
+        return files.Any(file => string.Equals(file.Path, fileName, StringComparison.Ordinal));
+    }
 
     private static void VerifyFile(string root, string path, ArtifactFile expected, List<string> issues)
     {
