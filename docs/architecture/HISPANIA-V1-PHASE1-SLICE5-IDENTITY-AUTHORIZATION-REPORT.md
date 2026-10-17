@@ -61,7 +61,7 @@ No cookies, JWT, HTTP login, HTTP admin, or bearer-token endpoint was introduced
 
 The versioned v2 migration extends Slice 4's v1 `core_instance` with a bootstrap timestamp and adds `core_identities`, `core_credentials`, `core_roles`, `core_permissions`, `core_role_permissions`, `core_subject_roles`, `core_sessions`, `core_bootstrap_state`, and `core_security_audit`, including foreign keys, unique constraints, check constraints, and an active-session lookup index. It seeds only system permission metadata and the administrator role; it creates no account. V1 is not rewritten. Migration v2 and its history entry apply transactionally. Integrity checks and future/incomplete schema fail closed while preserving data.
 
-Evidence includes both an integration fixture reproducing the exact Slice 4 v1 schema and a process migration: the real Slice 4 published Core initialized schema v1, then the final Slice 5 published Core opened that database, migrated it to v2, preserved the installation ID, and completed bootstrap. Final query confirmed schema v2, one identity, and completed bootstrap.
+Evidence includes both an integration fixture reproducing the exact Slice 4 v1 schema and a process migration: the real Slice 4 published Core initialized schema v1, then the final Slice 5 published Core opened that database, migrated it to v2, and completed bootstrap. A final query confirmed schema v2, one identity, and completed bootstrap. The integration fixture separately asserts that the installation ID remains unchanged across migration.
 
 ## K. HOST AND CLI INTEGRATION
 
