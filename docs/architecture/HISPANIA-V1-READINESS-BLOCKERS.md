@@ -4,6 +4,16 @@
 
 **R1 result:** PASS for the R1 corrective audit scope. **R2 result:** PASS for its audit scope with limitations. **R3 result:** CONDITIONAL — SPECIFIC PRE-IMPLEMENTATION ISSUE. Final Step 0.3 owner acceptance remains pending. **Phase 1:** NOT AUTHORIZED.
 
+## R4 evidence recovery and Slice 1 addendum — 2026-10-17
+
+R4 confirms the expected isolated branch/HEAD and clean worktree. The 49/49 preserved source hashes and 49/49 backup hashes match; all 15 original worktrees retain their preflight status counts. No test or build was run.
+
+Static search found five candidate Platform test classes (Identity, Authorization, durable Events, Jobs, and Platform SQLite) in `tests/inventory/Hispania.Inventory.Tests.csproj`. The test project has direct references to the legacy Server, WorkerAgent, Media/Library/Playback, Inventory, PostgreSQL, process-host, and resilience projects. A filter does not prevent those source/project inputs from being compiled. Exact test-case discovery was not run; the earlier reported 22/22 still has no command, exact selection, source SHA or TRX.
+
+Under approved D1/D5 and the current limited `LICENSE.md`, rights for those exact source/test inputs are not documented in the register. Therefore R4 did not run discovery/build/tests or restore an unverified dependency graph. The six D4 unknown-rights artifacts remain excluded; no compatibility suite was invoked. See the [R4 input inventory, bounded owner evidence request, and safe execution plan](HISPANIA-V1-STEP-0.3-R4-EVIDENCE-AND-SLICE1-INPUTS.md) and Evidence Ledger EV-036/EV-037.
+
+**R4 recommendation: BLOCKED — VALIDATION INCOMPLETE.** The bounded next action is owner evidence for private local non-commercial use of the listed test/source inputs, including known exceptions, or a rights-cleared narrower input set. Then test discovery and execution can be recorded. This addendum does not change D1–D6, grant rights, accept Step 0.3, or authorize Phase 1.
+
 This is a report on evidence, not a change to the Freeze.
 
 ## Freeze §12 — Phase 1 blockers vs deferrals
