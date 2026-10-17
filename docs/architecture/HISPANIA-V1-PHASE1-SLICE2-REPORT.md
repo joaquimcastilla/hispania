@@ -57,7 +57,7 @@ The overall roadmap stays at 4/14 until Phase 1 acceptance.
 - Starting HEAD: `af03bca20d9c21d95e847dc47d027b0965d98131`.
 - No incomplete Git operation was present. Initial worktree was clean before Slice 2 edits.
 - Freeze, final Step 0.3 acceptance, Slice 1 report/baseline, Evidence Ledger, provisional allowlist, R5 dependency/license inventory were present.
-- Preservation snapshot `preflight-state.json` declares 15 worktrees but its `worktrees` array contains 14 detailed records. All 14 detailed records still match saved HEAD, branch, and status count. The current Git worktree inventory has 16 entries: those 14 roots, the additional `phase20-production-validation` root (HEAD `2cfb8e6f8756b6ee934143e5393bea6e1adf1cc3`, clean), and this authorized integration worktree. The additional root was present in the original task preflight inventory and remains unchanged; the capture-count/detail mismatch is recorded as a limitation rather than inferred away.
+- The original worktree inventory is reconciled in [HISPANIA-V1-WORKTREE-PRESERVATION-INVENTORY.md](HISPANIA-V1-WORKTREE-PRESERVATION-INVENTORY.md): 15 original roots plus this authorized integration worktree make 16 current entries. The archive snapshot details 14; its missing record is the clean detached `phase20-production-validation` root at HEAD `2cfb8e6f8756b6ee934143e5393bea6e1adf1cc3`. All 14 archived records match their saved HEAD, branch and status count.
 - The 5 preserved source worktrees have 49 source files and 49 backups; every live and backup SHA-256 matches the preservation manifest (49/49 pairs).
 
 ## D. DEPENDENCY CLASSIFICATION
@@ -135,7 +135,7 @@ Created the policy report, versioned JSON allowlist, manifest JSON Schema, and p
 
 ## O. INTEGRITY
 
-- All 14 detailed entries in the preservation preflight array match their recorded branch, HEAD and status count; the task preflight inventory showed 16 total entries including this authorized worktree and the additional clean `phase20-production-validation` worktree.
+- The [reconciled worktree inventory](HISPANIA-V1-WORKTREE-PRESERVATION-INVENTORY.md) lists all 15 original worktrees; 14 have archived detail rows and the additional detached `phase20-production-validation` root is clean. The authorized worktree is the 16th entry.
 - All 49/49 preserved source/backup pairs match the manifest hashes.
 - Unknown-rights hashes match the allowlist; the license hash is unchanged.
 - Only new tool/test files and Slice 2 architecture documentation/rights/evidence records are in scope. No `apps/server`, existing contract, historical test, or license file changed.

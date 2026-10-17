@@ -94,7 +94,7 @@
       "version": "source",
       "phases": ["build", "runtime", "publish"],
       "status": "conditional",
-      "rationale": "The host is not created in Slice 2; Slice 3 must validate the first real Core project against this policy.",
+      "rationale": "This project is the artifact root, not a dependency. The host is validated as the artifact identity and its publish graph; keep this entry conditional so a self-project reference fails closed.",
       "assemblyName": "Hispania.Core"
     },
     {
