@@ -1,5 +1,6 @@
 using System.Net;
 using Hispania.Core.Configuration;
+using Hispania.Core.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
@@ -40,6 +41,11 @@ internal static class CoreHost
         builder.Logging.SetMinimumLevel(hostOptions.MinimumLogLevel);
         builder.Logging.AddJsonConsole();
         builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = hostOptions.ShutdownTimeout);
+        builder.Services.AddSingleton(hostOptions.Storage);
+        builder.Services.AddSingleton<ICorePersistence, SqliteCorePersistence>();
+        // IHostedLifecycleService.StartingAsync runs before any IHostedService.StartAsync,
+        // including Kestrel's listener, so storage must pass before the host can accept traffic.
+        builder.Services.AddHostedService<CorePersistenceLifecycle>();
         builder.WebHost.ConfigureKestrel(options =>
         {
             options.AddServerHeader = false;

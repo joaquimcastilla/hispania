@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Hispania.Core.Configuration;
 
-internal sealed record CoreHostOptions(IPAddress ListenAddress, int Port, TimeSpan ShutdownTimeout, LogLevel MinimumLogLevel, string Version, string EnvironmentName)
+internal sealed record CoreHostOptions(IPAddress ListenAddress, int Port, TimeSpan ShutdownTimeout, LogLevel MinimumLogLevel, string Version, string EnvironmentName, CoreStorageOptions Storage)
 {
     public const string DefaultListenAddress = "127.0.0.1";
     public const int DefaultPort = 5070;
@@ -34,7 +34,8 @@ internal sealed record CoreHostOptions(IPAddress ListenAddress, int Port, TimeSp
             throw new CoreConfigurationException("LOG_LEVEL must be Trace, Debug, Information, Warning, Error, or Critical.");
 
         var version = typeof(CoreHostOptions).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
-        return new CoreHostOptions(address, port, TimeSpan.FromSeconds(timeout), minimumLogLevel, version, environmentName);
+        var storage = CoreStorageOptions.Read(configuration, AppContext.BaseDirectory);
+        return new CoreHostOptions(address, port, TimeSpan.FromSeconds(timeout), minimumLogLevel, version, environmentName, storage);
     }
 }
 

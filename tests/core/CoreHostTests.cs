@@ -11,8 +11,10 @@ using Xunit;
 
 namespace Hispania.Core.Tests;
 
-public sealed class CoreHostTests
+public sealed class CoreHostTests : IDisposable
 {
+    private readonly List<string> _temporaryDataDirectories = [];
+
     [Fact]
     public void DefaultsUseLoopbackAndHaveNoDomainOrCredentialConfiguration()
     {
@@ -21,9 +23,10 @@ public sealed class CoreHostTests
         Assert.Equal(5070, options.Port);
         Assert.Equal(TimeSpan.FromSeconds(10), options.ShutdownTimeout);
         Assert.Equal(LogLevel.Information, options.MinimumLogLevel);
+        Assert.False(string.Equals(options.Storage.DataDirectory, Environment.CurrentDirectory, StringComparison.OrdinalIgnoreCase));
         Assert.False(string.IsNullOrWhiteSpace(options.Version));
         Assert.DoesNotContain(typeof(CoreHost).Assembly.GetReferencedAssemblies(), reference =>
-            new[] { "Hispania.Server", "Hispania.Inventory", "Hispania.Media", "Hispania.WorkerAgent", "Npgsql", "Microsoft.Data.Sqlite" }
+            new[] { "Hispania.Server", "Hispania.Inventory", "Hispania.Media", "Hispania.WorkerAgent", "Npgsql" }
                 .Contains(reference.Name, StringComparer.OrdinalIgnoreCase));
     }
 
@@ -139,12 +142,26 @@ public sealed class CoreHostTests
         Assert.Equal("/health/live", Assert.IsType<Microsoft.AspNetCore.Routing.RouteEndpoint>(endpoints[0]).RoutePattern.RawText);
     }
 
-    private static WebApplication Build(int port) => CoreHost.Build(new Dictionary<string, string?>
+    private WebApplication Build(int port)
     {
-        ["LISTEN_ADDRESS"] = "127.0.0.1",
-        ["PORT"] = port.ToString(System.Globalization.CultureInfo.InvariantCulture),
-        ["SHUTDOWN_TIMEOUT_SECONDS"] = "3"
-    });
+        var dataDirectory = Path.Combine(Path.GetTempPath(), "hispania-core-host-tests", Guid.NewGuid().ToString("N"));
+        _temporaryDataDirectories.Add(dataDirectory);
+        return CoreHost.Build(new Dictionary<string, string?>
+        {
+            ["LISTEN_ADDRESS"] = "127.0.0.1",
+            ["PORT"] = port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["SHUTDOWN_TIMEOUT_SECONDS"] = "3",
+            ["DATA_DIRECTORY"] = dataDirectory
+        });
+    }
+
+    public void Dispose()
+    {
+        foreach (var directory in _temporaryDataDirectories)
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
 
     private static int GetAvailableLoopbackPort()
     {
