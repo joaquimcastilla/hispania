@@ -1,5 +1,6 @@
 using System.Net;
 using Hispania.Core.Configuration;
+using Hispania.Core.Identity;
 using Hispania.Core.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -8,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Identity;
 
 namespace Hispania.Core.Hosting;
 
@@ -43,6 +45,19 @@ internal static class CoreHost
         builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = hostOptions.ShutdownTimeout);
         builder.Services.AddSingleton(hostOptions.Storage);
         builder.Services.AddSingleton<ICorePersistence, SqliteCorePersistence>();
+        builder.Services.AddSingleton<SqliteCoreIdentityStore>();
+        builder.Services.AddSingleton<ICoreIdentityStore>(services => services.GetRequiredService<SqliteCoreIdentityStore>());
+        builder.Services.AddSingleton<IPasswordHasher<CoreIdentity>, PasswordHasher<CoreIdentity>>();
+        builder.Services.Configure<PasswordHasherOptions>(options =>
+        {
+            options.CompatibilityMode = PasswordHasherCompatibilityMode.IdentityV3;
+            options.IterationCount = CoreIdentityService.Iterations;
+        });
+        builder.Services.AddSingleton<CoreIdentityService>();
+        builder.Services.AddSingleton<ICoreIdentityService>(services => services.GetRequiredService<CoreIdentityService>());
+        builder.Services.AddSingleton<ICoreAuthorizationService, CoreAuthorizationService>();
+        builder.Services.AddSingleton<ICoreSessionService, CoreSessionService>();
+        builder.Services.AddSingleton<ICoreBootstrapService, CoreBootstrapService>();
         // IHostedLifecycleService.StartingAsync runs before any IHostedService.StartAsync,
         // including Kestrel's listener, so storage must pass before the host can accept traffic.
         builder.Services.AddHostedService<CorePersistenceLifecycle>();

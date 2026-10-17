@@ -8,7 +8,7 @@ namespace Hispania.Core.Persistence;
 
 internal sealed class SqliteCorePersistence : ICorePersistence
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private const int BusyTimeoutMilliseconds = 5000;
     private const string MigrationTable = "core_schema_migrations";
     private const string InstanceTable = "core_instance";
@@ -172,19 +172,28 @@ internal sealed class SqliteCorePersistence : ICorePersistence
         if (!versions.SequenceEqual(Enumerable.Range(1, versions.Count)))
             throw new CorePersistenceException("Core database migration history is incomplete; it was preserved.");
 
-        if (versions.Count == 0)
+        var appliedVersions = versions.ToList();
+        if (appliedVersions.Count == 0)
         {
             await ApplyMigration1Async(connection, transaction, cancellationToken).ConfigureAwait(false);
-            await using var applied = connection.CreateCommand();
-            applied.Transaction = transaction;
-            applied.CommandText = $"INSERT INTO {MigrationTable} (version, applied_utc) VALUES (1, $appliedUtc);";
-            applied.Parameters.AddWithValue("$appliedUtc", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
-            await applied.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            await RecordMigrationAsync(connection, transaction, 1, cancellationToken).ConfigureAwait(false);
+            appliedVersions.Add(1);
         }
-        else
+
+        for (var nextVersion = appliedVersions.Count + 1; nextVersion <= CurrentSchemaVersion; nextVersion++)
         {
-            await VerifyCurrentSchemaAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+            switch (nextVersion)
+            {
+                case 2:
+                    await ApplyMigration2Async(connection, transaction, cancellationToken).ConfigureAwait(false);
+                    break;
+                default:
+                    throw new CorePersistenceException("Core database is missing a supported migration; it was preserved.");
+            }
+            await RecordMigrationAsync(connection, transaction, nextVersion, cancellationToken).ConfigureAwait(false);
         }
+
+        await VerifyCurrentSchemaAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
 
         await using var foreignKeys = connection.CreateCommand();
         foreignKeys.Transaction = transaction;
@@ -207,6 +216,41 @@ internal sealed class SqliteCorePersistence : ICorePersistence
         await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    private static async Task RecordMigrationAsync(SqliteConnection connection, SqliteTransaction transaction, int version, CancellationToken cancellationToken)
+    {
+        await using var applied = connection.CreateCommand();
+        applied.Transaction = transaction;
+        applied.CommandText = $"INSERT INTO {MigrationTable} (version, applied_utc) VALUES ($version, $appliedUtc);";
+        applied.Parameters.AddWithValue("$version", version);
+        applied.Parameters.AddWithValue("$appliedUtc", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+        await applied.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task ApplyMigration2Async(SqliteConnection connection, SqliteTransaction transaction, CancellationToken cancellationToken)
+    {
+        var statements = new[]
+        {
+            "ALTER TABLE core_instance ADD COLUMN bootstrap_completed_utc TEXT NULL;",
+            "CREATE TABLE core_identities (subject_id TEXT NOT NULL PRIMARY KEY CHECK(length(subject_id) = 32), subject_kind TEXT NOT NULL CHECK(length(subject_kind) BETWEEN 1 AND 32), username TEXT NOT NULL CHECK(length(username) BETWEEN 3 AND 64), username_normalized TEXT NOT NULL UNIQUE CHECK(length(username_normalized) BETWEEN 3 AND 64), status TEXT NOT NULL CHECK(status IN ('active', 'disabled')), created_utc TEXT NOT NULL, updated_utc TEXT NOT NULL);",
+            "CREATE TABLE core_credentials (subject_id TEXT NOT NULL PRIMARY KEY, hash_format TEXT NOT NULL CHECK(length(hash_format) BETWEEN 1 AND 64), algorithm TEXT NOT NULL CHECK(length(algorithm) BETWEEN 1 AND 64), iterations INTEGER NOT NULL CHECK(iterations BETWEEN 100000 AND 220000), password_hash TEXT NOT NULL CHECK(length(password_hash) BETWEEN 1 AND 512), updated_utc TEXT NOT NULL, FOREIGN KEY(subject_id) REFERENCES core_identities(subject_id) ON DELETE CASCADE);",
+            "CREATE TABLE core_roles (role_id TEXT NOT NULL PRIMARY KEY CHECK(length(role_id) BETWEEN 2 AND 128), is_system INTEGER NOT NULL CHECK(is_system IN (0, 1)), created_utc TEXT NOT NULL);",
+            "CREATE TABLE core_permissions (permission_id TEXT NOT NULL PRIMARY KEY CHECK(length(permission_id) BETWEEN 2 AND 128), created_utc TEXT NOT NULL);",
+            "CREATE TABLE core_role_permissions (role_id TEXT NOT NULL, permission_id TEXT NOT NULL, granted_utc TEXT NOT NULL, PRIMARY KEY(role_id, permission_id), FOREIGN KEY(role_id) REFERENCES core_roles(role_id) ON DELETE CASCADE, FOREIGN KEY(permission_id) REFERENCES core_permissions(permission_id) ON DELETE CASCADE);",
+            "CREATE TABLE core_subject_roles (subject_id TEXT NOT NULL, role_id TEXT NOT NULL, assigned_utc TEXT NOT NULL, PRIMARY KEY(subject_id, role_id), FOREIGN KEY(subject_id) REFERENCES core_identities(subject_id) ON DELETE CASCADE, FOREIGN KEY(role_id) REFERENCES core_roles(role_id) ON DELETE CASCADE);",
+            "CREATE TABLE core_sessions (session_id TEXT NOT NULL PRIMARY KEY CHECK(length(session_id) = 32), subject_id TEXT NOT NULL, token_hash BLOB NOT NULL UNIQUE CHECK(length(token_hash) = 32), created_utc TEXT NOT NULL, expires_utc TEXT NOT NULL, revoked_utc TEXT NULL, FOREIGN KEY(subject_id) REFERENCES core_identities(subject_id) ON DELETE CASCADE);",
+            "CREATE INDEX ix_core_sessions_subject_active ON core_sessions(subject_id, revoked_utc, expires_utc);",
+            "CREATE TABLE core_bootstrap_state (singleton_id INTEGER NOT NULL PRIMARY KEY CHECK(singleton_id = 1), completed_utc TEXT NULL, completed_by_subject_id TEXT NULL, FOREIGN KEY(completed_by_subject_id) REFERENCES core_identities(subject_id) ON DELETE SET NULL);",
+            "CREATE TABLE core_security_audit (event_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, event_code TEXT NOT NULL CHECK(length(event_code) BETWEEN 1 AND 64), occurred_utc TEXT NOT NULL, actor_subject_id TEXT NULL, subject_id TEXT NULL, FOREIGN KEY(actor_subject_id) REFERENCES core_identities(subject_id) ON DELETE SET NULL, FOREIGN KEY(subject_id) REFERENCES core_identities(subject_id) ON DELETE SET NULL);",
+            "INSERT INTO core_bootstrap_state(singleton_id, completed_utc, completed_by_subject_id) VALUES (1, NULL, NULL);",
+            "INSERT INTO core_roles(role_id, is_system, created_utc) VALUES ('core.admin', 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));",
+            "INSERT INTO core_permissions(permission_id, created_utc) VALUES ('core.identity.read', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')), ('core.identity.manage', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')), ('core.authorization.manage', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')), ('core.session.revoke', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));",
+            "INSERT INTO core_role_permissions(role_id, permission_id, granted_utc) SELECT 'core.admin', permission_id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now') FROM core_permissions;"
+        };
+
+        foreach (var statement in statements)
+            await ExecuteAsync(connection, transaction, statement, cancellationToken).ConfigureAwait(false);
+    }
+
     private static async Task VerifyCurrentSchemaAsync(SqliteConnection connection, SqliteTransaction transaction, CancellationToken cancellationToken)
     {
         await using (var migrationShape = connection.CreateCommand())
@@ -218,7 +262,7 @@ internal sealed class SqliteCorePersistence : ICorePersistence
 
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = $"SELECT singleton_id, installation_id, created_utc FROM {InstanceTable} ORDER BY singleton_id;";
+        command.CommandText = $"SELECT singleton_id, installation_id, created_utc, bootstrap_completed_utc FROM {InstanceTable} ORDER BY singleton_id;";
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false) || reader.GetInt32(0) != 1 ||
             !Guid.TryParseExact(reader.GetString(1), "N", out _) ||
@@ -226,6 +270,18 @@ internal sealed class SqliteCorePersistence : ICorePersistence
             throw new CorePersistenceException("Core database instance metadata is invalid; it was preserved.");
         if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             throw new CorePersistenceException("Core database contains unexpected instance records; it was preserved.");
+        await reader.DisposeAsync().ConfigureAwait(false);
+
+        foreach (var table in new[] { "core_identities", "core_credentials", "core_roles", "core_permissions", "core_role_permissions", "core_subject_roles", "core_sessions", "core_bootstrap_state", "core_security_audit" })
+        {
+            if (!await TableExistsAsync(connection, transaction, table, cancellationToken).ConfigureAwait(false))
+                throw new CorePersistenceException("Core database schema is incomplete; it was preserved.");
+        }
+        await using var bootstrap = connection.CreateCommand();
+        bootstrap.Transaction = transaction;
+        bootstrap.CommandText = "SELECT COUNT(*) FROM core_bootstrap_state WHERE singleton_id = 1;";
+        if (Convert.ToInt32(await bootstrap.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false), CultureInfo.InvariantCulture) != 1)
+            throw new CorePersistenceException("Core database bootstrap state is missing or inconsistent; it was preserved.");
     }
 
     private async Task<SqliteConnection> OpenConnectionAsync(CancellationToken cancellationToken)

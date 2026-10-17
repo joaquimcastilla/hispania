@@ -103,7 +103,7 @@ public sealed class CorePersistenceTests
         await second.StopAsync();
 
         await using var connection = await OpenAsync(directory.Path);
-        Assert.Equal("1", await ScalarAsync(connection, "SELECT COUNT(*) FROM core_schema_migrations;"));
+        Assert.Equal("2", await ScalarAsync(connection, "SELECT COUNT(*) FROM core_schema_migrations;"));
         Assert.Equal("1", await ScalarAsync(connection, "SELECT COUNT(*) FROM core_instance;"));
     }
 
