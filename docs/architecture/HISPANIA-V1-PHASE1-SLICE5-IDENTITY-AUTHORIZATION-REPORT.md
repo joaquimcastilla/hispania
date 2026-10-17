@@ -103,7 +103,7 @@ TRXs and published-process smoke records are retained outside the repository und
 
 ## O. REAL PUBLISH, GRAPH, AND EXCLUDED HASHES
 
-Command: `dotnet publish apps/core/Hispania.Core.csproj -c Release -r win-x64 --self-contained false -p:PublishDir=%TEMP%\hispania-slice5-20261017\publish-win-x64\ -p:NuGetAudit=false -v minimal`. This was a real framework-dependent `net10.0/win-x64` publish, not a synthetic artifact. The final artifact has nine runtime files plus its generated manifest. The exact publish validator `create` and `validate` commands both passed with no issues; manifest content ID `BB8E220ED67AFAA21B2E5237F2180D2618F2B060F4A3D3685080D7C875F6A96F`, manifest SHA-256 `379B7130ADC169C1003F39E8B18D874BCEB54F99EB177CDA9E0A40DA507C14F1`.
+Command: `dotnet publish apps/core/Hispania.Core.csproj -c Release -r win-x64 --self-contained false -p:PublishDir=%TEMP%\hispania-slice5-20261017\publish-win-x64\ -p:NuGetAudit=false -v minimal`. This was a real framework-dependent `net10.0/win-x64` publish, not a synthetic artifact. The final artifact has nine runtime files plus its generated manifest. The manifest's `sourceCommit` is implementation commit `1125be76906b8411dee6f6d54b12eaf341eee9f2`, which matches the published source. The exact publish validator `create` and `validate` commands both passed with no issues; manifest content ID `3893BB2DBED3378A6BB03C72E27C8A1A3E04C71EC6B845471C10FB383DAC8719`, manifest SHA-256 `0245E70CB444B96D7E58188AA61A1DF99FBF63D0C68DC289F92C0E07BC30E862`.
 
 The resolved runtime package graph contains only Microsoft.Data.Sqlite 10.0.12 and SQLitePCLRaw 2.1.12 packages plus Microsoft.NETCore.App/Microsoft.AspNetCore.App shared frameworks. No `apps/server`, Inventory, Media, Library/PostgreSQL/Npgsql, FFmpeg, WorkerAgent, or Coordinator dependency appears. Identity has no extra package. All six prohibited historical artifact SHA-256 values were checked against the real published files and absent. Native SQLite artifact remains the Slice 4 `e_sqlite3.dll`; no new native payload was introduced.
 
@@ -121,7 +121,7 @@ Created this report; added EV-046 to the Evidence Ledger; updated the Phase 1 st
 
 ## S. COMMITS AND FINAL STATE
 
-The code/tests and documentation/evidence are separated into two thematic commits after validation. Implementation commit: `1125be76906b8411dee6f6d54b12eaf341eee9f2` (`feat(core): add identity and authorization foundation`). The documentation/evidence commit contains this report and EV-046; its exact final SHA is supplied in the final A–T closeout to avoid embedding a self-referential hash in this report. No self-referential commit hash is embedded here.
+The code/tests and documentation/evidence are separated from unrelated history. Implementation commit: `1125be76906b8411dee6f6d54b12eaf341eee9f2` (`feat(core): add identity and authorization foundation`). Documentation/evidence closeout commit: `29941bb98d1e75a808f22f6ac143ad898cb596d5`; a final documentation-only correction binds the artifact manifest to the implementation commit and updates its hashes. The final correction commit's exact SHA is supplied in the final A–T closeout to avoid embedding a self-referential hash in this report.
 
 ## T. STOP
 
