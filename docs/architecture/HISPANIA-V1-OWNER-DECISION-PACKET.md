@@ -1,8 +1,23 @@
-# HISPANIA v1.0 — Step 0.3-R2 Owner Decision Packet
+# HISPANIA v1.0 — Step 0.3-R2 Owner Decision Packet and R3 Resolution
 
 **Baseline reviewed:** `118840f934df0783de13bebcd7ea0ac0e66dc9fe`
-**Status:** REQUEST FOR OWNER INPUT — none of these recommendations is approved by this packet.
+**Original R2 status:** REQUEST FOR OWNER INPUT.
 **Phase 1:** NOT READY; NOT AUTHORIZED.
+
+## R3 owner response — resolved
+
+The owner explicitly approved all six decisions as **0.3-D1 through 0.3-D6** in the R3 instruction. Their exact approved scope and conditions are recorded in [R3 Owner Decisions and Phase 1 Plan](HISPANIA-V1-STEP-0.3-R3-OWNER-DECISIONS-AND-PHASE1-PLAN.md) and linked from the Architecture Freeze's supplementary §18. All six questions below are **CLOSED — OWNER APPROVED**. Their original alternatives/recommendations are retained as historical context and are superseded by the owner's exact decisions, not expanded by them.
+
+| R2 question | R3 decision | State |
+|---|---|---|
+| 1. Internal-only Phase 1 development | 0.3-D1: permitted only after Step 0.3 passes and separate express Phase 1 authorization; internal only, within existing rights; no third-party distribution/release/production data. | **OWNER APPROVED** |
+| 2. §12 timing | 0.3-D2: all seven are Phase 1 implementation/acceptance requirements, with preconditions: additive work, do not transform `apps/server`, preserve existing contracts, and define the admin security boundary before mutation endpoints. | **OWNER APPROVED** |
+| 3. Core dependency allowlist | 0.3-D3: provisionally approved; verify actual direct/transitive/per-RID graph, licenses and reproducible manifest during Phase 1. | **OWNER APPROVED — PROVISIONAL** |
+| 4. Exclude unknown-rights assets from Core | 0.3-D4: exclude five historical DLLs and MP4 from Empty Core, retain historical locations/tests, and add a Core-absence test in Phase 1; no broader rights clearance. | **OWNER APPROVED** |
+| 5. Contributor authority evidence | 0.3-D5: maintain evidence-based provenance/permission register; no presumptions or invented grants; unclear-rights materials cannot enter Core before clarification. | **OWNER APPROVED** |
+| 6. Legal review and distribution | 0.3-D6: keep `LICENSE.md`; no public distribution/release until rights, dependency/assets/binaries, notices, compatibility/legal review and explicit owner distribution approval. | **OWNER APPROVED** |
+
+The approvals are owner statements in the project conversation, not a digital signature, legal opinion, evidence of title, final Step 0.3 acceptance, Phase 1 authorization, or distribution approval.
 
 ## 1. Phase 1 internal development and rights boundary
 
@@ -60,7 +75,7 @@
 
 ## Evidence for owner review
 
-- §12 labels seven items “BLOCKER for Fase 1”; §13 calls itself a specification for the next phase and says it is not implementation authorization; §16 calls its list entry gates to complete in the later preparation/implementation task. Exact pre-code timing is ambiguous, so readiness is not passed here.
+- **Historical R2 context, superseded by D2:** §12 labels seven items “BLOCKER for Fase 1”; §13 calls itself a specification for the next phase and says it is not implementation authorization; §16 calls its list entry gates to complete in the later preparation/implementation task. The owner resolved the timing in R3: all seven are implementation/acceptance requirements with specific preconditions.
 - The candidate allowlist is static graph analysis, not an artifact-specific published dependency graph.
 - Rights are not resolved by hashes, a valid signature, repository presence or a Git author field. `Signed != Safe`; publisher trust and permissions remain separate under Owner Decision 9.2.
-- No owner option in this packet is approved. No progression to another decision, Phase 1 task or implementation follows from this review.
+- The owner has approved D1–D6; see the R3 response register above. These approvals do not constitute final Step 0.3 acceptance, Phase 1 authorization, rights clearance, legal review, or distribution approval.

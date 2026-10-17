@@ -1,8 +1,8 @@
-# HISPANIA v1.0 — Step 0.3 Readiness Blockers (R1 + R2 corrective interpretation)
+# HISPANIA v1.0 — Step 0.3 Readiness Blockers (R1–R3)
 
 **Audit source HEAD:** `9771b063fefe569a9268fb80cb6789dbc4c043b1`
 
-**R1 result:** PASS for the R1 corrective audit scope. **R2 result:** PASS for the documented audit scope, with owner decisions still required. **Step 0.3 readiness:** NOT READY. **Phase 1:** NOT AUTHORIZED.
+**R1 result:** PASS for the R1 corrective audit scope. **R2 result:** PASS for its audit scope with limitations. **R3 result:** CONDITIONAL — SPECIFIC PRE-IMPLEMENTATION ISSUE. Final Step 0.3 owner acceptance remains pending. **Phase 1:** NOT AUTHORIZED.
 
 This is a report on evidence, not a change to the Freeze.
 
@@ -109,4 +109,58 @@ The R1 corrective audit can pass independently of overall Step 0.3 readiness. Cu
 - **Unknown-rights artifacts:** [artifact CSV](HISPANIA-V1-UNKNOWN-RIGHTS-COMPONENTS.csv) records hashes, sizes, manifest/test/publish use and proposed exclusion of the five DLLs and MP4 from Core. `Phase15CompatibilityTests` loads the historical Consumer07 DLL; this is compatibility-test use, not Core use. The legacy server project copies the MP4 during ordinary non-PlatformOnly publish, while the production publication script strips it. Do not infer that the script clears rights for other publication paths.
 - **Distribution policy remains conditional:** repository presence and Git author fields do not establish authority. Audit/review is analysis; internal compilation, tests and source reuse are conditional on owner-confirmed rights and applicable license scope. Public source, binaries, SDK and `.hispania` distribution remain blocked pending authority and license/legal review. No R2 artifact was distributed.
 - **Validation evidence:** R1 successful TRX evidence exists outside the repository: 219/219 Runtime Debug with historical reader; Phase 19 Runtime 76/76; Inventory package backup 2/2. SHA-256 values and paths are in the Evidence Ledger. R2 did not rerun tests or claim Release fully passing.
-- **Owner actions:** six unapproved questions and recommended/conservative paths are in [Owner Decision Packet](HISPANIA-V1-OWNER-DECISION-PACKET.md). No owner decision is silently taken here.
+- **Historical R2 owner actions (superseded by R3):** the six questions and alternatives are retained in [Owner Decision Packet](HISPANIA-V1-OWNER-DECISION-PACKET.md); the owner approved them as D1–D6 in R3.
+
+## R3 final readiness addendum — 2026-10-17
+
+This section supersedes the R2 owner-decision and §12 timing status above; the R1/R2 observations remain historical. The owner approved decisions 0.3-D1–D6 as recorded in the [R3 decision record and Phase 1 plan](HISPANIA-V1-STEP-0.3-R3-OWNER-DECISIONS-AND-PHASE1-PLAN.md) and appended to Architecture Freeze §18.
+
+### Updated §12 classification under owner Decision 0.3-D2
+
+All seven items are requirements to implement and accept during Phase 1, not blanket pre-code blockers. The owner's explicit preconditions are: do not transform `apps/server`; keep work additive; preserve existing contracts; and define the admin security boundary before enabling mutation endpoints. No Phase 1 completion may be declared until all seven items are implemented and validated. Original §12 text remains unchanged.
+
+| §12 item | R3 timing | Required evidence before Phase 1 acceptance | Additional precondition |
+|---|---|---|---|
+| Clean Core composition root/artifact | Implementation + acceptance | Additive Core host and clean package/process proof | Do not convert or rewrite `apps/server`. |
+| Allowlist and artifact manifest | Design at start of implementation; final manifest/graph acceptance during Phase 1 | Reproducible direct/transitive/per-RID manifest | D3 provisional approval; rights-cleared projects only. |
+| Exclude server Media/Inventory/provider/demo dependencies | Boundary before code references; proof at acceptance | Project/reference/content/routes/migrations fitness | No legacy server transformation; preserve current contracts. |
+| Empty boot/admin/persistence/module-list journey | Implement and test during Phase 1 | Process test: empty start, secure admin, persistence, module list, restart | Use isolated state, never production data. |
+| Secure admin bootstrap/auth boundary | Define before any mutation endpoint is enabled; implement/test during Phase 1 | Default-deny/authorized mutation tests, secure bootstrap and audit | Mandatory D2 precondition. |
+| Package/service/install and state/config layout | Design during Phase 1 before packaging; acceptance before phase close | Documented layout plus isolated install/restart/rollback evidence | No production install or public release. |
+| Explicitly trusted fixture publisher | Configure before fixture validation/activation; prove during Phase 1 | Signed fixture lifecycle and unknown/revoked/tampered/incompatible fail-closed tests | Publisher trust and module permissions remain distinct; OOP/ALC are not sandbox. |
+
+### §16 eleven entry gates after D1–D6
+
+| §16 gate | R3 classification | Current disposition |
+|---|---|---|
+| 1. Reconcile baseline under §15 in isolated task | **PRE-IMPLEMENTATION** | PASS — consolidated baseline and R1/R2/R3 worktree maintained in isolation. |
+| 2. Inventory worktrees, branches, dirty/untracked files and commits | **PRE-IMPLEMENTATION** | PASS — R3 preflight recorded; original worktrees preserved. |
+| 3. Reproducible dependency/license inventory | **PRE-IMPLEMENTATION inventory; PHASE 1 artifact verification; DISTRIBUTION review** | PASS WITH LIMITATIONS — R1 101 NuGet/156 npm inventory exists. D3 requires actual Core direct/transitive/per-RID manifest during Phase 1. |
+| 4. Delimit Core/API/SDK/module/package distribution and review link/load/IPC/joint distribution | **PHASE 1 DESIGN; DISTRIBUTION GATE for artifact-specific legal review** | Provisional project boundary approved by D3; final graph and artifact legal review remain. No public artifact now. |
+| 5. Contribution/provenance policy and authority recording | **PRE-IMPLEMENTATION policy; CONTINUOUS rights register** | PASS for policy: D5 approved and initial register created. File-level evidence remains incomplete and is required before reuse. |
+| 6. Confirm authority for existing Core candidates/contributions | **PRE-IMPLEMENTATION for each reused file/project** | CONDITIONAL — no blanket authority finding. Resolve through the rights register or exclude the material. |
+| 7. Rights for assets/generated code | **PRE-IMPLEMENTATION for inclusion; DISTRIBUTION for every shipped asset** | D4 excludes six unknown-rights artifacts from Core. Rights for other assets/generated material remain evidence-dependent; no uncleared material may enter Core. |
+| 8. Freeze minimum Phase 1 breakdown | **PRE-IMPLEMENTATION** | PASS — ten-slice plan recorded with dependencies, tests, PASS, rollback, risks, evidence and prerequisites. |
+| 9. Prepare validation plan | **PRE-IMPLEMENTATION plan; IMPLEMENTATION execution** | PASS — plan in R3 companion; no Core artifact exists and no tests were run in R3. |
+| 10. Resolve specific blocking contradiction | **PRE-IMPLEMENTATION for affected reuse; DISTRIBUTION before release** | D6 resolves policy: keep current `LICENSE.md`, no relicensing now, prohibit public distribution until the listed review/approval conditions. Exact file-level authority remains conditional. |
+| 11. Obtain express owner authorization to start Phase 1 | **PRE-IMPLEMENTATION** | NOT GRANTED — R3 says a separate later decision is required. |
+
+### Entry-gate reassessment
+
+| Gate | R3 state | Classification / remaining action |
+|---|---|---|
+| Baseline, worktree and preservation integrity | **PASS** | Required before implementation; R3 verified expected HEAD, 15 original worktrees and 49/49 source plus backup hashes. |
+| Internal-only scope and no distribution | **OWNER APPROVED — D1/D6** | Development only after Step 0.3 acceptance and separate express Phase 1 authorization; no public or third-party distribution. |
+| Architecture and dependency boundary | **OWNER APPROVED — D2/D3, provisional** | Final allowlist, manifest and per-RID transitive graph are Phase 1 deliverables; no accidental domain dependencies. |
+| Unknown-rights assets | **OWNER APPROVED — D4 exclusion** | Exclude six from Core and prove absence; retain historical locations/tests. Their other uses remain uncleared. |
+| Contributor authority and source rights | **CONDITIONAL — D5 policy approved, evidence incomplete** | Register created. Before each slice reuses/builds existing source or executes a fixture, identify exact rights-cleared files/inputs. Do not incorporate unknown-rights material. |
+| Regression baseline | **PASS WITH LIMITATIONS** | Runtime Debug 219/219 and Phase 19 76/76 + 2/2 TRX exist as historical evidence; Deployment 35/35 is recorded historically. The claimed Identity/Authorization/Events/SQLite 22/22 has no matching TRX/log/source SHA found and is not independently verified. |
+| License and public distribution | **OWNER APPROVED — D6** | `LICENSE.md` unchanged; no public distribution until rights, dependencies/assets/notices, compatibility/legal review and separate owner distribution approval. |
+| Phase 1 execution/acceptance plan | **PASS — plan recorded** | Ten slices, per-slice dependencies/tests/PASS/rollback/risk/evidence and prerequisites in the R3 plan. |
+| Final readiness acceptance and Phase 1 start | **PENDING** | Owner has not yet accepted the final R3 readiness report or separately authorized Phase 1. |
+
+### R3 readiness decision
+
+**CONDITIONAL — SPECIFIC PRE-IMPLEMENTATION ISSUE.** No §12 artifact/test absence remains a pre-code blocker after D2. The bounded issue is rights evidence for the exact existing source and test inputs to be reused in Slice 1 and subsequent slices: R3 did not receive a file/project-level rights-cleared subset. `LICENSE.md` remains limited to personal/local/non-commercial use of material the named owner owns or is authorized to license; D1 conditions reuse on sufficient rights and D5 forbids incorporating insufficient-rights materials. Before the first Phase 1 slice uses existing inputs, update the [Contributor Rights Register](HISPANIA-V1-CONTRIBUTOR-RIGHTS-REGISTER.csv) with sufficient evidence for those exact files/projects, or exclude them and use only cleared/new material. This is a rights-evidence condition, not a technical test failure. It does not authorize starting Phase 1.
+
+The owner must still accept Step 0.3 after this report and issue a separate express authorization to begin Phase 1. None was given in R3. D6 separately blocks all public distribution until its conditions and explicit owner approval are met.

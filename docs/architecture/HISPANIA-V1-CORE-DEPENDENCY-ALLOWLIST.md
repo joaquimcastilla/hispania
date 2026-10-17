@@ -1,9 +1,9 @@
-# HISPANIA v1.0 — Proposed Core Dependency Allowlist (Step 0.3-R2)
+# HISPANIA v1.0 — Core Dependency Allowlist (Step 0.3-R2/R3)
 
 **Audit source HEAD:** `118840f934df0783de13bebcd7ea0ac0e66dc9fe`
-**Status:** PROPOSED FOR OWNER REVIEW — NOT APPROVED; no Core project or artifact is implemented here.
+**Status:** OWNER APPROVED — PROVISIONAL under Decision 0.3-D3; no Core project or artifact is implemented here.
 
-This is a bounded source-graph proposal for the Phase 1 Empty Core contract in Architecture Freeze §13. It is not an authorization to create those projects. Exact project names and the final publish manifest remain Phase 1 design outputs.
+This is a bounded source-graph proposal for the Phase 1 Empty Core contract in Architecture Freeze §13. The owner provisionally approved this allowlist under Decision 0.3-D3. It is not authorization to create those projects. Verify actual direct/transitive references, rights and per-RID publish contents during an expressly authorized Phase 1. Exact project names and final manifest remain Phase 1 design outputs.
 
 ## Candidate allowlist
 
@@ -58,4 +58,4 @@ The package/license values below are the R1 resolved inventory's declared metada
 
 ## Owner action requested
 
-Review the proposed allowlist and exclusions in [the Owner Decision Packet](HISPANIA-V1-OWNER-DECISION-PACKET.md), especially whether Runtime and the existing application contracts are truly needed in the first Core. This allowlist is not an approved contract or Phase 1 authorization.
+The allowlist is provisionally approved, subject to the verification gates above. It is not an accepted final artifact graph, legal distribution clearance or Phase 1 authorization. Rights-cleared source projects must be identified before reuse; see [R3 owner decisions and execution plan](HISPANIA-V1-STEP-0.3-R3-OWNER-DECISIONS-AND-PHASE1-PLAN.md).
