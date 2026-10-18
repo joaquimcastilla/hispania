@@ -2,11 +2,11 @@
 
 ## A. STATUS
 
-**PASS — bounded to the independent Core on Windows x64.** Slice 6 adds HTTPS-only loopback routes for liveness, local login, session logout, and the current identity. Authentication reuses Slice 5 credentials and persistent sessions. Cookie/CSRF, origin, rate-limit, audit, restart, and published-process checks passed. This is not an Internet-exposure or public-distribution approval.
+**COMPLETED — bounded to the independent Core on Windows x64.** Slice 6 adds HTTPS-only loopback routes for liveness, local login, session logout, and the current identity. Automated suites, selected regression, real publish and allowlist validation were executed by Codex and passed (U.6). The final published-process security smoke and cleanup are recorded from the owner's manual report (U.7); Codex did not execute or independently inspect that run. This is not an Internet-exposure or public-distribution approval.
 
 ## B. ROADMAP
 
-The owner-controlled high-level roadmap remains **4/14 — 28.6%**. Phase 1 Slices 1–6 are complete at their bounded scopes; Slices 7–10 remain unauthorized. No Module Manager, SDK, modules, Coordinator, Workers, Media, or administration API was started.
+The owner-controlled high-level roadmap remains **4/14 — 28.6%**. Phase 1 Slices 1–6 are complete at their bounded scopes; Slice 6's final security closeout is completed based on automated evidence and the operator-reported manual smoke in U.7. Slices 7–10 remain unauthorized. No Module Manager, SDK, modules, Coordinator, Workers, Media, or administration API was started.
 
 ## C. PREFLIGHT
 
@@ -275,3 +275,13 @@ The owner reported `PASS - Limpieza completada`. Independent metadata-only verif
 - Residual risks: no post-Host published-process verification of graceful process shutdown/checkpoint, restart with revoked session, HTTP Host/Origin behavior, or process-level rate limiting. Existing scope limitations in U.4 remain, including no trusted proxy, remote exposure, Linux/ARM64 or Windows ACL audit.
 
 **Final decision: PARTIAL / BLOCKED — PUBLISHED-PROCESS SMOKE NOT RUN.** Manual cleanup, all requested automated suites, selected regression, real publish, allowlist/manifest validation and repository preservation checks passed. The security closeout cannot be declared PASS without the published-process smoke and its verified temporary cleanup. No Slice 7, push, merge, tag or release was performed.
+
+### U.7 Owner-reported manual published-process verification (2026-10-18)
+
+The owner reports that the manual Windows smoke on the published Core completed with `FIRST_PHASE_PASS`, `RESTART_AND_RATE_LIMIT_PASS`, and `TEMP_CLEANUP=PASS`. The owner confirms HTTPS with no HTTP listener; rejection of unauthorized Host and foreign, missing, `null`, and malformed Origin; successful login; Secure/HttpOnly/SameSite=Strict cookies with restricted Path; antiforgery/CSRF protection; logout and session revocation; rejection of the revoked session after process restart; five failed logins followed by HTTP 429 on the sixth despite spoofed IP headers; orderly shutdown; and removal of temporary artifacts.
+
+**Provenance:** these outcomes are reported by the operator in the project conversation. Codex did not run this smoke, inspect its raw output, verify the tested binary hash, or independently inspect the new temporary directory. No credentials, cookies, tokens, private keys, database, or other sensitive smoke artifacts were supplied or added to the repository. The previous U.6 record remains accurate for its date: the agent run was blocked before execution. U.7 records the subsequently completed operator run and supersedes only that outstanding acceptance gap.
+
+**Acceptance checklist:** (1) the ten original sensitive files were independently confirmed absent in U.6; (2) the post-Host published smoke is operator-reported PASS here; (3) new temporary artifact cleanup is operator-reported PASS here; (4) Core 45/45, validator 26/26, and selected regression 83/83 passed in U.6; (5) the real published artifact passed allowlist/manifest create and validate, with zero prohibited fingerprint matches; (6) repository preservation checks passed, including 98/98 source/backup hashes and intact LICENSE; (7) the pre-documentation worktree was clean; and (8) this report and EV-048 are updated in this closeout. All bounded Slice 6 acceptance criteria are therefore recorded as satisfied, with the manual evidence provenance limitation above.
+
+**Final decision: SLICE 6 SECURITY CLOSEOUT COMPLETED — BOUNDED WINDOWS x64.** This formal closeout accepts the operator-reported manual verification alongside the directly verified automated and artifact evidence. It does not represent independent agent execution of the manual smoke. No Slice 7 was started; Slices 7–10 still require separate owner prompts. No push, merge, tag, or release is authorized by this closeout.
