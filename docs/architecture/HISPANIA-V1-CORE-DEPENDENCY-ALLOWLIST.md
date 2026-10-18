@@ -3,7 +3,7 @@
 **Audit source HEAD:** `118840f934df0783de13bebcd7ea0ac0e66dc9fe`
 **Status:** OWNER APPROVED — PROVISIONAL under Decision 0.3-D3; no Core project or artifact is implemented here.
 
-**Slice 7 update (2026-10-18):** Runtime, ModuleHost and `NuGet.Versioning` are admitted narrowly for the signed fixture lifecycle. ModuleHost is copied under `module-host/`; its out-of-process execution is fault isolation and supervision, not a security sandbox. The real Windows x64 publish and generated manifest remain pending validation in the Slice 7 closeout report. This does not authorize public distribution.
+**Slice 7 update (2026-10-18):** Runtime, ModuleHost and `NuGet.Versioning` are admitted narrowly for the signed fixture lifecycle. ModuleHost is intended under `module-host/`; its out-of-process execution is fault isolation and supervision, not a security sandbox. Automated lifecycle/security tests pass. The real Windows x64 publish currently has duplicate root ModuleHost files and fails manifest validation; see the [Slice 7 report](HISPANIA-V1-PHASE1-SLICE7-MODULE-MANAGER-REPORT.md). This does not authorize public distribution.
 
 This is the bounded source-graph policy for the Phase 1 Empty Core contract in Architecture Freeze §13. Slice 7 implementation authorization admits only the entries explicitly marked allowed in the versioned JSON policy. Verify actual direct/transitive references, rights and per-RID publish contents against that policy. Public distribution remains blocked by D6.
 
