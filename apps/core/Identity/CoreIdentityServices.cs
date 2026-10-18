@@ -214,7 +214,11 @@ internal sealed class CoreHttpAuditService(ICoreIdentityStore store) : ICoreHttp
         "http.login.rejected",
         "http.login.rate_limited",
         "http.session.logout",
-        "http.session.rejected"
+        "http.session.rejected",
+        "http.modules.install.succeeded",
+        "http.modules.install.rejected",
+        "http.modules.policy.changed",
+        "http.modules.operation.failed"
     };
 
     public Task RecordAsync(string eventCode, Guid? subjectId, CancellationToken cancellationToken)

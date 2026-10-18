@@ -558,11 +558,92 @@ public sealed class CoreHostTests : IDisposable
     {
         using var app = Build(GetAvailableLoopbackPort());
         var endpoints = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints).ToArray();
-        Assert.Equal(4, endpoints.Length);
+        Assert.Equal(9, endpoints.Length);
         Assert.Contains(endpoints, endpoint => endpoint is Microsoft.AspNetCore.Routing.RouteEndpoint route && route.RoutePattern.RawText == "/health/live");
         Assert.Contains(endpoints, endpoint => endpoint is Microsoft.AspNetCore.Routing.RouteEndpoint route && route.RoutePattern.RawText == "/api/v1/auth/login");
         Assert.Contains(endpoints, endpoint => endpoint is Microsoft.AspNetCore.Routing.RouteEndpoint route && route.RoutePattern.RawText == "/api/v1/auth/logout");
         Assert.Contains(endpoints, endpoint => endpoint is Microsoft.AspNetCore.Routing.RouteEndpoint route && route.RoutePattern.RawText == "/api/v1/auth/me");
+        Assert.Contains(endpoints, endpoint => endpoint is Microsoft.AspNetCore.Routing.RouteEndpoint route && route.RoutePattern.RawText == "/api/v1/auth/modules");
+    }
+
+    [Fact]
+    public async Task ModuleAdministrationReusesSessionAuthorizationOriginAndAntiforgery()
+    {
+        var port = GetAvailableLoopbackPort();
+        await using var app = Build(port);
+        await app.StartAsync();
+        const string password = "module administration owner password 2026";
+        Assert.Equal(CoreBootstrapResult.Created, await app.Services.GetRequiredService<ICoreBootstrapService>()
+            .CreateInitialAdministratorAsync("module-owner", password, CancellationToken.None));
+        using var client = CreateClient(port);
+        var origin = $"https://127.0.0.1:{port}";
+
+        using (var anonymousList = await client.GetAsync("/api/v1/auth/modules"))
+            Assert.Equal(HttpStatusCode.Unauthorized, anonymousList.StatusCode);
+        using (var anonymousInstall = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/modules/install")
+        { Content = new ByteArrayContent([1, 2, 3]) })
+        {
+            anonymousInstall.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
+            using var response = await client.SendAsync(anonymousInstall);
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+
+        using var login = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/login")
+        { Content = JsonContent.Create(new { username = "module-owner", password }) };
+        login.Headers.TryAddWithoutValidation("Origin", origin);
+        using var loginResponse = await client.SendAsync(login);
+        Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
+        var loginBody = await loginResponse.Content.ReadFromJsonAsync<CoreAuthEndpoints.LoginResponse>();
+        Assert.NotNull(loginBody);
+
+        const string limitedPassword = "limited module operator password 2026";
+        var limitedIdentity = await app.Services.GetRequiredService<ICoreIdentityService>()
+            .CreateLocalAccountAsync(loginBody.SubjectId, "limited-operator", limitedPassword, CancellationToken.None);
+        Assert.NotNull(limitedIdentity);
+        var limitedSession = await app.Services.GetRequiredService<ICoreSessionService>()
+            .CreateAsync(limitedIdentity.SubjectId, DateTimeOffset.UtcNow, TimeSpan.FromHours(1), CancellationToken.None);
+        Assert.NotNull(limitedSession);
+        using var limitedClient = new HttpClient(new HttpClientHandler
+        {
+            UseCookies = false,
+            ServerCertificateCustomValidationCallback = (_, certificate, _, _) =>
+                certificate is not null && string.Equals(certificate.GetCertHashString(), _certificateThumbprints[port], StringComparison.OrdinalIgnoreCase)
+        }) { BaseAddress = new Uri(origin) };
+        using (var forbiddenList = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/modules"))
+        {
+            forbiddenList.Headers.TryAddWithoutValidation("Cookie", $"{CoreAuthEndpoints.SessionCookie}={limitedSession.Token}");
+            using var response = await limitedClient.SendAsync(forbiddenList);
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+        await app.Services.GetRequiredService<ICoreSessionService>().RevokeAsync(limitedIdentity.SubjectId,
+            limitedSession.Token, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        using (var moduleList = await client.GetAsync("/api/v1/auth/modules"))
+            Assert.Equal(HttpStatusCode.OK, moduleList.StatusCode);
+        using (var currentIdentity = await client.GetAsync("/api/v1/auth/me"))
+        {
+            var me = await currentIdentity.Content.ReadFromJsonAsync<CoreAuthEndpoints.MeResponse>();
+            Assert.NotNull(me);
+            Assert.Contains(CoreIdentityRules.ModuleReadPermission, me.Permissions);
+            Assert.Contains(CoreIdentityRules.ModuleManagePermission, me.Permissions);
+        }
+        using (var missingCsrf = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/modules/install")
+        { Content = new ByteArrayContent([1, 2, 3]) })
+        {
+            missingCsrf.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
+            missingCsrf.Headers.TryAddWithoutValidation("Origin", origin);
+            using var response = await client.SendAsync(missingCsrf);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+        using (var invalidPackage = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/modules/install")
+        { Content = new ByteArrayContent([1, 2, 3]) })
+        {
+            invalidPackage.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
+            invalidPackage.Headers.TryAddWithoutValidation("Origin", origin);
+            invalidPackage.Headers.TryAddWithoutValidation("X-Hispania-CSRF", loginBody.CsrfToken);
+            using var response = await client.SendAsync(invalidPackage);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
     }
 
     private WebApplication Build(int port, int loginRateLimit = 20, int loginRateWindowSeconds = 60, string? dataDirectory = null)

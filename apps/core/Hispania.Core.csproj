@@ -13,5 +13,24 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <InternalsVisibleTo Include="Hispania.Core.Tests" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+    <PackageReference Include="NuGet.Versioning" Version="7.9.0" />
+    <ProjectReference Include="..\..\core\runtime\Hispania.Runtime.csproj" />
+    <ProjectReference Include="..\module-host\Hispania.ModuleHost.csproj" ReferenceOutputAssembly="false" AdditionalProperties="RuntimeIdentifier=win-x64" />
+    <ProjectReference Include="..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />
+    <ProjectReference Include="..\..\contracts\platform\Hispania.Platform.Contracts.csproj" />
   </ItemGroup>
+  <Target Name="CopyModuleHostForCoreBuild" AfterTargets="Build">
+    <ItemGroup>
+      <ModuleHostFiles Include="..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleHost.dll;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleHost.deps.json;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleHost.runtimeconfig.json;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleSystem.Contracts.dll;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.Platform.Contracts.dll" />
+    </ItemGroup>
+    <MakeDir Directories="$(OutputPath)module-host" />
+    <Copy SourceFiles="@(ModuleHostFiles)" DestinationFolder="$(OutputPath)module-host" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyModuleHostForCorePublish" AfterTargets="Publish">
+    <ItemGroup>
+      <ModuleHostPublishFiles Include="..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleHost.dll;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleHost.deps.json;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleHost.runtimeconfig.json;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleSystem.Contracts.dll;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.Platform.Contracts.dll" />
+    </ItemGroup>
+    <MakeDir Directories="$(PublishDir)module-host" />
+    <Copy SourceFiles="@(ModuleHostPublishFiles)" DestinationFolder="$(PublishDir)module-host" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

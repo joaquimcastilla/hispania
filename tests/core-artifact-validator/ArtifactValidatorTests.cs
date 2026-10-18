@@ -21,8 +21,9 @@ public sealed class ArtifactValidatorTests
         Assert.Contains(policy.AllowedDependencies, dependency => dependency.Id == "SQLitePCLRaw.lib.e_sqlite3:runtimes/linux-arm64/native/libe_sqlite3.so" && dependency.Status == "conditional");
         Assert.Contains(policy.ForbiddenDependencyPrefixes, prefix => prefix == "Microsoft.EntityFrameworkCore");
         Assert.Contains(policy.AllowedFilePatterns, pattern => pattern == "e_sqlite3.dll");
-        Assert.Contains(policy.AllowedDependencies, dependency => dependency.Id == "NuGet.Versioning" && dependency.Status == "conditional");
-        Assert.Contains(policy.ConditionalFilePatterns, pattern => pattern == "Hispania.Runtime.dll");
+        Assert.Contains(policy.AllowedDependencies, dependency => dependency.Id == "NuGet.Versioning" && dependency.Status == "allowed");
+        Assert.Contains(policy.AllowedFilePatterns, pattern => pattern == "Hispania.Runtime.dll");
+        Assert.Contains(policy.ConditionalFilePatterns, pattern => pattern == "NuGet.Common.dll");
         Assert.Contains(policy.AllowedDependencies, dependency => dependency.Id == "infrastructure/platform/persistence-sqlite/Hispania.Platform.Persistence.Sqlite.csproj" && dependency.Status == "forbidden");
         Assert.Equal(6, policy.ExcludedSha256.Length);
     }
@@ -55,24 +56,24 @@ public sealed class ArtifactValidatorTests
             Assert.Equal(0, RunCli(createArgs).ExitCode);
             Assert.Equal(0, RunCli("validate", "--root", root, "--policy", policyPath).ExitCode);
 
-            File.WriteAllBytes(Path.Combine(root, "Hispania.Runtime.dll"), [4, 5, 6]);
+            File.WriteAllBytes(Path.Combine(root, "NuGet.Common.dll"), [4, 5, 6]);
             var conditionalFile = RunCli(createArgs);
             Assert.NotEqual(0, conditionalFile.ExitCode);
-            Assert.Contains("File is conditional and not currently authorized: Hispania.Runtime.dll", conditionalFile.Output, StringComparison.Ordinal);
-            File.Delete(Path.Combine(root, "Hispania.Runtime.dll"));
+            Assert.Contains("File is conditional and not currently authorized: NuGet.Common.dll", conditionalFile.Output, StringComparison.Ordinal);
+            File.Delete(Path.Combine(root, "NuGet.Common.dll"));
 
             var depsPath = Path.Combine(root, "Hispania.Core.deps.json");
             var depsText = File.ReadAllText(depsPath)
-                .Replace("\"Hispania.Platform.Contracts\":\"1.0.0\"}", "\"Hispania.Platform.Contracts\":\"1.0.0\",\"NuGet.Versioning\":\"7.9.0\"}", StringComparison.Ordinal)
-                .Replace("\"Hispania.Platform.Contracts/1.0.0\":{\"type\":\"project\"}", "\"Hispania.Platform.Contracts/1.0.0\":{\"type\":\"project\"},\"NuGet.Versioning/7.9.0\":{\"type\":\"package\"}", StringComparison.Ordinal);
+                .Replace("\"Hispania.Platform.Contracts\":\"1.0.0\"}", "\"Hispania.Platform.Contracts\":\"1.0.0\",\"Microsoft.NET.Test.Sdk\":\"17.11.1\"}", StringComparison.Ordinal)
+                .Replace("\"Hispania.Platform.Contracts/1.0.0\":{\"type\":\"project\"}", "\"Hispania.Platform.Contracts/1.0.0\":{\"type\":\"project\"},\"Microsoft.NET.Test.Sdk/17.11.1\":{\"type\":\"package\"}", StringComparison.Ordinal);
             File.WriteAllText(depsPath, depsText);
-            var conditionalPackage = RunCli(createArgs);
-            Assert.NotEqual(0, conditionalPackage.ExitCode);
-            Assert.Contains("Dependency is not explicitly allowlisted: package NuGet.Versioning 7.9.0", conditionalPackage.Output, StringComparison.Ordinal);
+            var unlistedPackage = RunCli(createArgs);
+            Assert.NotEqual(0, unlistedPackage.ExitCode);
+            Assert.Contains("Dependency is not explicitly allowlisted: package Microsoft.NET.Test.Sdk 17.11.1", unlistedPackage.Output, StringComparison.Ordinal);
 
             depsText = depsText
-                .Replace("NuGet.Versioning", "Microsoft.EntityFrameworkCore.Relational", StringComparison.Ordinal)
-                .Replace("7.9.0", "10.0.12", StringComparison.Ordinal);
+                .Replace("Microsoft.NET.Test.Sdk", "Microsoft.EntityFrameworkCore.Relational", StringComparison.Ordinal)
+                .Replace("17.11.1", "10.0.12", StringComparison.Ordinal);
             File.WriteAllText(depsPath, depsText);
             var forbiddenPackage = RunCli(createArgs);
             Assert.NotEqual(0, forbiddenPackage.ExitCode);

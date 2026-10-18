@@ -10,14 +10,16 @@ namespace Hispania.Core.Http;
 
 internal static class CoreAuthEndpoints
 {
-    private const string SessionCookie = "__Secure-HispaniaSession";
+    internal const string SessionCookie = "__Secure-HispaniaSession";
     private static readonly TimeSpan SessionLifetime = TimeSpan.FromHours(12);
     private static readonly string[] ExposedPermissions =
     [
         CoreIdentityRules.IdentityReadPermission,
         CoreIdentityRules.IdentityManagePermission,
         CoreIdentityRules.AuthorizationManagePermission,
-        CoreIdentityRules.SessionRevokePermission
+        CoreIdentityRules.SessionRevokePermission,
+        CoreIdentityRules.ModuleReadPermission,
+        CoreIdentityRules.ModuleManagePermission
     ];
     private static readonly Action<ILogger, string, Exception?> LoginRejected = LoggerMessage.Define<string>(
         LogLevel.Warning, new EventId(20, "CoreLoginRejected"), "Core login rejected. CorrelationId {CorrelationId}.");
@@ -139,7 +141,7 @@ internal static class CoreAuthEndpoints
         return Results.Json(new MeResponse(identity.SubjectId, identity.Username, validation.ExpiresUtc, permissions));
     }
 
-    private static bool HasSameOrigin(HttpContext context)
+    internal static bool HasSameOrigin(HttpContext context)
     {
         if (!context.Request.IsHttps || !context.Request.Headers.TryGetValue("Origin", out var originValues) || originValues.Count != 1)
             return false;
@@ -150,7 +152,7 @@ internal static class CoreAuthEndpoints
         return Uri.Compare(origin, expected, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0;
     }
 
-    private static IResult Unauthorized() => Results.Json(new ErrorResponse("authentication_required"), statusCode: StatusCodes.Status401Unauthorized);
+    internal static IResult Unauthorized() => Results.Json(new ErrorResponse("authentication_required"), statusCode: StatusCodes.Status401Unauthorized);
 
     internal sealed record LoginRequest(string? Username, string? Password);
     internal sealed record LoginResponse(Guid SubjectId, string Username, string CsrfToken, DateTimeOffset ExpiresUtc);

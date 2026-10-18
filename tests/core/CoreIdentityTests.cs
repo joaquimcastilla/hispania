@@ -228,7 +228,7 @@ public sealed class CoreIdentityTests
         verify.CommandText = "SELECT (SELECT COUNT(*) FROM core_schema_migrations), (SELECT COUNT(*) FROM core_identities), (SELECT COUNT(*) FROM core_bootstrap_state);";
         await using var reader = await verify.ExecuteReaderAsync();
         Assert.True(await reader.ReadAsync());
-        Assert.Equal(2, reader.GetInt32(0));
+        Assert.Equal(3, reader.GetInt32(0));
         Assert.Equal(0, reader.GetInt32(1));
         Assert.Equal(1, reader.GetInt32(2));
     }

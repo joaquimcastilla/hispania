@@ -13,6 +13,8 @@ using Microsoft.AspNetCore.Identity;
 using System.Security.Cryptography.X509Certificates;
 using Hispania.Core.Http;
 using System.Threading.RateLimiting;
+using Hispania.Runtime;
+using Hispania.Core.Modules;
 
 namespace Hispania.Core.Hosting;
 
@@ -51,6 +53,23 @@ internal static class CoreHost
         builder.Logging.AddJsonConsole();
         builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = hostOptions.ShutdownTimeout);
         builder.Services.AddSingleton(hostOptions.Storage);
+        builder.Services.AddModuleRuntime();
+        builder.Services.AddSingleton<ModuleExtensionCatalog>(services =>
+        {
+            var publisherSection = builder.Configuration.GetSection("MODULES:TRUSTEDPUBLISHERKEYS");
+            var publishers = publisherSection.GetChildren().ToDictionary(child => child.Key, child => child.Value ?? string.Empty, StringComparer.Ordinal);
+            var revoked = builder.Configuration.GetSection("MODULES:REVOKEDPUBLISHERS").GetChildren()
+                .Select(child => child.Value).Where(value => !string.IsNullOrWhiteSpace(value)).Cast<string>().ToArray();
+            var root = Path.Combine(hostOptions.Storage.DataDirectory, "modules");
+            return new ModuleExtensionCatalog(root, new Version(1, 0, 0), services.GetRequiredService<IModuleRuntime>(),
+                services.GetRequiredService<IModuleRegistry>(), new Dictionary<string, Func<Hispania.ModuleSystem.Contracts.IModule>>(),
+                ["hispania.slice7.fixture"], trustedPublisherKeys: publishers, revokedPublisherIds: revoked,
+                requirePublisherSignature: true,
+                moduleHostPath: builder.Configuration["MODULES:MODULEHOSTPATH"]);
+        });
+        builder.Services.AddSingleton(services => new CoreModuleManager(
+            services.GetRequiredService<ModuleExtensionCatalog>(), hostOptions.Storage.DataDirectory));
+        builder.Services.AddHostedService<PackageLifecycleHostedService>();
         builder.Services.AddSingleton<ICorePersistence, SqliteCorePersistence>();
         builder.Services.AddSingleton<SqliteCoreIdentityStore>();
         builder.Services.AddSingleton<ICoreIdentityStore>(services => services.GetRequiredService<SqliteCoreIdentityStore>());
@@ -102,7 +121,7 @@ internal static class CoreHost
             builder.WebHost.ConfigureKestrel(options =>
             {
                 options.AddServerHeader = false;
-                options.Limits.MaxRequestBodySize = 4096;
+                options.Limits.MaxRequestBodySize = 128L * 1024 * 1024;
                 options.Listen(hostOptions.ListenAddress, hostOptions.Port, listen => listen.UseHttps(httpsCertificate));
             });
         }
@@ -141,8 +160,17 @@ internal static class CoreHost
                 await next(context);
             });
             app.UseRouting();
+            app.Use(async (context, next) =>
+            {
+                var feature = context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+                if (feature is { IsReadOnly: false })
+                    feature.MaxRequestBodySize = context.Request.Path.Equals("/api/v1/auth/modules/install", StringComparison.OrdinalIgnoreCase)
+                        ? 128L * 1024 * 1024 : 4096;
+                await next(context);
+            });
             app.UseRateLimiter();
             CoreAuthEndpoints.Map(app);
+            CoreModuleEndpoints.Map(app);
             app.MapGet("/health/live", static () => Results.Json(new LiveStatus("healthy")))
                 .WithName("CoreLiveness")
                 .Produces<LiveStatus>(StatusCodes.Status200OK, "application/json");

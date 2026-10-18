@@ -119,10 +119,26 @@ public static class ArtifactManifestBuilder
         string artifactId, string targetFramework, string rid, ArtifactPolicy policy)
     {
         var depsFiles = files.Where(file => file.FileType == "dependencyManifest").ToArray();
-        if (depsFiles.Length != 1) throw new InvalidDataException("Exactly one .deps.json file is required to enumerate the resolved publish graph.");
+        var rootDeps = depsFiles.Where(file => Path.GetDirectoryName(file.Path) is null or "").ToArray();
+        if (rootDeps.Length != 1) throw new InvalidDataException("Exactly one root Core .deps.json file is required.");
+        if (depsFiles.Any(file => file != rootDeps[0] && file.Path != "module-host/Hispania.ModuleHost.deps.json"))
+            throw new InvalidDataException("Only the approved module-host process may add a nested dependency manifest.");
         var dependencies = new List<ResolvedDependency>();
-        using (var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, depsFiles[0].Path.Replace('/', Path.DirectorySeparatorChar)))))
+        foreach (var depsFile in depsFiles)
         {
+            var hostDirectory = Path.GetDirectoryName(depsFile.Path)?.Replace('\\', '/') ?? "";
+            var assemblyName = Path.GetFileName(depsFile.Path)[..^".deps.json".Length];
+            var processId = hostDirectory.Length == 0 ? artifactId : assemblyName;
+            if (hostDirectory.Length != 0 && (hostDirectory != "module-host" || assemblyName != "Hispania.ModuleHost"))
+                throw new InvalidDataException("Nested dependency manifests are restricted to the approved ModuleHost.");
+            var runtimeConfigPath = (hostDirectory.Length == 0 ? "" : hostDirectory + "/") + assemblyName + ".runtimeconfig.json";
+            var runtimeConfig = files.SingleOrDefault(file => file.Path == runtimeConfigPath && file.FileType == "runtimeConfig")
+                ?? throw new InvalidDataException($"Runtime configuration is missing for {assemblyName}.");
+            var expectedDll = (hostDirectory.Length == 0 ? "" : hostDirectory + "/") + assemblyName + ".dll";
+            if (!files.Any(file => file.Path == expectedDll)) throw new InvalidDataException($"Process assembly is missing for {assemblyName}.");
+
+            using (var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, depsFile.Path.Replace('/', Path.DirectorySeparatorChar)))))
+            {
             var json = document.RootElement;
             var targetName = json.GetProperty("runtimeTarget").GetProperty("name").GetString()
                 ?? throw new InvalidDataException(".deps.json runtimeTarget.name is missing.");
@@ -134,7 +150,7 @@ public static class ArtifactManifestBuilder
             var target = json.GetProperty("targets").GetProperty(targetName);
             var libraries = json.GetProperty("libraries");
             var directIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var application in target.EnumerateObject().Where(item => item.Name.Split('/')[0].Equals(artifactId, StringComparison.OrdinalIgnoreCase)))
+            foreach (var application in target.EnumerateObject().Where(item => item.Name.Split('/')[0].Equals(processId, StringComparison.OrdinalIgnoreCase)))
                 if (application.Value.TryGetProperty("dependencies", out var direct))
                     foreach (var dependency in direct.EnumerateObject()) directIds.Add(dependency.Name);
 
@@ -144,7 +160,7 @@ public static class ArtifactManifestBuilder
                 if (separator <= 0 || separator == library.Name.Length - 1) throw new InvalidDataException($"Malformed .deps.json library key: {library.Name}.");
                 var name = library.Name[..separator];
                 var version = library.Name[(separator + 1)..];
-                if (name.Equals(artifactId, StringComparison.OrdinalIgnoreCase)) continue;
+                if (name.Equals(processId, StringComparison.OrdinalIgnoreCase)) continue;
                 if (!libraries.TryGetProperty(library.Name, out var metadata) || !metadata.TryGetProperty("type", out var typeElement))
                     throw new InvalidDataException($".deps.json library metadata is missing for {library.Name}.");
                 var type = typeElement.GetString();
@@ -175,13 +191,10 @@ public static class ArtifactManifestBuilder
                     }
                 }
             }
-        }
-
-        var runtimeConfig = files.SingleOrDefault(file => file.FileType == "runtimeConfig");
-        if (runtimeConfig is null) throw new InvalidDataException("Exactly one .runtimeconfig.json file is required.");
-        using (var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, runtimeConfig.Path.Replace('/', Path.DirectorySeparatorChar)))))
-        {
-            var options = document.RootElement.GetProperty("runtimeOptions");
+            }
+            using var runtimeDocument = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, runtimeConfig.Path.Replace('/', Path.DirectorySeparatorChar))));
+            {
+            var options = runtimeDocument.RootElement.GetProperty("runtimeOptions");
             if (!string.Equals(options.GetProperty("tfm").GetString(), targetFramework, StringComparison.Ordinal))
                 throw new InvalidDataException(".runtimeconfig.json target framework does not match the manifest.");
             if (options.TryGetProperty("framework", out var framework))
@@ -196,8 +209,11 @@ public static class ArtifactManifestBuilder
                 dependencies.Add(new("framework", name, version, "runtime", true));
                 dependencies.Add(new("framework", name, version, "publish", true));
             }
+            }
         }
-        return dependencies;
+        var unique = dependencies.GroupBy(item => $"{item.Kind}|{item.Id}|{item.Version}|{item.Phase}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First() with { Direct = group.Any(item => item.Direct) }).ToArray();
+        return unique;
     }
 
     private static void Walk(string root, string directory, List<ArtifactFile> files, IReadOnlyDictionary<string, string> origins)

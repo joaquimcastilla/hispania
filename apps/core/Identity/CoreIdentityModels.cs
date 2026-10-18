@@ -42,6 +42,8 @@ internal static class CoreIdentityRules
     public const string IdentityManagePermission = "core.identity.manage";
     public const string AuthorizationManagePermission = "core.authorization.manage";
     public const string SessionRevokePermission = "core.session.revoke";
+    public const string ModuleReadPermission = "core.modules.read";
+    public const string ModuleManagePermission = "core.modules.manage";
 
     public static bool TryNormalizeUsername(string? username, out string displayName, out string normalized)
     {

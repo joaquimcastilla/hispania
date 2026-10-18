@@ -18,13 +18,15 @@ public sealed class ExtensionPackageInstaller
     private readonly string root;
     private readonly Version hostVersion;
     private readonly Func<ModuleManifest, string?> validateContracts;
+    private readonly Action<ModuleManifest>? validatePublisher;
 
-    public ExtensionPackageInstaller(string root, Version hostVersion, IEnumerable<string> allowlistedIds, Func<ModuleManifest, string?>? validateContracts = null)
+    public ExtensionPackageInstaller(string root, Version hostVersion, IEnumerable<string> allowlistedIds, Func<ModuleManifest, string?>? validateContracts = null, Action<ModuleManifest>? validatePublisher = null)
     {
         this.root = Path.GetFullPath(root);
         this.hostVersion = hostVersion;
         ArgumentNullException.ThrowIfNull(allowlistedIds);
         this.validateContracts = validateContracts ?? (_ => null);
+        this.validatePublisher = validatePublisher;
     }
 
     public async Task<InstalledExtensionPackage> InstallAsync(Stream package, CancellationToken cancellationToken = default)
@@ -64,6 +66,7 @@ public sealed class ExtensionPackageInstaller
             manifest = json.RootElement.Deserialize<ModuleManifest>(JsonOptions)
                 ?? throw new InvalidDataException("Package manifest is empty.");
         }
+        validatePublisher?.Invoke(manifest);
         ValidateManifest(manifest);
         // Installation stores verified bytes only. Authorization is checked at activation time by
         // ModuleExtensionCatalog, and execution is performed only after that separate decision.

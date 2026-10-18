@@ -70,7 +70,7 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
         allowlist = new HashSet<string>(trustedFactories.Keys, StringComparer.Ordinal);
         if (allowedExtensionIds is not null) allowlist.UnionWith(allowedExtensionIds);
         installer = new ExtensionPackageInstaller(this.directory, hostVersion, allowlist, manifest => manifest.PackageFormatVersion == 2
-            ? "Format 2 requires a planned package-set operation." : ValidateContracts(manifest));
+            ? "Format 2 requires a planned package-set operation." : ValidateContracts(manifest), ValidatePublisherTrust);
     }
 
     public async Task<InstalledExtensionPackage> InstallAsync(Stream package, CancellationToken cancellationToken = default)

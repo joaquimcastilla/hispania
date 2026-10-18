@@ -33,8 +33,8 @@
       "id": "core/runtime/Hispania.Runtime.csproj",
       "version": "source",
       "phases": ["build", "runtime", "publish"],
-      "status": "conditional",
-      "rationale": "No domain project reference is present, but the assembly also contains web contribution, experiment and distributed-worker surfaces. Slice 3 must justify the full assembly before admission.",
+      "status": "allowed",
+      "rationale": "Authorized for Slice 7 package lifecycle, publisher trust, graph validation and ModuleHost supervision. No domain project dependency is admitted; unused Runtime surfaces remain outside Core routes and are not separately authorized as product features.",
       "assemblyName": "Hispania.Runtime"
     },
     {
@@ -84,8 +84,8 @@
       "id": "apps/module-host/Hispania.ModuleHost.csproj",
       "version": "source",
       "phases": ["build", "runtime", "publish"],
-      "status": "deferred",
-      "rationale": "Separate module worker executable is deferred to Module Manager/trust work in Slice 7; OOP is not a sandbox.",
+      "status": "allowed",
+      "rationale": "Slice 7 signed fixture worker only; copied under module-host/. Out-of-process execution provides fault isolation and supervision, not a security sandbox.",
       "assemblyName": "Hispania.ModuleHost"
     },
     {
@@ -118,8 +118,8 @@
       "id": "NuGet.Versioning",
       "version": "7.9.0",
       "phases": ["build", "runtime", "publish"],
-      "status": "conditional",
-      "rationale": "Only needed if Runtime is admitted; exact version 7.9.0 is pinned. Declared upstream license: Apache-2.0; artifact notices remain a release gate."
+      "status": "allowed",
+      "rationale": "Required at runtime by the approved Runtime package graph planner; exact version 7.9.0 is pinned. Declared upstream license: Apache-2.0; artifact notices remain a release gate."
     },
     {
       "kind": "package",
@@ -203,14 +203,15 @@
   "allowedFilePatterns": [
     "Hispania.Core.dll", "Hispania.Core.deps.json", "Hispania.Core.runtimeconfig.json", "Hispania.Core", "Hispania.Core.exe",
     "Hispania.ModuleSystem.Contracts.dll", "Hispania.Platform.Contracts.dll",
+    "Hispania.Runtime.dll", "NuGet.Versioning.dll",
+    "Hispania.ModuleHost.dll", "Hispania.ModuleHost.deps.json", "Hispania.ModuleHost.runtimeconfig.json",
     "Microsoft.Data.Sqlite.dll", "SQLitePCLRaw.batteries_v2.dll", "SQLitePCLRaw.core.dll",
     "SQLitePCLRaw.provider.e_sqlite3.dll", "e_sqlite3.dll"
   ],
   "conditionalFilePatterns": [
-    "Hispania.Runtime.dll",
     "Hispania.Identity.Application.dll", "Hispania.Authorization.Application.dll",
     "Hispania.Core.Persistence.Contracts.dll", "Hispania.Core.Persistence.Sqlite.dll",
-    "NuGet.Versioning.dll", "NuGet.Common.dll", "Microsoft.Data.Sqlite.Core.dll",
+    "NuGet.Common.dll", "Microsoft.Data.Sqlite.Core.dll",
     "SQLitePCLRaw.bundle_e_sqlite3.dll",
     "runtimes/linux-x64/native/libe_sqlite3.so", "runtimes/linux-arm64/native/libe_sqlite3.so"
   ],

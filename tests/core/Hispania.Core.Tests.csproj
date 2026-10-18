@@ -8,6 +8,9 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../../apps/core/Hispania.Core.csproj" />
+    <ProjectReference Include="../fixtures/slice7-fixture/Hispania.Slice7.Fixture.csproj" />
+    <ProjectReference Include="../../core/runtime/Hispania.Runtime.csproj" />
+    <ProjectReference Include="../../contracts/module-system/Hispania.ModuleSystem.Contracts.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2"><PrivateAssets>all</PrivateAssets></PackageReference>

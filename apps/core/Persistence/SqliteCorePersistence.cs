@@ -8,7 +8,7 @@ namespace Hispania.Core.Persistence;
 
 internal sealed class SqliteCorePersistence : ICorePersistence
 {
-    private const int CurrentSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 3;
     private const int BusyTimeoutMilliseconds = 5000;
     private const string MigrationTable = "core_schema_migrations";
     private const string InstanceTable = "core_instance";
@@ -187,6 +187,9 @@ internal sealed class SqliteCorePersistence : ICorePersistence
                 case 2:
                     await ApplyMigration2Async(connection, transaction, cancellationToken).ConfigureAwait(false);
                     break;
+                case 3:
+                    await ApplyMigration3Async(connection, transaction, cancellationToken).ConfigureAwait(false);
+                    break;
                 default:
                     throw new CorePersistenceException("Core database is missing a supported migration; it was preserved.");
             }
@@ -249,6 +252,16 @@ internal sealed class SqliteCorePersistence : ICorePersistence
 
         foreach (var statement in statements)
             await ExecuteAsync(connection, transaction, statement, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task ApplyMigration3Async(SqliteConnection connection, SqliteTransaction transaction, CancellationToken cancellationToken)
+    {
+        await ExecuteAsync(connection, transaction,
+            "INSERT INTO core_permissions(permission_id, created_utc) VALUES ('core.modules.read', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')), ('core.modules.manage', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));",
+            cancellationToken).ConfigureAwait(false);
+        await ExecuteAsync(connection, transaction,
+            "INSERT INTO core_role_permissions(role_id, permission_id, granted_utc) SELECT 'core.admin', permission_id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now') FROM core_permissions WHERE permission_id IN ('core.modules.read', 'core.modules.manage');",
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task VerifyCurrentSchemaAsync(SqliteConnection connection, SqliteTransaction transaction, CancellationToken cancellationToken)
