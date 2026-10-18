@@ -23,6 +23,11 @@ public sealed class ArtifactValidatorTests
         Assert.Contains(policy.AllowedFilePatterns, pattern => pattern == "e_sqlite3.dll");
         Assert.Contains(policy.AllowedDependencies, dependency => dependency.Id == "NuGet.Versioning" && dependency.Status == "allowed");
         Assert.Contains(policy.AllowedFilePatterns, pattern => pattern == "Hispania.Runtime.dll");
+        Assert.Contains(policy.AllowedFilePatterns, pattern => pattern == "module-host/Hispania.ModuleHost.dll");
+        Assert.Contains(policy.AllowedFilePatterns, pattern => pattern == "module-host/Hispania.ModuleHost.deps.json");
+        Assert.Contains(policy.AllowedFilePatterns, pattern => pattern == "module-host/Hispania.ModuleHost.runtimeconfig.json");
+        Assert.Contains(policy.AllowedFilePatterns, pattern => pattern == "module-host/Hispania.ModuleSystem.Contracts.dll");
+        Assert.Contains(policy.AllowedFilePatterns, pattern => pattern == "module-host/Hispania.Platform.Contracts.dll");
         Assert.Contains(policy.ConditionalFilePatterns, pattern => pattern == "NuGet.Common.dll");
         Assert.Contains(policy.AllowedDependencies, dependency => dependency.Id == "infrastructure/platform/persistence-sqlite/Hispania.Platform.Persistence.Sqlite.csproj" && dependency.Status == "forbidden");
         Assert.Equal(6, policy.ExcludedSha256.Length);

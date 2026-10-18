@@ -205,6 +205,8 @@
     "Hispania.ModuleSystem.Contracts.dll", "Hispania.Platform.Contracts.dll",
     "Hispania.Runtime.dll", "NuGet.Versioning.dll",
     "Hispania.ModuleHost.dll", "Hispania.ModuleHost.deps.json", "Hispania.ModuleHost.runtimeconfig.json",
+    "module-host/Hispania.ModuleHost.dll", "module-host/Hispania.ModuleHost.deps.json", "module-host/Hispania.ModuleHost.runtimeconfig.json",
+    "module-host/Hispania.ModuleSystem.Contracts.dll", "module-host/Hispania.Platform.Contracts.dll",
     "Microsoft.Data.Sqlite.dll", "SQLitePCLRaw.batteries_v2.dll", "SQLitePCLRaw.core.dll",
     "SQLitePCLRaw.provider.e_sqlite3.dll", "e_sqlite3.dll"
   ],
