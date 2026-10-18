@@ -15,7 +15,7 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageReference Include="NuGet.Versioning" Version="7.9.0" />
     <ProjectReference Include="..\..\core\runtime\Hispania.Runtime.csproj" />
-    <ProjectReference Include="..\module-host\Hispania.ModuleHost.csproj" ReferenceOutputAssembly="false" AdditionalProperties="RuntimeIdentifier=win-x64" />
+    <ProjectReference Include="..\module-host\Hispania.ModuleHost.csproj" ReferenceOutputAssembly="false" Private="false" AdditionalProperties="RuntimeIdentifier=win-x64" />
     <ProjectReference Include="..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />
     <ProjectReference Include="..\..\contracts\platform\Hispania.Platform.Contracts.csproj" />
   </ItemGroup>
