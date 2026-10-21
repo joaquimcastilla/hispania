@@ -104,6 +104,79 @@ public sealed class Slice7ModuleLifecycleTests
     }
 
     [Fact]
+    public async Task CoreRejectsSignedInProcessPackageBeforeInstallation()
+    {
+        using var directory = new TemporaryDirectory();
+        using var signer = RSA.Create(2048);
+        var moduleHost = FindModuleHost();
+        await using var app = Build(directory.Path, signer.ExportSubjectPublicKeyInfoPem(), moduleHost);
+        await app.StartAsync();
+        var manager = app.Services.GetRequiredService<CoreModuleManager>();
+        using var package = new MemoryStream(BuildPackage(signer.ExportPkcs8PrivateKeyPem(), typeof(Slice7FixtureModule), runtime: "dotnet-inprocess-trusted"), writable: false);
+
+        var rejection = await Assert.ThrowsAsync<ModuleRuntimePolicyException>(() => manager.InstallAsync(package, CancellationToken.None));
+
+        Assert.Contains("dotnet-inprocess-trusted", rejection.Message, StringComparison.Ordinal);
+        Assert.Empty(manager.List());
+        Assert.Empty(Directory.EnumerateFiles(Path.Combine(directory.Path, "module-staging")));
+        Assert.Empty(app.Services.GetRequiredService<IModuleRegistry>().List());
+        Assert.False(app.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task CoreCatalogRejectsLegacyInProcessActivationBeforeModuleLoad()
+    {
+        using var directory = new TemporaryDirectory();
+        using var signer = RSA.Create(2048);
+        var moduleHost = FindModuleHost();
+        await using var app = Build(directory.Path, signer.ExportSubjectPublicKeyInfoPem(), moduleHost);
+        await app.StartAsync();
+        var catalog = app.Services.GetRequiredService<ModuleExtensionCatalog>();
+        using var package = new MemoryStream(BuildPackage(signer.ExportPkcs8PrivateKeyPem(), typeof(Slice7FixtureModule),
+            runtime: "dotnet-inprocess-trusted", packageFormatVersion: 1), writable: false);
+        await catalog.InstallAsync(package, CancellationToken.None);
+
+        var rejection = await Assert.ThrowsAsync<ModuleRuntimePolicyException>(() => catalog.ActivateAsync("hispania.slice7.fixture", CancellationToken.None));
+
+        Assert.Contains("dotnet-inprocess-trusted", rejection.Message, StringComparison.Ordinal);
+        Assert.Empty(app.Services.GetRequiredService<IModuleRegistry>().List());
+        Assert.False(app.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task CoreRecoveryLeavesPreviouslyPersistedInProcessPackageInactive()
+    {
+        using var directory = new TemporaryDirectory();
+        using var signer = RSA.Create(2048);
+        var publicKey = signer.ExportSubjectPublicKeyInfoPem();
+        var privateKey = signer.ExportPkcs8PrivateKeyPem();
+        var moduleHost = FindModuleHost();
+        var modulesDirectory = Path.Combine(directory.Path, "modules");
+        var archivePath = Path.Combine(directory.Path, "legacy-inprocess.hispania");
+        await File.WriteAllBytesAsync(archivePath, BuildPackage(privateKey, typeof(Slice7FixtureModule), runtime: "dotnet-inprocess-trusted"));
+        var registry = new ModuleRegistry();
+        using (var legacyCatalog = new ModuleExtensionCatalog(modulesDirectory, new Version(1, 0, 0), new ModuleRuntime(registry), registry,
+            new Dictionary<string, Func<IModule>>(), ["hispania.slice7.fixture"], moduleHost,
+            new Dictionary<string, string> { ["hispania.slice7.test"] = publicKey }, requirePublisherSignature: true))
+        {
+            var plan = await legacyCatalog.PlanPackageSetAsync([archivePath], new Dictionary<string, string>
+            { ["hispania.slice7.fixture"] = "[1.0.0]" });
+            await legacyCatalog.ApplyPackageSetAsync(plan, new HashSet<string>(StringComparer.Ordinal));
+        }
+
+        var catalogPath = Path.Combine(modulesDirectory, ".package-state", "catalog.json");
+        var state = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(catalogPath))!;
+        state["packages"]![0]!["enabled"] = true;
+        await File.WriteAllTextAsync(catalogPath, state.ToJsonString());
+
+        await using var app = Build(directory.Path, publicKey, moduleHost);
+        await app.StartAsync();
+
+        Assert.Empty(app.Services.GetRequiredService<IModuleRegistry>().List());
+        Assert.False(app.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.IsCancellationRequested);
+    }
+
+    [Fact]
     public async Task InvalidSignatureTamperedPayloadCorruptArchiveAndIncompatibleHostFailClosed()
     {
         using var directory = new TemporaryDirectory();
@@ -137,23 +210,24 @@ public sealed class Slice7ModuleLifecycleTests
         }, httpEnabled: false);
 
     private static byte[] BuildPackage(string privateKey, Type entryType, string publisherId = "hispania.slice7.test",
-        string minimumHostVersion = "1.0.0", bool invalidSignature = false, bool tamperPayload = false)
+        string minimumHostVersion = "1.0.0", bool invalidSignature = false, bool tamperPayload = false,
+        string runtime = "dotnet-outofprocess", int packageFormatVersion = 2)
     {
         var assemblyPath = typeof(Slice7FixtureModule).Assembly.Location;
         var payload = File.ReadAllBytes(assemblyPath);
         var manifest = new ModuleManifest
         {
-            PackageFormatVersion = 2,
-            PackageVersion = "1.0.0",
-            PackageDependencies = [],
-            RequiredModuleHostProtocol = 1,
+            PackageFormatVersion = packageFormatVersion,
+            PackageVersion = packageFormatVersion == 2 ? "1.0.0" : null,
+            PackageDependencies = packageFormatVersion == 2 ? [] : null,
+            RequiredModuleHostProtocol = packageFormatVersion == 2 ? 1 : null,
             Id = "hispania.slice7.fixture",
             Name = "HISPANIA Slice 7 Fixture",
             Version = "1.0.0",
             Implements = [],
             MinimumHostVersion = minimumHostVersion,
             MaximumHostVersion = "1.0.0",
-            Runtime = "dotnet-outofprocess",
+            Runtime = runtime,
             EntryAssembly = "Hispania.Slice7.Fixture.dll",
             EntryType = entryType.FullName,
             SharedAssemblies = ["Hispania.ModuleSystem.Contracts"],

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Hispania.PrivateFixture.ModuleV2</AssemblyName>
+    <RootNamespace>Hispania.PrivateFixture.ModuleV2</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\contracts\extension-demo\Hispania.ExtensionDemo.Contracts.csproj" />
+    <ProjectReference Include="..\dependency-v2\Hispania.PrivateFixture.Dependency.csproj" />
+  </ItemGroup>
+</Project>

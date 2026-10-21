@@ -1,0 +1,147 @@
+{
+  "run": "Slice 8 Step 6 ALC reference investigation",
+  "date": "2026-10-19",
+  "branch": "codex/hispania-v1-baseline-consolidation",
+  "headAtStart": "ef7365bb5e7d7551cb1093519743cc1885757b5b",
+  "productionChanged": false,
+  "finding": {
+    "referenceRootIdentified": false,
+    "behavioralCause": "The successful in-process test's lease acquisition, module calls, assertions, and disposal were kept in the caller's async state-machine frame. Moving those operations into a separate NoInlining synchronous helper made the collectible contexts observable as unloaded and allowed owned package cleanup.",
+    "scope": "Test-only lifetime/frame issue demonstrated by controlled differential runs; exact individual GC root is not identified.",
+    "priorSymptom": "WeakReference liveness [false,true], DELETE and exclusive-read probes allowed, recursive Directory.Delete failed with UnauthorizedAccessException HRESULT 0x80070005."
+  },
+  "experiments": [
+    {
+      "id": "A",
+      "change": "Inspected Assembly and ALC capture helpers and retained locals.",
+      "result": "No Assembly object is returned or held by the caller after the NoInlining capture helper; this did not identify a concrete GC root."
+    },
+    {
+      "id": "B",
+      "change": "Explicitly cleared first and second lease locals after Dispose.",
+      "result": "FAIL; clearing wrapper lease locals alone did not resolve the in-process cleanup failure.",
+      "trx": ".artifacts/slice8-step6-alc-roots-20261019/experiment-B-clear-leases/run.trx",
+      "sha256": "C777BE5EEDB1FB24C8659B133B00D7763304753EEC9D8F9BC815A1704AEDDF4F"
+    },
+    {
+      "id": "C",
+      "change": "Compared activation exception lifetime.",
+      "result": "Not causal to this successful activation path; the failing scenario has no startup exception. Earlier failed-activation diagnosis remains separate."
+    },
+    {
+      "id": "D",
+      "change": "Moved lease use/disposal and initially unload observation into separate NoInlining frames.",
+      "result": "PASS in the first isolated focused run (both runtime rows).",
+      "trx": ".artifacts/slice8-step6-alc-roots-20261019/experiment-D-separated-lease-frame/run.trx",
+      "sha256": "C9FB80197DB97F2AB0A049CB3AEE5A7C71526E242AE0770676CE24B44A354E80"
+    },
+    {
+      "id": "D1",
+      "change": "Kept only lease acquisition/use/disposal in the synchronous NoInlining helper; left unload and WeakReference observation in the caller async frame.",
+      "result": "PASS, both runtime rows; this isolates the relevant structural difference to the lease-bearing operation frame rather than a separate unload observer.",
+      "trx": ".artifacts/slice8-step6-alc-roots-20261019/experiment-D1-sync-lease-frame/experiment-D1.trx",
+      "sha256": "B58F5C57EE9DF06658A7F30B57958A3B59A2F366297FBEF35D5D864C2A53EA2D"
+    },
+    {
+      "id": "E",
+      "change": "Disabled the added before-delete diagnostic snapshot content.",
+      "result": "FAIL; diagnostic snapshot formatting was not the cause.",
+      "trx": ".artifacts/slice8-step6-alc-roots-20261019/experiment-E-instrumentation-off/run.trx",
+      "sha256": "DD404FF3C4889E5D5C87EC03EB304EE3A4C0EC9FADE1F67ACAA4D9DBB4AE4D88"
+    }
+  ],
+  "validation": {
+    "focusedTest": {
+      "runs": 5,
+      "passedPerRun": 2,
+      "failedPerRun": 0,
+      "skippedPerRun": 0,
+      "trx": [
+        { "path": ".artifacts/slice8-step6-alc-roots-20261019/focused-5/run-01/run.trx", "sha256": "72E053931B079AE5D5A083BB332148EF8A88C391DE330407455959DFDDBD6211" },
+        { "path": ".artifacts/slice8-step6-alc-roots-20261019/focused-5/run-02/run.trx", "sha256": "798456F63F53B40FC57BC39F4F755B75B1A311CE1D3F120A0019FE832E13F734" },
+        { "path": ".artifacts/slice8-step6-alc-roots-20261019/focused-5/run-03/run.trx", "sha256": "16EC5F76ECB9059FB3E807FA5BC1FE5DBBD5B5E5762DBB7DFA444C5F04A05557" },
+        { "path": ".artifacts/slice8-step6-alc-roots-20261019/focused-5/run-04/run.trx", "sha256": "504DB0013BE6AAC52A1AFB16F96CD9B117681C93FAA8237961B3D035C67DDC84" },
+        { "path": ".artifacts/slice8-step6-alc-roots-20261019/focused-5/run-05/run.trx", "sha256": "B419FDC774042B0389F6ECC1578899F4998A8AD675526FA48240DB3E902C3F10" }
+      ]
+    },
+    "isolationClass": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "trx": ".artifacts/slice8-step6-alc-roots-20261019/class-after-D1/class-after-D1.trx",
+      "sha256": "8445D7D879B4CF40EF3DAC20C8CA95946C96CDA71C996C1CCB33043DBC925EBE"
+    },
+    "runtime": {
+      "passed": 265,
+      "failed": 0,
+      "skipped": 0,
+      "runs": [
+        { "path": ".artifacts/slice8-step6-alc-roots-20261019/regressions/runtime-after-D1/runtime-after-D1.trx", "sha256": "D1CCE18A04870168220CAD8BC708CD113AFAE9DBA26F51EAF60425C191044A23" },
+        { "path": ".artifacts/slice8-step6-alc-roots-20261019/regressions/runtime-after-D1-retry/runtime-after-D1-retry.trx", "sha256": "4353906AFC634C8147AB3C9F1EAC2BE8136E860763BE588272923C2AD7B75E84" }
+      ]
+    },
+    "core": {
+      "passed": 70,
+      "failed": 0,
+      "skipped": 1,
+      "skip": "Direct symbolic-link creation lacks the required privilege; junction coverage remains separate.",
+      "trx": ".artifacts/slice8-step6-alc-roots-20261019/regressions/core-after-D1-restored/core-after-D1.trx",
+      "sha256": "D7BAB26ACFA262AAC724FD42B946DD5606BAE0353609C82372981512AE59FDAB"
+    },
+    "moduleHost": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "trx": ".artifacts/slice8-step6-alc-roots-20261019/regressions/modulehost-after-D1/modulehost-after-D1.trx",
+      "sha256": "F83E036C74FECF9952AE2BDEBEAFCCE53FD157FB6B4E8E7BE41EDB5A4DCEF714"
+    },
+    "packageLifecycle": {
+      "passed": 94,
+      "failed": 0,
+      "skipped": 0,
+      "trx": ".artifacts/slice8-step6-alc-roots-20261019/regressions/package-lifecycle-after-D1/package-lifecycle-after-D1.trx",
+      "sha256": "D68F2FAA6046F21B21FD5F1EAB6B18D3A38B69FC998F554FC7292652C34F4026"
+    },
+    "publisherTrust": {
+      "passed": 32,
+      "failed": 0,
+      "skipped": 0,
+      "trx": ".artifacts/slice8-step6-alc-roots-20261019/regressions/publisher-trust-after-D1/publisher-trust-after-D1.trx",
+      "sha256": "1C8B66F8DBAEA6FDD8F6A9E4F449BECEF5C411DEC895705E4F51A3470629E4E5"
+    }
+  },
+  "historicalArtifact": {
+    "passedBefore": true,
+    "passedAfter": true,
+    "contentId": "44B43088658F2F70FE8A0745EA5DFC3B1519CBF10B9347F3F4B88835EEDB3B12",
+    "manifestSha256": "22D05298F7329BE8C2892BDEE33EBE71C6851EBC5D7A6B6BBF2A49C34F45FE87",
+    "added": [],
+    "missing": [],
+    "modified": []
+  },
+  "temporaryRoots": {
+    "atStart": 106,
+    "atEnd": 108,
+    "historicalRootsDeleted": 0,
+    "newFailedExperimentRootsPreserved": 2,
+    "notes": "All roots existing at task start were preserved. Two failed diagnostic experiment roots were also preserved; successful test-owned roots were cleaned by their own test finally blocks."
+  },
+  "diagnosticTools": {
+    "available": [],
+    "dumpCollected": false,
+    "note": "No GC-root inspection tool was present on PATH. No external tool was installed and no potentially sensitive process dump was collected."
+  },
+  "testSource": {
+    "path": "tests/unit/PrivateModuleDependencyIsolationTests.cs",
+    "sha256": "31246DE3ADDA01AEB5EA1AD06B7520CA81BB4EC759209E8A70484F3A3BEC915A",
+    "productionFilesModified": false
+  },
+  "git": {
+    "head": "ef7365bb5e7d7551cb1093519743cc1885757b5b",
+    "commitCreated": false,
+    "pushPerformed": false,
+    "step7Started": false,
+    "slice9Started": false
+  },
+  "disposition": "PARTIAL: test-only frame isolation resolves the observed focused cleanup failure through five repetitions, the isolation class, and all authorized regression suites; the exact individual GC root remains unproven. Slice 8 Step 6 remains PARTIAL for previously documented independent Artifact Fitness gates."
+}

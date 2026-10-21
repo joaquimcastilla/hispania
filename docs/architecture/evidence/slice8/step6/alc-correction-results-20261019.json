@@ -1,0 +1,70 @@
+{
+  "evidenceId": "EV-050-S8-STEP6-ALC-CORRECTION-20261019",
+  "capturedAt": "2026-10-19",
+  "scope": "Windows x64, failed in-process module activation collectible AssemblyLoadContext lifetime",
+  "diagnosis": {
+    "productionPath": "ModuleExtensionCatalog.LoadAndStartAsync",
+    "activationErrorPath": "ModuleRuntime.StartModuleAsync wraps the module exception in ModuleStartupException and preserves it as InnerException",
+    "cause": "The test retained the thrown ModuleStartupException through package-directory cleanup. Its inner exception retained stack metadata from the collectible module, so the ALC WeakReference remained alive while Directory.Delete ran.",
+    "differentialCheck": "Before releasing the exception, the ALC WeakReference was alive and recursive deletion failed with UnauthorizedAccessException 0x80070005. After validating the original exception and setting the test reference to null, the bounded WeakReference collection check passed and cleanup succeeded.",
+    "productionChange": false,
+    "testChange": "The failed-activation test now releases its local exception reference before waiting for ALC collection and deleting the test-owned package tree. The original activation exception type is asserted before release.",
+    "contractLimit": "Unload() requests collectible-context unload; collection is eventual and cannot be confirmed while a caller retains an exception whose stack metadata references the module. Synchronous confirmation before returning the original exception would require a changed activation-error contract."
+  },
+  "repetitions": {
+    "positiveInProcessUnload": "10/10 PASS",
+    "missingDependencyInProcess": "10/10 PASS",
+    "incompatibleDependencyInProcess": "10/10 PASS",
+    "summaryPath": ".artifacts/slice8-step6-alc-correction-20261019/repetitions/repetition-summary.json",
+    "summarySha256": "CD840B974F3A673AE53759FA3E92E9742594A2117F90196CD4ED061E5728A246",
+    "eachRunTrx": "The summary records a SHA-256 for each of the 30 individual TRX files."
+  },
+  "regressions": [
+    { "name": "PrivateModuleDependencyIsolationTests", "result": "6/6 PASS", "trxSha256": "covered by full Runtime TRX" },
+    { "name": "OOP private dependency isolation", "result": "3/3 PASS", "trxSha256": "62EC00D10E876821EB654C0905F2A7DFDDD1356F5DAE241677F45F28F4E587CA" },
+    { "name": "Core win-x64", "result": "62 PASS, 1 known symlink SKIP, 0 FAIL", "trxSha256": "D2D4E1C2F00235AD9D056F17E0E6B02435D5BA0A0B05D996A0D4F8143385D9A3" },
+    { "name": "ModuleHost", "result": "10/10 PASS", "trxSha256": "E55B833DEE52D2FF1507218C27A970A2933F13705AB110E0B8C049016EBDC979" },
+    { "name": "Package Lifecycle with historical reader", "result": "94/94 PASS", "trxSha256": "31F31DF71B206E2160B65E48AC04F66EC68A292DCB02C438D52236CB9E799492" },
+    { "name": "Phase 17 backup/restore", "result": "46/46 PASS", "trxSha256": "7EC104B4C38514F695E434BD8C09BE3100863A2C8DFD547CF65D116983B979E7" },
+    { "name": "Phase 19 package backup/restore", "result": "2/2 PASS", "trxSha256": "C3F6888AA777E5E3089F41F8B81B870F0060EB9D16A2FCB9ECB4A8EE1FE8D714" },
+    { "name": "Publisher trust", "result": "32/32 PASS", "trxSha256": "FEAE0B3AEFA96C342B5DF1677A3B52E1B4EC2C0933CC87B21148E29468ADD183" },
+    { "name": "Full Runtime", "result": "265/265 PASS", "trxSha256": "E7A1ED6FAFF363774CB964CFFEB6BBC9DDF4C2378E420270F27B9AC58727259A" }
+  ],
+  "historicalArtifact": {
+    "result": "PASS before and after",
+    "contentId": "44B43088658F2F70FE8A0745EA5DFC3B1519CBF10B9347F3F4B88835EEDB3B12",
+    "manifestSha256": "22D05298F7329BE8C2892BDEE33EBE71C6851EBC5D7A6B6BBF2A49C34F45FE87",
+    "added": [],
+    "missing": [],
+    "modified": [],
+    "beforeResultSha256": "64A73CACB74F0B05BD679B72A90365FA5164EFF376B6AF9EDE65500FE79CD5FE",
+    "afterResultSha256": "64A73CACB74F0B05BD679B72A90365FA5164EFF376B6AF9EDE65500FE79CD5FE"
+  },
+  "temporaryRoots": {
+    "historicalInventoryCount": 67,
+    "historicalRootsMissing": 0,
+    "currentCount": 69,
+    "newRootsPreserved": [
+      "hispania-slice8-private-deps-73f8a9960491411c8dc4cecd4630e316",
+      "hispania-slice8-private-deps-e6034fc304254edbbff72cfaec9948ff"
+    ],
+    "inventoryPath": ".artifacts/slice8-step6-alc-correction-20261019/temp-inventory-after.json",
+    "inventorySha256": "D423F195383C735CE473937E615C7AA02C4CEA079E7013BF7312A9306BC311D6",
+    "cleanupOfHistoricalOrFailedRoots": false
+  },
+  "worktree": {
+    "branch": "codex/hispania-v1-baseline-consolidation",
+    "head": "ef7365bb5e7d7551cb1093519743cc1885757b5b",
+    "productionCodeChangedByThisInvestigation": false,
+    "commitCreated": false,
+    "pushPerformed": false,
+    "gitDiffCheck": "PASS"
+  },
+  "ownerAcceptance": {
+    "date": "2026-10-19",
+    "decision": "Accepted existing request-unload/eventual-collection behavior; retained consumer references may defer collection; preserve original activation error for diagnosis.",
+    "changesFrozenContracts": false,
+    "changesOopOnlyPolicy": false
+  },
+  "disposition": "ALC test-lifecycle regression RESOLVED and owner accepted. No production code changed. Collection is eventual, not an immediate-release guarantee. Slice 8 Step 6 remains PARTIAL for other documented Artifact Fitness limitations."
+}

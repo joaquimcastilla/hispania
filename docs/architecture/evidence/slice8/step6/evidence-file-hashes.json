@@ -1,0 +1,34 @@
+{
+  "artifact-fitness-matrix.md": {
+    "size": 9729,
+    "sha256": "AC0D1F04DB2BBAD0EEADBAE9BC0D84472553B2585D3DC52C525DCC5322F302BB"
+  },
+  "candidate-core-artifact-manifest.json": {
+    "size": 8686,
+    "sha256": "A336746DA28F172A7E4B84F7E5577AA5F27BC90CB8FDF2D312B74BB5B4AEAB6C"
+  },
+  "candidate-inventory.json": {
+    "size": 3038,
+    "sha256": "F47F2505A66C1A183F392FEE9F488B3CF8E451BD7F8976DCA5AA96220B556A96"
+  },
+  "candidate-validator-report.json": {
+    "size": 164,
+    "sha256": "EEB54E0E2C469F12ADD69B054E3D429A7EBA0A4BFFF48D97C2DA50E094CF1FDA"
+  },
+  "historical-baseline-after.json": {
+    "size": 296,
+    "sha256": "64A73CACB74F0B05BD679B72A90365FA5164EFF376B6AF9EDE65500FE79CD5FE"
+  },
+  "historical-baseline-before.json": {
+    "size": 296,
+    "sha256": "64A73CACB74F0B05BD679B72A90365FA5164EFF376B6AF9EDE65500FE79CD5FE"
+  },
+  "published-candidate-smoke-sanitized.json": {
+    "size": 2734,
+    "sha256": "F43444469CBDD5558563C1C569430449BE45CAD7ACFAF5CD3BAEEFA1C000DE1D"
+  },
+  "same-environment-reproducibility.json": {
+    "size": 339,
+    "sha256": "BF1C66F4215D86BF18019F2173A665DCE81C9DF33F36364727E7B072A17DB519"
+  }
+}

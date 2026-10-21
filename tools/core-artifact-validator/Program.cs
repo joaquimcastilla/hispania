@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -235,19 +237,41 @@ public static class ArtifactManifestBuilder
             using var stream = info.OpenRead();
             var hash = Convert.ToHexString(SHA256.HashData(stream));
             origins.TryGetValue(relative, out var origin);
-            files.Add(new ArtifactFile(relative, info.Length, hash, Classify(relative), origin));
+            files.Add(new ArtifactFile(relative, info.Length, hash, Classify(relative, entry), origin));
         }
     }
 
     private static string Relative(string root, string fullPath) => Path.GetRelativePath(root, fullPath).Replace('\\', '/');
-    private static string Classify(string path)
+    internal static string Classify(string path, string physicalPath)
     {
         var lower = path.ToLowerInvariant();
-        if (lower.Contains("/runtimes/", StringComparison.Ordinal) &&
-            (lower.EndsWith(".dll", StringComparison.Ordinal) || lower.EndsWith(".so", StringComparison.Ordinal) || lower.EndsWith(".dylib", StringComparison.Ordinal))) return "nativeRuntime";
         if (lower.EndsWith(".deps.json", StringComparison.Ordinal)) return "dependencyManifest";
         if (lower.EndsWith(".runtimeconfig.json", StringComparison.Ordinal)) return "runtimeConfig";
-        if (lower.EndsWith(".dll", StringComparison.Ordinal)) return "managedAssembly";
+        if (lower.EndsWith(".so", StringComparison.Ordinal) || lower.EndsWith(".dylib", StringComparison.Ordinal)) return "nativeRuntime";
+        if (lower.EndsWith(".dll", StringComparison.Ordinal) || lower.EndsWith(".exe", StringComparison.Ordinal))
+        {
+            try
+            {
+                using var stream = File.OpenRead(physicalPath);
+                using var pe = new PEReader(stream, PEStreamOptions.LeaveOpen);
+                if (pe.PEHeaders.PEHeader is null)
+                    throw new InvalidDataException($"Executable image is not a valid PE file: {path}.");
+                if (pe.HasMetadata)
+                {
+                    var metadata = pe.GetMetadataReader();
+                    if (!metadata.IsAssembly)
+                        throw new InvalidDataException($"PE file contains CLI metadata but is not a .NET assembly: {path}.");
+                    return "managedAssembly";
+                }
+
+                if (lower.EndsWith(".dll", StringComparison.Ordinal)) return "nativeRuntime";
+                return "applicationHost";
+            }
+            catch (BadImageFormatException exception)
+            {
+                throw new InvalidDataException($"Executable image is not a valid PE file: {path}.", exception);
+            }
+        }
         if (!Path.HasExtension(path)) return "applicationHost";
         return "content";
     }
@@ -341,6 +365,7 @@ public static class ArtifactValidator
                 issues.Add($"File origin must not contain a developer-specific absolute path: {canonical}.");
             var physical = Path.GetFullPath(Path.Combine(rootPath, canonical.Replace('/', Path.DirectorySeparatorChar)));
             if (!IsWithin(rootPath, physical)) { issues.Add($"Path escapes artifact root: {canonical}."); continue; }
+            VerifyFileType(canonical, physical, file, issues);
             VerifyFile(rootPath, physical, file, issues);
         }
 
@@ -438,6 +463,19 @@ public static class ArtifactValidator
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
         { issues.Add($"File verification failed for {expected.Path}: {exception.GetType().Name}."); }
+    }
+
+    private static void VerifyFileType(string relativePath, string physicalPath, ArtifactFile expected, List<string> issues)
+    {
+        if (!File.Exists(physicalPath)) return;
+        try
+        {
+            var actual = ArtifactManifestBuilder.Classify(relativePath, physicalPath);
+            if (!string.Equals(actual, expected.FileType, StringComparison.Ordinal))
+                issues.Add($"Manifest file type mismatch: {relativePath} declares {expected.FileType}, payload is {actual}.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        { issues.Add($"File type verification failed for {relativePath}: {exception.Message}"); }
     }
 
     private static void VerifyDirectoryTree(string root, HashSet<string> manifestPaths, ArtifactPolicy policy, List<string> issues)

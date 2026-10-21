@@ -1,0 +1,6 @@
+{
+  "passed": true,
+  "issues": [],
+  "contentId": "44B43088658F2F70FE8A0745EA5DFC3B1519CBF10B9347F3F4B88835EEDB3B12",
+  "policyId": "hispania-core-v1.0.0"
+}

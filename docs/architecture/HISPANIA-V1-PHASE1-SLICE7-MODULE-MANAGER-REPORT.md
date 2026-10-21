@@ -2,7 +2,7 @@
 
 ## A. Status
 
-**PARTIAL — root manifest duplication is fixed and the Windows x64 artifact passes its allowlist/manifest gate.** The published-process smoke could not run in this agent environment, and temporary evidence/publish directories remain. Phase 1 remains **IN PROGRESS**; global roadmap stays exactly **4/14 — 28.6%**. Do not start Slice 8.
+**DONE — ACCEPTED BY OWNER**, limited to the validated Windows x64 scope. The owner explicitly accepted Slice 7 on 2026-10-18 after the complete published-Core fixture smoke passed 14/14. The acceptance does not claim Linux, Raspberry Pi, other architectures, hostile-native-code sandboxing, or capabilities from later phases. Phase 1 remains **IN PROGRESS**; global roadmap stays exactly **4/14 — 28.6%**. Slice 8 remains **NOT STARTED**.
 
 ## B. Root cause and correction
 
@@ -22,6 +22,8 @@ Run on Windows x64 after the correction and policy update. Every suite completed
 - Selected regression: Inventory/Platform/Storage **29/29**; Deployment/Hosting **35/35**; Runtime module infrastructure **32/32**; total **96/96**.
 
 Security/auth coverage in Core and lifecycle suites includes unknown and revoked publishers, invalid signature, altered payload hash, corrupt archive, incompatible host, trusted signed fixture install, disable/enable, restart recovery, fixture failure isolation, and admin authentication/permission/Origin/CSRF checks. The ModuleHost integration tests run the actual out-of-process host from build output; they are not a smoke of the published Core process.
+
+After the owner's published-Core smoke report, the agent reran `dotnet test tests/core/Hispania.Core.Tests.csproj --no-restore --filter FullyQualifiedName~ModuleAdministrationReusesSessionAuthorizationOriginAndAntiforgery --verbosity minimal`: **1/1 passed**. This confirms the current test's authorization/Origin/antiforgery behavior; its invalid-package request does not prove successful signed-fixture installation through published Core.
 
 Final TRX files are in `%TEMP%\hispania-slice7-final-evidence-20261018`:
 
@@ -59,28 +61,40 @@ Manifest SHA-256: `22D05298F7329BE8C2892BDEE33EBE71C6851EBC5D7A6B6BBF2A49C34F45F
 
 ## E. Published-process smoke and temporary files
 
-The automated smoke attempt was rejected by the execution tool before it started; no process, certificate, or smoke directory was created. This smoke has not been reported as passing. The accepted artifact and final test evidence remain available in `%TEMP%` for owner verification. Sensitive-file inventory across those directories found zero `.pfx`, `.p12`, `.pem`, `.key`, `.sqlite`, `.db`, cookie, or token files. The temporary publish/test outputs themselves have not been removed; cleanup is therefore pending.
+### Owner-reported complete published Core smoke — 2026-10-18
 
-Owner-run published Core smoke, if needed to close the process gate:
+The owner reports executing `tools/test-slice7-published-fixture-lifecycle.ps1` against the accepted `net10.0/win-x64` publish and receiving **PASS — 14/14**. Reported fields: `overall=PASS`; content ID `44B43088658F2F70FE8A0745EA5DFC3B1519CBF10B9347F3F4B88835EEDB3B12`; `coreExitCode=0`; `secretsPrinted=false`; and `failureStage`, `errorCode`, and `failureDetailCode` all null.
 
-1. In PowerShell, set the artifact and a new, exclusive data directory under `%TEMP%`. Use an operator-controlled test PFX whose SAN includes `127.0.0.1`. The following prompts for the PFX password without echo and avoids a command-line argument or log:
+The owner reports successful trusted-publisher configuration, fresh SQLite/bootstrap and HTTPS, admin authentication/permissions, signed-fixture installation with HTTP 201, trusted/authorized disabled listing, activation with HTTP 200 and healthy state, persistence after Core restart, disable and removal through administrative endpoints, controlled fixture failure without Core failure, clean shutdown, no residual processes, unchanged published artifact, and temporary cleanup. This is explicitly **operator-reported evidence**; Codex did not execute the full 14-check run. The agent separately ran the `-RestartOnly` probe against the same published artifact; it passed installation, activation, stop with exit code zero, restart, persisted enabled/healthy state, artifact integrity and cleanup.
 
-   ```powershell
-   $artifact = Join-Path $env:TEMP 'hispania-slice7-accepted-20261018-publish'
-   $data = Join-Path $env:TEMP ('hispania-slice7-owner-data-' + [guid]::NewGuid().ToString('N'))
-   $env:HISPANIA_CORE_DATA_DIRECTORY = $data
-   $env:HISPANIA_CORE_LISTEN_ADDRESS = '127.0.0.1'
-   $env:HISPANIA_CORE_PORT = '5070'
-   $env:HISPANIA_CORE_HTTPS_CERTIFICATE_PATH = '<absolute path to operator test PFX>'
-   $secure = Read-Host 'PFX password' -AsSecureString
-   $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-   try { $env:HISPANIA_CORE_HTTPS_CERTIFICATE_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
-   finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
-   ```
-2. Run `& "$artifact\Hispania.Core.exe"` in the foreground. From a second PowerShell window run `Invoke-RestMethod -SkipCertificateCheck https://127.0.0.1:5070/health/live` and confirm `status` is `healthy`; `Invoke-WebRequest http://127.0.0.1:5070/health/live` must fail. Return to the first window and press Ctrl+C; confirm the host exits cleanly.
-3. Return to the first window after Ctrl+C. Clear the environment with `Remove-Item Env:HISPANIA_CORE_DATA_DIRECTORY,Env:HISPANIA_CORE_LISTEN_ADDRESS,Env:HISPANIA_CORE_PORT,Env:HISPANIA_CORE_HTTPS_CERTIFICATE_PATH,Env:HISPANIA_CORE_HTTPS_CERTIFICATE_PASSWORD`. Verify `$data` is the unique `hispania-slice7-owner-data-*` child of `$env:TEMP`, remove only that exact directory, and confirm it no longer exists. Do not delete the operator's PFX.
+The owner supplied the original sanitized JSON at the designated intake path. It was copied byte-for-byte from the owner's Downloads directory; source and evidence SHA-256 match. Structural validation passed: exactly 14 expected checks, all PASS; accepted Core content ID and Core/ModuleHost hashes match the accepted manifest; owner-attested fixture hashes match; `coreExitCode=0`; all failure fields null; `secretsPrinted=false`; no sensitive property names, secret-pattern values or user-profile paths detected. Evidence file SHA-256: `FDE46346CD3B88402D7F0E725A12F4B00DA806F930F4B28C810F988BC6FC6F56` (2,505 bytes). The content remains **owner-reported execution evidence**, not a full smoke run executed by Codex. No credentials, cookies, tokens or private keys are recorded.
 
-This checks the published Core process, HTTPS-only listener, SQLite initialization and shutdown. Fixture/ModuleHost execution is covered by the 4/4 lifecycle suite from build output; if §13 acceptance requires fixture install from the published Core itself, that remains an additional manual verification. After owner smoke, remove the retained `%TEMP%\hispania-slice7-*` scratch outputs and confirm no sensitive files remain.
+### Formal owner acceptance — 2026-10-18
+
+The owner stated: “Como propietario de HISPANIA, acepto formalmente Slice 7 — Module Manager & Trust, limitado al alcance Windows x64 validado.” This explicit acceptance authorizes documentary closure and marking Slice 7 DONE. It does not authorize commits, push, releases, public distribution, or Slice 8.
+
+### Acceptance audit against R3 Slice 7
+
+| Criterion | State | Evidence and scope |
+|---|---|---|
+| Accepted Windows x64 publish is allowlist/manifest compliant and unchanged | PASS | Agent rechecked all 18 manifest file entries against size and SHA-256; no mismatches. Validator passed with no issues. Content ID matches the report. Owner reports artifact unchanged during full smoke. |
+| Explicit test publisher trust and signed fixture install; trust separate from permissions | PASS | Owner reports publisher trust configuration and HTTP 201 installation; disabled listing was trusted/authorized. Core and lifecycle automated suites cover trust, signature, integrity and authorization behavior. |
+| Unknown/revoked signer, tampered hash/signature, corrupt archive and incompatible host fail closed before execution | PASS | Automated Core and fixture lifecycle coverage recorded in §C (Core 50/50, lifecycle 4/4); these cases are not claimed as manually repeated in the full smoke. |
+| Activate only the explicit fixture; healthy status; signing grants no permissions | PASS | Owner reports activation and healthy state. Automated authorization/permission tests recorded in §C, including the targeted 1/1 rerun. |
+| Enabled module survives published Core restart and restores healthy | PASS | Owner reports full smoke PASS; agent's `-RestartOnly` published-artifact probe independently verified the state. Same isolated data root, catalog and fixture directory were asserted by the probe. |
+| Disable and uninstall through authenticated administrative endpoints | PASS | Owner reports both operations passed in the full smoke; endpoint/authentication/Origin/antiforgery contracts are documented in §C and the inspected Core route implementation. |
+| Controlled module failure remains isolated from Core | PASS | Owner reports controlled failure without Core loss; automated lifecycle tests cover failure isolation. No sandbox or hostile-native-code guarantee follows. |
+| Shutdown/checkpoint, process cleanup and temporary-secret cleanup | PASS | Owner reports exit code 0, checkpoint/clean shutdown, no residual processes and temporary cleanup; the agent's restart probe also passed clean shutdown and cleanup. |
+| Rights-cleared, harmless fixture and bounded local use | PASS | Fixture provenance/right scope is recorded in the rights register and §F; no distribution or relicensing claim. |
+| Full-run evidence retained with sanitized checks and package hashes | PASS — OWNER-REPORTED EXECUTION | Original JSON retained at `docs/architecture/evidence/slice7/published-core-fixture-smoke-20261018.json`; SHA-256 `FDE46346CD3B88402D7F0E725A12F4B00DA806F930F4B28C810F988BC6FC6F56`. Validation confirmed the 14 expected PASS entries, required result fields, manifest identity/hashes and sanitized status. |
+
+### Artifact verification — read-only
+
+Accepted artifact: `%TEMP%\hispania-slice7-accepted-20261018-publish`; manifest source commit `591dc17db24f0afd3ad066c96b0b1db1494d0150`; manifest SHA-256 `22D05298F7329BE8C2892BDEE33EBE71C6851EBC5D7A6B6BBF2A49C34F45FE87`; content ID `44B43088658F2F70FE8A0745EA5DFC3B1519CBF10B9347F3F4B88835EEDB3B12`. The agent independently checked all 18 listed files, sizes and hashes and reran the artifact validator: `passed=true`, `issues=[]`, policy `hispania-core-v1.0.0`. The publish directory contains those 18 files plus the manifest (19 files total). Core and ModuleHost hashes match the manifest values already recorded in §D.
+
+### Temporary outputs — read-only inventory
+
+The owner-reported exclusive full-smoke directory and test secrets were cleaned. No temporary files were deleted by Codex. The following prior publish/evidence/scratch entries remain in `%TEMP%`: `hispania-slice7-20261018-regression`, `hispania-slice7-accepted-20261018-publish`, `hispania-slice7-final-20261018-publish`, `hispania-slice7-final-evidence-20261018`, `hispania-slice7-rerun-20261018`, `hispania-slice7-rootcause-20261018-publish`, `hispania-slice7-accepted-20261018-descriptor.json`, `hispania-slice7-final-20261018-descriptor.json`, and `hispania-slice7-publish-diag.log`. Preserve the accepted publish, final TRX evidence, and root-cause log. The remaining build/publish outputs are optional scratch cleanup candidates, but their contents have not been reviewed in this audit and they were not deleted. Their retention is not a functional Slice 7 blocker; do not delete them without owner authorization.
 
 ## F. Rights and publication
 
@@ -92,6 +106,6 @@ Branch: `codex/hispania-v1-baseline-consolidation`. Commits for this task:
 
 - `dd5e968` — `fix(core): isolate ModuleHost publish outputs`.
 - `591dc17` — `fix(core): allow nested ModuleHost publish files`.
-- A documentation/evidence commit records this closeout update.
+- This review's report/ledger updates are documentation-only and remain uncommitted at HEAD `ef7365bb5e7d7551cb1093519743cc1885757b5b`.
 
-No push, merge, rebase, force-push, tag, or release occurred. Global roadmap remains exactly **4/14 — 28.6%** and Phase 1 remains **IN PROGRESS**. **Final state: PARTIAL** because published-process smoke and temporary-output cleanup remain pending. No Slice 8.
+No push, merge, rebase, force-push, tag, or release occurred. Global roadmap remains exactly **4/14 — 28.6%** and Phase 1 remains **IN PROGRESS**. **Final state: DONE — ACCEPTED BY OWNER**, limited to the validated Windows x64 scope. All technical gates and durable evidence checks are satisfied within that scope. Temporary scratch-output disposition is optional and separate from technical acceptance. At the time of this Slice 7 closeout, Slice 8 had not started; its separate Step 0 is now recorded in EV-050.

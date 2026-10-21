@@ -56,8 +56,8 @@ public sealed class ModuleHostPlatformJobContributionTests
     {
         using (var invalid = new SignedModuleFixture("dotnet-outofprocess"))
         {
-            await invalid.InstallAsync(invalidSignature: true);
-            await Assert.ThrowsAsync<InvalidOperationException>(() => invalid.Catalog.ActivateAsync(PlatformJobFixtureModule.ModuleId, CancellationToken.None));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => invalid.InstallAsync(invalidSignature: true));
+            Assert.Empty(invalid.Catalog.Discover());
         }
         using (var untrusted = new SignedModuleFixture("dotnet-inprocess-trusted", allowlisted: false))
         {

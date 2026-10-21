@@ -1,0 +1,78 @@
+{
+  "audit": "Slice 8 Step 6 public capability invocation",
+  "date": "2026-10-19",
+  "branch": "codex/hispania-v1-baseline-consolidation",
+  "head": "ef7365bb5e7d7551cb1093519743cc1885757b5b",
+  "productionChanged": false,
+  "interfaces": {
+    "extensionContract": "Hispania.ExtensionDemo.Contracts.IExtensionDemoV1: GetMessage() and WaitForMessageAsync(int, CancellationToken), used by test packages.",
+    "moduleContract": "Hispania.ModuleSystem.Contracts.IModule and IModuleCapabilityProxyFactory.",
+    "selection": "Hispania.Runtime.ICapabilityResolver resolves a typed contract inside a host process.",
+    "oopTransport": "ModuleWorkerProtocolV1 over a current-user-only named pipe; hello/negotiation binds module identity and launch token; request/response frames carry capability ID, version, operation, JSON payload and correlated response.",
+    "executor": "ModuleExtensionCapabilityExecutor invokes a trusted, active declared capability from the Worker Agent; it is not registered as a public endpoint in Core.",
+    "coreHttpRoutes": [
+      "GET /api/v1/auth/modules",
+      "POST /api/v1/auth/modules/install",
+      "POST /api/v1/auth/modules/{id}/enable",
+      "POST /api/v1/auth/modules/{id}/disable",
+      "DELETE /api/v1/auth/modules/{id}",
+      "GET /health/live",
+      "POST /api/v1/auth/login",
+      "POST /api/v1/auth/logout",
+      "GET /api/v1/auth/me"
+    ],
+    "coreInvocationEndpointPresent": false,
+    "coreJobContributionRegistry": null,
+    "fixtureCapabilities": []
+  },
+  "fiveBehaviorStages": [
+    { "stage": "module installation", "result": "PASS", "evidence": "Prior published lifecycle smoke and existing administration endpoints." },
+    { "stage": "module activation", "result": "PASS", "evidence": "Prior published lifecycle smoke; enable endpoint starts the fixture through the Core-managed catalog." },
+    { "stage": "Core-to-ModuleHost communication", "result": "PASS", "evidence": "Prior published lifecycle smoke and this audit's OOP integration tests." },
+    { "stage": "effective module capability invocation", "result": "PASS_INTERNAL_ONLY", "evidence": "Existing Runtime integration tests invoke IExtensionDemoV1 through ModuleExtensionCatalog and ModuleHost; the Slice 7 fixture installed by Core declares no capabilities." },
+    { "stage": "capability response delivered to a client through published Core", "result": "NOT_VERIFIED", "evidence": "Core has no capability invocation route and its ModuleExtensionCatalog is created with jobContributionRegistry null; no supported client path exists in this artifact." }
+  ],
+  "security": {
+    "coreManagement": "Module reads require an authenticated Core session and ModuleReadPermission; mutations require ModuleManagePermission, same-origin validation and antiforgery.",
+    "oop": "Current-user-only pipe, random per-launch token, module identity/protocol negotiation, declared capability and contract-type checks, bounded frames and request timeouts.",
+    "limitations": "OOP is fault/resource isolation only, not a sandbox against malicious native code. No arbitrary public reflection invocation is exposed."
+  },
+  "tests": {
+    "command": "dotnet test tests/unit/Hispania.Runtime.Tests.csproj -c Release --no-restore --filter FullyQualifiedName~OutOfProcessGreetingRunsThroughPublicContractAndRecoversAfterWorkerCrash|FullyQualifiedName~IndependentlyBuiltGreetingPackageInstallsLoadsUpdatesRollsBackDrainsAndUnloads",
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "coverage": ["trusted signed package install/update", "typed OOP invocation and returned result", "ModuleExtensionCapabilityExecutor JSON result", "timeout/cancellation", "controlled ModuleHost crash and recovery"],
+    "publishedCoreInvocation": "NOT RUN: static route inspection shows no compatible public invocation interface; execution was stopped as instructed.",
+    "trx": ".artifacts/slice8-step6-capability-audit-20261019/capability-invocation-audit.trx",
+    "trxSha256": "D412A02D9ED0C2C878A0679ED76DA45F225CFA234022E20C0C85C27BCD967904"
+  },
+  "candidateArtifacts": [
+    {
+      "contentId": "BCA8F79A51A2705CCD4DE10AF12ED819EE4AD426B8E74048EAB25E0FE0F11CD8",
+      "manifestSha256": "A336746DA28F172A7E4B84F7E5577AA5F27BC90CB8FDF2D312B74BB5B4AEAB6C",
+      "validation": "PASS",
+      "issues": []
+    },
+    {
+      "contentId": "9459242A34B042402F79D140CEED7D16BDEB149616EC7B08573188A34D31BED0",
+      "manifestSha256": "8B4196461AB0EA5A8E5BF92931EC0756839E82F82208309B00539032E83185DD",
+      "validation": "PASS",
+      "issues": []
+    }
+  ],
+  "historicalSlice7Artifact": {
+    "validation": "PASS",
+    "contentId": "44B43088658F2F70FE8A0745EA5DFC3B1519CBF10B9347F3F4B88835EEDB3B12",
+    "manifestSha256": "22D05298F7329BE8C2892BDEE33EBE71C6851EBC5D7A6B6BBF2A49C34F45FE87",
+    "added": [],
+    "missing": [],
+    "modified": []
+  },
+  "temporaryRoots": {
+    "prefix": "hispania-slice8-private-deps-*",
+    "preservedCount": 108,
+    "deleted": 0
+  },
+  "disposition": "PARTIAL: trusted OOP invocation and response are proven inside existing host/runtime contracts, but the published Core exposes no public capability invocation/response path and the Core fixture has no capabilities. No public API, contract, or production behavior was added."
+}

@@ -30,6 +30,7 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
     private readonly HashSet<string> revokedPublisherIds;
     private readonly object publisherTrustGate = new();
     private readonly bool requirePublisherSignature;
+    private readonly HashSet<string>? allowedRuntimes;
     private readonly OutOfProcessResourceLimits resourceLimits;
     private readonly OutOfProcessRestartPolicy restartPolicy;
     private readonly Hispania.Platform.Contracts.Audit.IPlatformAuditWriter? packageAuditWriter;
@@ -51,6 +52,10 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
         : this(directory, hostVersion, runtime, registry, trustedFactories, allowedExtensionIds, moduleHostPath, trustedPublisherKeys, revokedPublisherIds, requirePublisherSignature, resourceLimits, restartPolicy, packageAuditWriter, null) { }
 
     public ModuleExtensionCatalog(string directory, Version hostVersion, IModuleRuntime runtime, IModuleRegistry registry, IReadOnlyDictionary<string, Func<IModule>> trustedFactories, IEnumerable<string>? allowedExtensionIds, string? moduleHostPath, IReadOnlyDictionary<string, string>? trustedPublisherKeys, IEnumerable<string>? revokedPublisherIds, bool requirePublisherSignature, OutOfProcessResourceLimits? resourceLimits, OutOfProcessRestartPolicy? restartPolicy, Hispania.Platform.Contracts.Audit.IPlatformAuditWriter? packageAuditWriter, IPlatformJobContributionRegistryV1? jobContributionRegistry)
+        : this(directory, hostVersion, runtime, registry, trustedFactories, allowedExtensionIds, moduleHostPath, trustedPublisherKeys,
+            revokedPublisherIds, requirePublisherSignature, resourceLimits, restartPolicy, packageAuditWriter, jobContributionRegistry, null) { }
+
+    public ModuleExtensionCatalog(string directory, Version hostVersion, IModuleRuntime runtime, IModuleRegistry registry, IReadOnlyDictionary<string, Func<IModule>> trustedFactories, IEnumerable<string>? allowedExtensionIds, string? moduleHostPath, IReadOnlyDictionary<string, string>? trustedPublisherKeys, IEnumerable<string>? revokedPublisherIds, bool requirePublisherSignature, OutOfProcessResourceLimits? resourceLimits, OutOfProcessRestartPolicy? restartPolicy, Hispania.Platform.Contracts.Audit.IPlatformAuditWriter? packageAuditWriter, IPlatformJobContributionRegistryV1? jobContributionRegistry, IEnumerable<string>? allowedRuntimes)
     {
         this.directory = Path.GetFullPath(directory);
         this.hostVersion = hostVersion;
@@ -62,6 +67,8 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
         this.trustedPublisherKeys = new Dictionary<string, string>(trustedPublisherKeys ?? new Dictionary<string, string>(StringComparer.Ordinal), StringComparer.Ordinal);
         this.revokedPublisherIds = new HashSet<string>(revokedPublisherIds ?? [], StringComparer.Ordinal);
         this.requirePublisherSignature = requirePublisherSignature;
+        this.allowedRuntimes = allowedRuntimes is null ? null : new HashSet<string>(allowedRuntimes, StringComparer.Ordinal);
+        if (this.allowedRuntimes is { Count: 0 }) throw new ArgumentException("At least one allowed runtime must be specified.", nameof(allowedRuntimes));
         this.resourceLimits = resourceLimits ?? new OutOfProcessResourceLimits();
         this.resourceLimits.Validate();
         this.restartPolicy = restartPolicy ?? new OutOfProcessRestartPolicy();
@@ -71,6 +78,14 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
         if (allowedExtensionIds is not null) allowlist.UnionWith(allowedExtensionIds);
         installer = new ExtensionPackageInstaller(this.directory, hostVersion, allowlist, manifest => manifest.PackageFormatVersion == 2
             ? "Format 2 requires a planned package-set operation." : ValidateContracts(manifest), ValidatePublisherTrust);
+    }
+
+    /// <summary>Applies the host-specific runtime policy to an installable managed module.</summary>
+    public void ValidateManagedModuleRuntime(ModuleManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (allowedRuntimes is not null && !allowedRuntimes.Contains(manifest.Runtime))
+            throw new ModuleRuntimePolicyException(manifest.Runtime);
     }
 
     public async Task<InstalledExtensionPackage> InstallAsync(Stream package, CancellationToken cancellationToken = default)
@@ -99,8 +114,7 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
             if (!allowlist.Contains(id)) throw new InvalidOperationException("Extension is not in the host allowlist.");
             if (!Version.TryParse(version, out var parsed)) throw new ArgumentException("Invalid extension version.", nameof(version));
             var packageDirectory = Path.GetFullPath(Path.Combine(directory, id, parsed.ToString()));
-            var expectedRoot = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            if (!packageDirectory.StartsWith(expectedRoot, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Package path is outside the extension directory.");
+            StoragePathGuard.RequireWithin(directory, packageDirectory, "Package path is outside the extension directory.");
             lock (syncRoot)
             {
                 if (loaded.TryGetValue(id, out var active) && string.Equals(Path.GetFullPath(active.PackageDirectory), packageDirectory, StringComparison.OrdinalIgnoreCase))
@@ -109,8 +123,10 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
                 if (registered?.Descriptor.Version == parsed) throw new InvalidOperationException("Unload the registered module before uninstalling its version.");
             }
             if (!Directory.Exists(packageDirectory)) return false;
-            if ((File.GetAttributes(Path.Combine(directory, id)) & FileAttributes.ReparsePoint) != 0 || (File.GetAttributes(packageDirectory) & FileAttributes.ReparsePoint) != 0)
-                throw new InvalidOperationException("Refusing to uninstall through a reparse point.");
+            StoragePathGuard.EnsureTreeHasNoReparsePoints(packageDirectory);
+            var manifest = ReadStoredManifest(packageDirectory);
+            ValidateBackupPackage(manifest, packageDirectory);
+            EnsurePackageFilesAreOwned(manifest, packageDirectory);
             Directory.Delete(packageDirectory, recursive: true);
             return true;
         }
@@ -119,7 +135,9 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
 
     public IReadOnlyCollection<DiscoveredExtension> Discover()
     {
+        StoragePathGuard.EnsureNoReparsePoints(directory);
         Directory.CreateDirectory(directory);
+        StoragePathGuard.EnsureTreeHasNoReparsePoints(directory);
         var committed = ReadState<PackageSetState>(PackageCatalogPath);
         if (committed is not null) ValidateStoredGraph(committed);
         var manifests = new List<DiscoveredExtension>();
@@ -244,6 +262,7 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
             using var mutationLock = await AcquirePackageMutationLockAsync(cancellationToken).ConfigureAwait(false);
             RejectManagedMutation(id);
             var extension = GetDiscovered(id);
+            if (!trustedFactories.ContainsKey(id)) ValidateManagedModuleRuntime(extension.Manifest);
             if (extension.Manifest.PackageFormatVersion == 2) throw new InvalidOperationException("Format 2 activation requires a committed package graph.");
             if (!extension.Compatible) throw new InvalidOperationException(extension.RejectionReason ?? "Extension is incompatible.");
             if (!allowlist.Contains(id)) throw new InvalidOperationException("Extension is not present in the host allowlist.");
@@ -427,6 +446,7 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
     private LoadedExtension CreateLoadedModule(DiscoveredExtension extension)
     {
         var manifest = extension.Manifest;
+        ValidateManagedModuleRuntime(manifest);
         ValidatePublisherTrust(manifest);
         if (manifest.EntryAssembly is null || manifest.EntryType is null) throw new InvalidOperationException("This manifest has no loadable package entry point.");
         var packageDirectory = Path.GetDirectoryName(extension.ManifestPath)!;
@@ -729,6 +749,21 @@ public sealed partial class ModuleExtensionCatalog : IDisposable
         if (manifest.Files is null || !manifest.Files.ContainsKey(manifest.EntryAssembly))
             throw new InvalidDataException("Installed backup package has an unsupported format or missing entry payload.");
         VerifyPackageIntegrity(manifest, packageDirectory);
+    }
+
+    /// <summary>Rejects unaccounted files before deleting a package-owned version directory.</summary>
+    private static void EnsurePackageFilesAreOwned(ModuleManifest manifest, string packageDirectory)
+    {
+        if (manifest.Files is null || manifest.EntryAssembly is null)
+            throw new InvalidDataException("Package ownership cannot be established from its manifest.");
+
+        var comparison = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        var expected = new HashSet<string>(manifest.Files.Keys.Select(path => path.Replace('\\', '/')), comparison)
+        { "module.json" };
+        var actual = Directory.EnumerateFiles(packageDirectory, "*", SearchOption.AllDirectories)
+            .Select(path => Path.GetRelativePath(packageDirectory, path).Replace('\\', '/')).ToArray();
+        if (actual.Length != expected.Count || actual.Any(path => !expected.Remove(path)))
+            throw new InvalidDataException("Package directory contains files not owned by its verified manifest.");
     }
 
     private static void VerifyPackageIntegrity(ModuleManifest manifest, string packageDirectory)

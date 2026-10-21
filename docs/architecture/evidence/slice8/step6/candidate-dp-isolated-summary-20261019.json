@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-10-19",
+  "artifactId": "hispania.core",
+  "sourceCommit": "ef7365bb5e7d7551cb1093519743cc1885757b5b",
+  "targetFramework": "net10.0",
+  "runtimeIdentifier": "win-x64",
+  "publishMode": "framework-dependent",
+  "candidateRoot": "%TEMP%\\hispania-slice8-step6-candidate-9e471e99e46a48739e72d507afa7baa3-publish",
+  "isolatedCopyRoot": "%TEMP%\\hispania-slice8-step6-candidate-46043923704b4a3ebe7a27f61f9b625a-publish",
+  "contentId": "9459242A34B042402F79D140CEED7D16BDEB149616EC7B08573188A34D31BED0",
+  "manifestSha256": "8B4196461AB0EA5A8E5BF92931EC0756839E82F82208309B00539032E83185DD",
+  "coreExeSha256": "389714A3F515207A2D1A7452096C5D2E17DD33D7C653DFF7B77CC4C2B7D249AE",
+  "coreDllSha256": "2DA56522904C0C4A1ABA417FA0594BE1E8F8F712161C7A42003154B4E7FA7A6D",
+  "moduleHostSha256": "4457DBDB9C5657865B1C7A4313A23B53D6709F3249E3B2083D60C11F7CEB583E",
+  "manifestFileCount": 18,
+  "validator": {
+    "passed": true,
+    "issues": [],
+    "policyId": "hispania-core-v1.0.0"
+  },
+  "isolatedCopyMatchesManifest": true,
+  "smoke": {
+    "overall": "PASS",
+    "checks": 17,
+    "repeatedRuns": 2,
+    "coreExitCode": 0,
+    "secretsPrinted": false,
+    "summaryFile": "published-candidate-smoke-dp-isolated-20261019.json",
+    "summarySha256": "6722D2D88D918B53C6D6745F560EA4481167288747C3A735B7B2A1D36D7F8C12"
+  },
+  "dataProtection": {
+    "configuredDirectory": "data-protection-keys",
+    "persistence": "filesystem",
+    "atRestProtection": "Windows DPAPI",
+    "encryptedSecretVerified": true,
+    "persistsAcrossRestart": true,
+    "usesDefaultAspNetCoreProfileKeyRing": false,
+    "currentWindowsDpapiUserContextRequired": true
+  },
+  "structure": {
+    "payloadFiles": 18,
+    "forbiddenArtifactFiles": 0,
+    "absoluteRepositoryPathHits": 0
+  },
+  "historicalBaseline": {
+    "before": "PASS",
+    "after": "PASS",
+    "contentId": "44B43088658F2F70FE8A0745EA5DFC3B1519CBF10B9347F3F4B88835EEDB3B12",
+    "manifestSha256": "22D05298F7329BE8C2892BDEE33EBE71C6851EBC5D7A6B6BBF2A49C34F45FE87",
+    "added": [],
+    "missing": [],
+    "modified": []
+  },
+  "regressions": {
+    "core": "70 PASS / 1 SKIP",
+    "moduleHost": "10 PASS",
+    "packageLifecycle": "58 PASS",
+    "publisherTrustFocus": "1 PASS",
+    "runtime": "264 PASS / 1 FAIL",
+    "runtimeKnownFailure": "PrivateModuleDependencyIsolationTests in-process cleanup UnauthorizedAccessException 0x80070005"
+  },
+  "tempRoots": {
+    "historicalBaseline": 69,
+    "afterRuntimeFailure": 70,
+    "newFailureRoot": "%TEMP%\\hispania-slice8-private-deps-abbd6690e1e94816a097d0af1cb6e46d",
+    "historicalAndNewRootsPreserved": true
+  },
+  "overall": "PARTIAL"
+}

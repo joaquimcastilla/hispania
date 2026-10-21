@@ -1,0 +1,76 @@
+{
+  "overall": "PASS",
+  "artifact": "C:\\Users\\joaqu\\AppData\\Local\\Temp\\hispania-slice7-accepted-20261018-publish",
+  "evidence": {
+    "coreContentId": "44B43088658F2F70FE8A0745EA5DFC3B1519CBF10B9347F3F4B88835EEDB3B12",
+    "coreExeSha256": "C0AC7D9FD3CEE15473D2CBF084667469BC023597704C55550AB703DBE0905F43",
+    "moduleHostSha256": "1A6BEFD8ADBA5BF4EE056DB21C368D148AFB5AFB7ADEC2360E564F24D32C5349",
+    "fixtureAssemblySha256": "0DFD2EDE1CBE01FB91447993B21FD207855B7DE6DF9E80E00D8932D13FA71275",
+    "signedFixturePackageSha256": "81E2FA8E724144FFAF999DE5A074990588C281A0C6628805F8ED35A25EEED03D",
+    "coreExitCode": 0,
+    "failureFixturePackageSha256": "762E42F6E2CB7D6F83A4897AB060BD6E29BD272EDB80CB660A8FEE3C03977367"
+  },
+  "checks": [
+    {
+      "check": "accepted artifact source/content ID, inventory and manifest SHA-256 verified",
+      "result": "PASS"
+    },
+    {
+      "check": "publisher trust configured through existing protected host settings",
+      "result": "PASS"
+    },
+    {
+      "check": "published Core fresh SQLite database and one-time local bootstrap",
+      "result": "PASS"
+    },
+    {
+      "check": "published Core HTTPS liveness with SAN-validated test certificate",
+      "result": "PASS"
+    },
+    {
+      "check": "authenticated admin has module read/manage permissions; fresh registry empty",
+      "result": "PASS"
+    },
+    {
+      "check": "signed fixture installed through published Core and listed disabled/trusted/authorized",
+      "result": "PASS"
+    },
+    {
+      "check": "fixture activation and healthy state",
+      "result": "PASS"
+    },
+    {
+      "check": "published Core restart preserves enabled fixture state and health",
+      "result": "PASS"
+    },
+    {
+      "check": "fixture disabled and removed through published Core endpoints",
+      "result": "PASS"
+    },
+    {
+      "check": "controlled fixture start failure leaves published Core healthy and fixture removable",
+      "result": "PASS"
+    },
+    {
+      "check": "published Core stopped cleanly after CTRL+BREAK",
+      "result": "PASS"
+    },
+    {
+      "check": "accepted publish remained byte-for-byte unchanged",
+      "result": "PASS"
+    },
+    {
+      "check": "no residual Core or owned ModuleHost processes",
+      "result": "PASS"
+    },
+    {
+      "check": "exclusive temporary directory cleanup",
+      "result": "PASS"
+    }
+  ],
+  "failureStage": null,
+  "errorCode": null,
+  "failureDetailCode": null,
+  "failure": null,
+  "secretsPrinted": false
+}

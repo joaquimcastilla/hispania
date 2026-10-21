@@ -10,6 +10,8 @@ namespace Hispania.Runtime;
 public static class PackageArchiveInspector
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) { PropertyNameCaseInsensitive = true };
+    private const int MaximumEntries = 512;
+    private const long MaximumExpandedBytes = 256L * 1024 * 1024;
 
     public static async Task<PackageCandidate> InspectAsync(string path, CancellationToken cancellationToken = default)
     {
@@ -18,18 +20,7 @@ public static class PackageArchiveInspector
         var digest = Convert.ToHexString(await SHA256.HashDataAsync(source, cancellationToken).ConfigureAwait(false));
         source.Position = 0;
         using var archive = new ZipArchive(source, ZipArchiveMode.Read);
-        if (archive.Entries.Count is < 1 or > 512) throw new InvalidDataException("Package entry count exceeds the limit.");
-        var entries = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
-        long expanded = 0;
-        foreach (var entry in archive.Entries)
-        {
-            if (entry.FullName.EndsWith('/')) continue;
-            ValidatePath(entry.FullName);
-            if (!entries.TryAdd(entry.FullName, entry) || (entry.ExternalAttributes >> 16 & 0xF000) == 0xA000)
-                throw new InvalidDataException("Duplicate or linked archive entry.");
-            expanded = checked(expanded + entry.Length);
-            if (expanded > 256L * 1024 * 1024) throw new InvalidDataException("Expanded package exceeds the size limit.");
-        }
+        var entries = ValidateArchiveEntries(archive);
         if (!entries.TryGetValue("module.json", out var metadata) || metadata.Length > 1024 * 1024)
             throw new InvalidDataException("Missing or oversized package manifest.");
         ModuleManifest manifest;
@@ -46,7 +37,7 @@ public static class PackageArchiveInspector
         long actualBytes = 0;
         foreach (var pair in manifest.Files.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
-            ValidatePath(pair.Key);
+            ValidateRelativePath(pair.Key);
             if (pair.Value is null || pair.Value.Length != 64 || !pair.Value.All(Uri.IsHexDigit)) throw new InvalidDataException("Invalid payload digest.");
             await using var input = entries[pair.Key].Open();
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
@@ -100,11 +91,60 @@ public static class PackageArchiveInspector
         return new(manifest, digest, Path.GetFullPath(path));
     }
 
-    private static void ValidatePath(string path)
+    internal static Dictionary<string, ZipArchiveEntry> ValidateArchiveEntries(ZipArchive archive)
+    {
+        if (archive.Entries.Count is < 1 or > MaximumEntries) throw new InvalidDataException("Package entry count exceeds the limit.");
+        var files = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
+        var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var allPaths = new List<string>(archive.Entries.Count);
+        long expanded = 0;
+        foreach (var entry in archive.Entries)
+        {
+            var isDirectory = entry.FullName.EndsWith('/');
+            var relativePath = isDirectory ? entry.FullName[..^1] : entry.FullName;
+            ValidateRelativePath(relativePath);
+            if ((entry.ExternalAttributes >> 16 & 0xF000) == 0xA000)
+                throw new InvalidDataException("Symbolic links are not allowed in packages.");
+            if (isDirectory)
+            {
+                if (files.ContainsKey(relativePath) || !directories.Add(relativePath))
+                    throw new InvalidDataException("Duplicate or colliding archive path.");
+            }
+            else
+            {
+                if (directories.Contains(relativePath) || !files.TryAdd(relativePath, entry))
+                    throw new InvalidDataException("Duplicate or colliding archive path.");
+                expanded = checked(expanded + entry.Length);
+                if (entry.Length < 0 || expanded > MaximumExpandedBytes)
+                    throw new InvalidDataException("Expanded package exceeds the size limit.");
+            }
+            allPaths.Add(relativePath);
+        }
+
+        foreach (var file in files.Keys)
+        {
+            var prefix = file + "/";
+            if (allPaths.Any(path => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidDataException("A package file conflicts with a directory path.");
+        }
+        return files;
+    }
+
+    internal static void ValidateRelativePath(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || path.Length > 1024 || path.Any(char.IsControl) || Path.IsPathRooted(path) || path.Contains('\\') || path.Contains(':') ||
-            path.Split('/').Any(segment => segment is "" or "." or ".." || segment.EndsWith('.') || segment.EndsWith(' ')))
+            path.Split('/').Any(segment => segment is "" or "." or ".." || segment.EndsWith('.') || segment.EndsWith(' ') ||
+                segment.Any(character => character is '<' or '>' or '"' or '|' or '?' or '*') || IsReservedWindowsName(segment)))
             throw new InvalidDataException("Unsafe package-relative path.");
+    }
+
+    private static bool IsReservedWindowsName(string segment)
+    {
+        var deviceName = segment.Split('.')[0];
+        return deviceName.Equals("CON", StringComparison.OrdinalIgnoreCase) || deviceName.Equals("PRN", StringComparison.OrdinalIgnoreCase) ||
+            deviceName.Equals("AUX", StringComparison.OrdinalIgnoreCase) || deviceName.Equals("NUL", StringComparison.OrdinalIgnoreCase) ||
+            deviceName.Length == 4 && (deviceName.StartsWith("COM", StringComparison.OrdinalIgnoreCase) || deviceName.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)) &&
+            (deviceName[3] is >= '1' and <= '9' or '\u00b9' or '\u00b2' or '\u00b3');
     }
 
     internal static void RejectDuplicates(JsonElement value)

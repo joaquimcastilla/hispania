@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "HISPANIA-SLICE8-CORE-ARTIFACT-BASELINE",
+  "capturedAtUtc": "2026-10-18T16:03:39.2204294+00:00",
+  "artifactLocation": "%TEMP%\\hispania-slice7-accepted-20261018-publish",
+  "artifactId": "hispania.core",
+  "sourceCommit": "591dc17db24f0afd3ad066c96b0b1db1494d0150",
+  "targetFramework": "net10.0",
+  "runtimeIdentifier": "win-x64",
+  "publishMode": "framework-dependent",
+  "contentId": "44B43088658F2F70FE8A0745EA5DFC3B1519CBF10B9347F3F4B88835EEDB3B12",
+  "manifestSha256": "22D05298F7329BE8C2892BDEE33EBE71C6851EBC5D7A6B6BBF2A49C34F45FE87",
+  "manifestListedFileCount": 18,
+  "totalFileCountIncludingManifest": 19,
+  "coreSha256": "C0AC7D9FD3CEE15473D2CBF084667469BC023597704C55550AB703DBE0905F43",
+  "coreAssemblySha256": "2B9AC69B5C4718F3F1590CEBC7AD927CFD8428EAE3B82545531B44693B13812E",
+  "moduleHostSha256": "1A6BEFD8ADBA5BF4EE056DB21C368D148AFB5AFB7ADEC2360E564F24D32C5349",
+  "files": [
+    {
+      "path": "core-artifact-manifest.json",
+      "size": 8686,
+      "sha256": "22D05298F7329BE8C2892BDEE33EBE71C6851EBC5D7A6B6BBF2A49C34F45FE87"
+    },
+    {
+      "path": "e_sqlite3.dll",
+      "size": 1978880,
+      "sha256": "B7385D722C83FB52142A00477A726723745916D22A555711EE89834C1111FB2E"
+    },
+    {
+      "path": "Hispania.Core.deps.json",
+      "size": 6305,
+      "sha256": "C0411ADAA85FDB2E5F9A7414698C1332312D198B92FE343547BC750BE5A28D07"
+    },
+    {
+      "path": "Hispania.Core.dll",
+      "size": 225280,
+      "sha256": "2B9AC69B5C4718F3F1590CEBC7AD927CFD8428EAE3B82545531B44693B13812E"
+    },
+    {
+      "path": "Hispania.Core.exe",
+      "size": 162304,
+      "sha256": "C0AC7D9FD3CEE15473D2CBF084667469BC023597704C55550AB703DBE0905F43"
+    },
+    {
+      "path": "Hispania.Core.runtimeconfig.json",
+      "size": 458,
+      "sha256": "B4AAD84277C120C025A443649C4E09CA20B08725ACC12EF60940786BFB8C024F"
+    },
+    {
+      "path": "Hispania.ModuleSystem.Contracts.dll",
+      "size": 102912,
+      "sha256": "9CD30ECE7A82066834107389EC704ACD820DD0D2A6AD52534ABCCADC4D202FD9"
+    },
+    {
+      "path": "Hispania.Platform.Contracts.dll",
+      "size": 187904,
+      "sha256": "25B6E95412CE676D421EF4FF309A916C924AAF70DF341230A34A25A3C5A41B19"
+    },
+    {
+      "path": "Hispania.Runtime.dll",
+      "size": 346624,
+      "sha256": "3088A14312D801FEE39BF2E89B5165F1F0AAB9F38E38124AC1692C6A9025C65F"
+    },
+    {
+      "path": "Microsoft.Data.Sqlite.dll",
+      "size": 177464,
+      "sha256": "B98D957462BE432895B00DCCCA012D3C127E118D3D4262418014B92C7BBD66CF"
+    },
+    {
+      "path": "module-host/Hispania.ModuleHost.deps.json",
+      "size": 1377,
+      "sha256": "819BD7AAF94E558F0AABF82BF8D2218F815E196C43125AB3E88B94705A6FABBF"
+    },
+    {
+      "path": "module-host/Hispania.ModuleHost.dll",
+      "size": 31744,
+      "sha256": "1A6BEFD8ADBA5BF4EE056DB21C368D148AFB5AFB7ADEC2360E564F24D32C5349"
+    },
+    {
+      "path": "module-host/Hispania.ModuleHost.runtimeconfig.json",
+      "size": 342,
+      "sha256": "C230A317A54DD960BCBEB5F347F52E18DC665A26F7EFDA2159FCED9A5AC7E097"
+    },
+    {
+      "path": "module-host/Hispania.ModuleSystem.Contracts.dll",
+      "size": 102912,
+      "sha256": "9CD30ECE7A82066834107389EC704ACD820DD0D2A6AD52534ABCCADC4D202FD9"
+    },
+    {
+      "path": "module-host/Hispania.Platform.Contracts.dll",
+      "size": 187904,
+      "sha256": "25B6E95412CE676D421EF4FF309A916C924AAF70DF341230A34A25A3C5A41B19"
+    },
+    {
+      "path": "NuGet.Versioning.dll",
+      "size": 62264,
+      "sha256": "FC2F75A7A5F3BE9B4C3DCFC21644B871BB5A41ADA8615C92D778713D2A310670"
+    },
+    {
+      "path": "SQLitePCLRaw.batteries_v2.dll",
+      "size": 5120,
+      "sha256": "815CE410C9EAB531DD219318E3BA16C5E38E83D361CFBBDBB4BBCA222C497B0B"
+    },
+    {
+      "path": "SQLitePCLRaw.core.dll",
+      "size": 51200,
+      "sha256": "AF340AC9EB9195795660D7FC1114F486B6AB63998F33176E2F24C8E0ACB9AA84"
+    },
+    {
+      "path": "SQLitePCLRaw.provider.e_sqlite3.dll",
+      "size": 36864,
+      "sha256": "DF996BCAE63C2CABCFE8D4B9C5110EB39A2A4706178B07D875665391C6EB3995"
+    }
+  ]
+}

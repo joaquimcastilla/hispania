@@ -287,9 +287,169 @@ public sealed class PackageLifecycleIntegrationTests
     }
 
     [Theory]
-    [InlineData(PackageOperationStage.Planned)][InlineData(PackageOperationStage.Staged)]
+    [InlineData("{TEST ONLY corrupt")]
+    [InlineData("{\"generation\":1,\"operationId\":\"0123456789abcdef0123456789abcdef\",\"stage\":\"Planned\"}")]
+    [InlineData("{\"generation\":1,\"operationId\":\"0123456789abcdef0123456789abcdef\",\"stage\":\"Planned\",\"previous\":{\"generation\":1,\"packages\":[]},\"next\":{\"generation\":1,\"packages\":[null]}}")]
+    public async Task CorruptOrIncompleteJournalFailsClosedWithoutChangingAuthoritativeState(string corruptJournal)
+    {
+        using var fixture = new Fixture();
+        await fixture.Catalog.ApplyPackageSetAsync(await fixture.Plan(), new HashSet<string> { BaseId, ConsumerId });
+        var catalogPath = Path.Combine(fixture.Installed, ".package-state", "catalog.json");
+        var catalogBefore = File.ReadAllBytes(catalogPath);
+        var journalPath = Path.Combine(fixture.Installed, ".package-state", "journal.json");
+        var originalJournal = File.ReadAllBytes(journalPath);
+        File.WriteAllText(journalPath, corruptJournal);
+        try
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Catalog.RecoverPackageSetAsync());
+            await Assert.ThrowsAsync<InvalidDataException>(async () => await fixture.Catalog.ApplyPackageSetAsync(await fixture.Plan()));
+            Assert.Equal(catalogBefore, File.ReadAllBytes(catalogPath));
+        }
+        finally { File.WriteAllBytes(journalPath, originalJournal); }
+    }
+
+    [Fact]
+    public async Task LockedStagingCleanupRollsBackAndLeavesRecoverableOwnedResidue()
+    {
+        using var fixture = new Fixture();
+        await fixture.Catalog.ApplyPackageSetAsync(await fixture.Plan(), new HashSet<string> { BaseId, ConsumerId });
+        var next = fixture.Archive(BaseId, "1.1.0", typeof(PackageBaseModule));
+        var plan = await fixture.Catalog.PlanPackageSetAsync([next], new Dictionary<string, string> { [BaseId] = "[1.1.0]" });
+        FileStream? held = null;
+        fixture.Catalog.PackageOperationCheckpoint = stage =>
+        {
+            if (stage == PackageOperationStage.Completed && held is null)
+            {
+                var staging = Directory.EnumerateDirectories(Path.Combine(fixture.Installed, ".package-state", "staging")).Single();
+                held = new FileStream(Path.Combine(staging, "ownership.marker"), FileMode.Open, FileAccess.Read, FileShare.None);
+            }
+        };
+        try
+        {
+            await Assert.ThrowsAsync<IOException>(() => fixture.Catalog.ApplyPackageSetAsync(plan));
+            Assert.Equal("1.0.0", fixture.Catalog.InspectPackageGraph().Single(row => row.PackageId == BaseId).Version);
+            Assert.Equal("consumer", Message(fixture.Catalog));
+            Assert.NotNull(held);
+        }
+        finally { held?.Dispose(); fixture.Catalog.PackageOperationCheckpoint = null; }
+
+        Assert.NotEmpty(Directory.EnumerateDirectories(Path.Combine(fixture.Installed, ".package-state", "staging")));
+        await fixture.Catalog.RecoverPackageSetAsync();
+        await fixture.Catalog.CleanupPackageHistoryAsync();
+        Assert.Empty(Directory.EnumerateDirectories(Path.Combine(fixture.Installed, ".package-state", "staging")));
+        Assert.Equal("1.0.0", fixture.Catalog.InspectPackageGraph().Single(row => row.PackageId == BaseId).Version);
+    }
+
+    [Fact]
+    public async Task TwoProcessesInstallingSameModuleSerializeAndRejectStaleLoser()
+    {
+        using var fixture = new Fixture();
+        await fixture.Catalog.ApplyPackageSetAsync(await fixture.Plan());
+        var first = fixture.Archive(BaseId, "1.1.0", typeof(PackageBaseModule));
+        var second = fixture.Archive(BaseId, "1.2.0", typeof(PackageBaseModule));
+        var results = await RunConcurrentMutationsAsync(fixture, [("install", first), ("install", second)]);
+        Assert.Equal([0, 10], results.Order().ToArray());
+        await fixture.Catalog.RecoverPackageSetAsync();
+        var package = Assert.Single(fixture.Catalog.InspectPackageGraph(), row => row.PackageId == BaseId);
+        Assert.True(package.Version is "1.1.0" or "1.2.0");
+        Assert.True(package.Installed);
+    }
+
+    [Fact]
+    public async Task TwoProcessesInstallingDifferentModulesDoNotLoseCommittedSet()
+    {
+        using var fixture = new Fixture();
+        var baseArchive = fixture.Archive(BaseId, "1.0.0", typeof(PackageBaseModule));
+        var consumerArchive = fixture.Archive(ConsumerId, "1.0.0", typeof(PackageConsumerModule));
+        var results = await RunConcurrentMutationsAsync(fixture, [("install", baseArchive), ("install", consumerArchive)]);
+        Assert.Equal([0, 10], results.Order().ToArray());
+        await fixture.Catalog.RecoverPackageSetAsync();
+        var initial = fixture.Catalog.InspectPackageGraph();
+        Assert.Single(initial);
+
+        var plan = await fixture.Catalog.PlanPackageSetAsync([baseArchive, consumerArchive],
+            new Dictionary<string, string> { [BaseId] = "[1.0.0]", [ConsumerId] = "[1.0.0]" });
+        Assert.True(plan.Resolved);
+        await fixture.Catalog.ApplyPackageSetAsync(plan);
+        Assert.Equal(new[] { BaseId, ConsumerId }, fixture.Catalog.InspectPackageGraph().Select(row => row.PackageId).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task ConcurrentInstallAndRemovalRejectStaleMutationWithoutLosingEitherGeneration()
+    {
+        using var fixture = new Fixture();
+        var baseArchive = fixture.Archive(BaseId, "1.0.0", typeof(PackageBaseModule));
+        var consumerArchive = fixture.Archive(ConsumerId, "1.0.0", typeof(PackageConsumerModule));
+        await fixture.Catalog.ApplyPackageSetAsync(await fixture.Catalog.PlanPackageSetAsync([baseArchive], new Dictionary<string, string> { [BaseId] = "[1.0.0]" }));
+        var results = await RunConcurrentMutationsAsync(fixture, [("remove", BaseId), ("install", consumerArchive)]);
+        Assert.Equal([0, 10], results.Order().ToArray());
+        await fixture.Catalog.RecoverPackageSetAsync();
+        var packages = fixture.Catalog.InspectPackageGraph().Select(row => row.PackageId).Order(StringComparer.Ordinal).ToArray();
+        Assert.True(packages.SequenceEqual([]) || packages.SequenceEqual([BaseId, ConsumerId]), string.Join(",", packages));
+    }
+
+    [Fact]
+    public async Task ConcurrentUpdateAndActivationExposeOnlyCompleteCatalogGenerations()
+    {
+        using var fixture = new Fixture();
+        var original = fixture.Archive(BaseId, "1.0.0", typeof(PackageBaseModule));
+        await fixture.Catalog.ApplyPackageSetAsync(await fixture.Catalog.PlanPackageSetAsync([original], new Dictionary<string, string> { [BaseId] = "[1.0.0]" }));
+        var update = fixture.Archive(BaseId, "1.1.0", typeof(PackageBaseModule));
+        var results = await RunConcurrentMutationsAsync(fixture, [("install", update), ("enable", BaseId)]);
+        Assert.All(results, result => Assert.True(result is 0 or 10));
+        await fixture.Catalog.RecoverPackageSetAsync();
+        var package = Assert.Single(fixture.Catalog.InspectPackageGraph());
+        Assert.True(package.Version is "1.0.0" or "1.1.0");
+        Assert.Equal(package.Enabled, package.Healthy);
+    }
+
+    [Fact]
+    public async Task CatalogReaderSeesCompleteGenerationDuringPublication()
+    {
+        using var fixture = new Fixture();
+        await fixture.Catalog.ApplyPackageSetAsync(await fixture.Plan());
+        await fixture.Catalog.StopManagedPackagesAsync();
+        var archive = fixture.Archive(BaseId, "1.1.0", typeof(PackageBaseModule));
+        var (process, marker, output, error) = StartCheckpointProcess(fixture, archive, PackageOperationStage.Committed);
+        try
+        {
+            await WaitForMarkerAsync(process, marker, output, error);
+            var row = fixture.Catalog.InspectPackageGraph().Single(item => item.PackageId == BaseId);
+            Assert.Equal("1.1.0", row.Version);
+            Assert.Equal("RecoveryRequired", row.Status);
+            AssertInstalledPackageMatchesArchive(fixture.Installed, archive, BaseId, "1.1.0");
+        }
+        finally { await KillOwnedProcessAsync(process); }
+        await fixture.Catalog.RecoverPackageSetAsync();
+        Assert.Equal("1.0.0", fixture.Catalog.InspectPackageGraph().Single(row => row.PackageId == BaseId).Version);
+    }
+
+    [Fact]
+    public async Task RecoveryWaitsForOtherProcessLockThenCompletesAfterOwnerIsKilled()
+    {
+        using var fixture = new Fixture();
+        await fixture.Catalog.ApplyPackageSetAsync(await fixture.Plan());
+        await fixture.Catalog.StopManagedPackagesAsync();
+        var archive = fixture.Archive(BaseId, "1.1.0", typeof(PackageBaseModule));
+        var (process, marker, output, error) = StartCheckpointProcess(fixture, archive, PackageOperationStage.Staged);
+        try
+        {
+            await WaitForMarkerAsync(process, marker, output, error);
+            var recovery = fixture.Catalog.RecoverPackageSetAsync();
+            await Task.Delay(150);
+            Assert.False(recovery.IsCompleted);
+            await KillOwnedProcessAsync(process);
+            await recovery.WaitAsync(TimeSpan.FromSeconds(10));
+            await fixture.Catalog.RecoverPackageSetAsync();
+            Assert.Equal("1.0.0", fixture.Catalog.InspectPackageGraph().Single(row => row.PackageId == BaseId).Version);
+        }
+        finally { await KillOwnedProcessAsync(process); }
+    }
+
+    [Theory]
+    [InlineData(PackageOperationStage.Planned)][InlineData(PackageOperationStage.Staged)][InlineData(PackageOperationStage.Draining)]
     [InlineData(PackageOperationStage.Committed)][InlineData(PackageOperationStage.Activating)]
-    [InlineData(PackageOperationStage.RollingBack)]
+    [InlineData(PackageOperationStage.Validated)][InlineData(PackageOperationStage.RollingBack)][InlineData(PackageOperationStage.Completed)]
     public async Task RealProcessKillRecoversPreviousAuthoritativeGraph(PackageOperationStage stage)
     {
         using var fixture = new Fixture();
@@ -298,8 +458,7 @@ public sealed class PackageLifecycleIntegrationTests
         var archive = fixture.Archive(BaseId, "1.1.0", typeof(PackageBaseModule));
         var marker = archive + ".checkpoint"; var keys = archive + ".public-keys.json";
         File.WriteAllText(keys, JsonSerializer.Serialize(fixture.Keys));
-        var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
-        var host = Path.Combine(RepositoryRoot(), "tests", "package-lifecycle-process-host", "bin", configuration, "net10.0", "Hispania.PackageLifecycle.ProcessHost.dll");
+        var host = ProjectOutputAssembly("tests/package-lifecycle-process-host", "Hispania.PackageLifecycle.ProcessHost.dll");
         var start = new System.Diagnostics.ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in new[] { host, fixture.Installed, archive, stage.ToString(), marker, keys }) start.ArgumentList.Add(argument);
         using var process = System.Diagnostics.Process.Start(start)!;
@@ -311,8 +470,15 @@ public sealed class PackageLifecycleIntegrationTests
             Assert.False(process.HasExited, process.HasExited ? await output + await error : "");
             process.Kill(entireProcessTree: true); await process.WaitForExitAsync(timeout.Token);
             await fixture.Catalog.RecoverPackageSetAsync();
-            Assert.All(fixture.Catalog.InspectPackageGraph(), row => Assert.Equal("1.0.0", row.Version));
+            var expectedVersion = stage == PackageOperationStage.Completed ? "1.1.0" : "1.0.0";
+            Assert.Equal(expectedVersion, fixture.Catalog.InspectPackageGraph().Single(row => row.PackageId == BaseId).Version);
+            Assert.Equal("1.0.0", fixture.Catalog.InspectPackageGraph().Single(row => row.PackageId == ConsumerId).Version);
             Assert.Equal("consumer", Message(fixture.Catalog));
+            await fixture.Catalog.RecoverPackageSetAsync();
+            await fixture.Catalog.CleanupPackageHistoryAsync();
+            Assert.Empty(Directory.EnumerateDirectories(Path.Combine(fixture.Installed, ".package-state", "staging")));
+            Assert.Equal(expectedVersion, fixture.Catalog.InspectPackageGraph().Single(row => row.PackageId == BaseId).Version);
+            Assert.Equal("1.0.0", fixture.Catalog.InspectPackageGraph().Single(row => row.PackageId == ConsumerId).Version);
         }
         finally { if (!process.HasExited) { process.Kill(true); await process.WaitForExitAsync(); } }
     }
@@ -367,11 +533,74 @@ public sealed class PackageLifecycleIntegrationTests
             await fixture.Catalog.ApplyPackageSetAsync(await fixture.Catalog.PlanPackageSetAsync([archive], new Dictionary<string, string> { [BaseId] = "[" + version + "]" }));
         }
         await fixture.Catalog.CleanupPackageHistoryAsync();
+        await fixture.Catalog.CleanupPackageHistoryAsync(); // Repeated cleanup is idempotent.
         Assert.False(Directory.Exists(Path.Combine(fixture.Installed, BaseId, "1.0.0")));
+        Assert.True(Directory.Exists(Path.Combine(fixture.Installed, ConsumerId, "1.0.0"))); // Shared store, separate owner.
         Assert.True(Directory.Exists(Path.Combine(fixture.Installed, BaseId, "1.1.0")));
         Assert.True(Directory.Exists(Path.Combine(fixture.Installed, BaseId, "1.2.0")));
         await fixture.Catalog.RollbackPackageSetAsync();
         Assert.Equal("1.1.0", fixture.Catalog.InspectPackageGraph().Single(row => row.PackageId == BaseId).Version);
+    }
+
+    [Fact]
+    public async Task RetentionRejectsUnknownFileAndPreservesPackageAndCanary()
+    {
+        using var fixture = new Fixture();
+        await fixture.Catalog.ApplyPackageSetAsync(await fixture.Plan());
+        foreach (var version in new[] { "1.1.0", "1.2.0" })
+        {
+            var archive = fixture.Archive(BaseId, version, typeof(PackageBaseModule));
+            await fixture.Catalog.ApplyPackageSetAsync(await fixture.Catalog.PlanPackageSetAsync(
+                [archive], new Dictionary<string, string> { [BaseId] = $"[{version}]" }));
+        }
+        var old = Path.Combine(fixture.Installed, BaseId, "1.0.0");
+        var foreign = Path.Combine(old, "foreign-owner-canary.txt");
+        var bytes = System.Text.Encoding.UTF8.GetBytes("test-only foreign file");
+        await File.WriteAllBytesAsync(foreign, bytes);
+        var before = Convert.ToHexString(SHA256.HashData(bytes));
+        var now = DateTimeOffset.UtcNow;
+        var plan = await fixture.Catalog.PlanAsync(new(true, TimeSpan.Zero, BatchSize: 10), now, now.AddMinutes(10));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Catalog.ExecuteBatchAsync(plan).AsTask());
+
+        Assert.True(Directory.Exists(old));
+        Assert.Equal(before, Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(foreign))));
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("corrupt")]
+    [InlineData("outside-root")]
+    public async Task CleanupPreservesStagingWithMissingCorruptOrManipulatedOwnershipMarker(string markerKind)
+    {
+        using var fixture = new Fixture();
+        var stagingRoot = Path.Combine(fixture.Installed, ".package-state", "staging");
+        Directory.CreateDirectory(stagingRoot);
+        var operationId = Guid.NewGuid().ToString("N");
+        var stage = Path.Combine(stagingRoot, operationId);
+        Directory.CreateDirectory(stage);
+        var canary = Path.Combine(stage, "foreign-owner-canary.txt");
+        var bytes = System.Text.Encoding.UTF8.GetBytes("test-only staging canary");
+        await File.WriteAllBytesAsync(canary, bytes);
+        var before = Convert.ToHexString(SHA256.HashData(bytes));
+        if (markerKind != "missing")
+            await File.WriteAllTextAsync(Path.Combine(stage, "ownership.marker"), markerKind == "corrupt" ? "not-an-operation-id" : fixture.Installed);
+
+        await fixture.Catalog.CleanupPackageHistoryAsync();
+        await fixture.Catalog.CleanupPackageHistoryAsync();
+
+        Assert.True(Directory.Exists(stage));
+        Assert.Equal(before, Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(canary))));
+        Assert.Equal(0, (await fixture.Catalog.PlanAsync(new(true, TimeSpan.Zero, BatchSize: 10), DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow.AddMinutes(10))).CandidateCount);
+    }
+
+    [Fact]
+    public async Task UninstallOfMissingPackageIsIdempotent()
+    {
+        using var fixture = new Fixture();
+        Assert.False(await fixture.Catalog.UninstallAsync(BaseId, "1.0.0"));
+        Assert.False(Directory.Exists(Path.Combine(fixture.Installed, BaseId, "1.0.0")));
     }
 
     [Fact]
@@ -476,11 +705,124 @@ public sealed class PackageLifecycleIntegrationTests
         Assert.False(Directory.Exists(destination));
     }
 
+    private static async Task<int[]> RunConcurrentMutationsAsync(Fixture fixture, (string Action, string Payload)[] mutations)
+    {
+        var fixtureRoot = Path.GetDirectoryName(fixture.Installed)!;
+        var keysPath = Path.Combine(fixtureRoot, "TEST-ONLY-concurrent-keys.json");
+        var gate = Path.Combine(fixtureRoot, "TEST-ONLY-concurrent-gate");
+        File.WriteAllText(keysPath, JsonSerializer.Serialize(fixture.Keys));
+        var host = ProjectOutputAssembly("tests/package-lifecycle-process-host", "Hispania.PackageLifecycle.ProcessHost.dll");
+        var workers = new List<(System.Diagnostics.Process Process, Task<string> Output, Task<string> Error, string Ready)>();
+        try
+        {
+            for (var index = 0; index < mutations.Length; index++)
+            {
+                var ready = Path.Combine(fixtureRoot, $"TEST-ONLY-concurrent-ready-{index}");
+                var start = new System.Diagnostics.ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+                foreach (var argument in new[] { host, "--concurrent-package-mutation", fixture.Installed, mutations[index].Action, mutations[index].Payload, keysPath, ready, gate })
+                    start.ArgumentList.Add(argument);
+                var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Could not start the test-owned package process.");
+                workers.Add((process, process.StandardOutput.ReadToEndAsync(), process.StandardError.ReadToEndAsync(), ready));
+            }
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+            while (workers.Any(worker => !File.Exists(worker.Ready)) && workers.All(worker => !worker.Process.HasExited))
+                await Task.Delay(20, timeout.Token);
+            foreach (var worker in workers)
+            {
+                if (!File.Exists(worker.Ready))
+                    Assert.Fail($"Worker exited before its plan barrier. stdout={await worker.Output}; stderr={await worker.Error}");
+            }
+            File.WriteAllText(gate, "release");
+            await Task.WhenAll(workers.Select(worker => worker.Process.WaitForExitAsync(timeout.Token)));
+            var results = new List<int>();
+            foreach (var worker in workers)
+            {
+                var stdout = await worker.Output; var stderr = await worker.Error;
+                Assert.True(worker.Process.ExitCode is 0 or 10, $"Unexpected test worker exit {worker.Process.ExitCode}. stdout={stdout}; stderr={stderr}");
+                results.Add(worker.Process.ExitCode);
+            }
+            return results.ToArray();
+        }
+        finally
+        {
+            foreach (var worker in workers)
+            {
+                if (!worker.Process.HasExited)
+                {
+                    worker.Process.Kill(entireProcessTree: true);
+                    await worker.Process.WaitForExitAsync();
+                }
+                worker.Process.Dispose();
+            }
+        }
+    }
+
+    private static (System.Diagnostics.Process Process, string Marker, Task<string> Output, Task<string> Error) StartCheckpointProcess(
+        Fixture fixture, string archive, PackageOperationStage stage)
+    {
+        var marker = archive + ".TEST-ONLY-checkpoint-" + Guid.NewGuid().ToString("N");
+        var keys = archive + ".TEST-ONLY-keys.json";
+        File.WriteAllText(keys, JsonSerializer.Serialize(fixture.Keys));
+        var host = ProjectOutputAssembly("tests/package-lifecycle-process-host", "Hispania.PackageLifecycle.ProcessHost.dll");
+        var start = new System.Diagnostics.ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+        foreach (var argument in new[] { host, fixture.Installed, archive, stage.ToString(), marker, keys }) start.ArgumentList.Add(argument);
+        var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Could not start the test-owned checkpoint process.");
+        return (process, marker, process.StandardOutput.ReadToEndAsync(), process.StandardError.ReadToEndAsync());
+    }
+
+    private static async Task WaitForMarkerAsync(System.Diagnostics.Process process, string marker, Task<string> output, Task<string> error)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+        while (!File.Exists(marker) && !process.HasExited) await Task.Delay(20, timeout.Token);
+        if (!File.Exists(marker))
+            Assert.Fail($"Checkpoint worker did not reach its barrier. stdout={await output}; stderr={await error}");
+    }
+
+    private static async Task KillOwnedProcessAsync(System.Diagnostics.Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync();
+            }
+        }
+        catch (InvalidOperationException) { return; } // The same owned process may be stopped in both try and finally.
+        process.Dispose();
+    }
+
+    private static void AssertInstalledPackageMatchesArchive(string root, string archive, string id, string version)
+    {
+        var candidate = PackageArchiveInspector.InspectAsync(archive).GetAwaiter().GetResult();
+        var package = Path.Combine(root, id, version);
+        var manifest = JsonSerializer.Deserialize<ModuleManifest>(File.ReadAllText(Path.Combine(package, "module.json")), Json)!;
+        Assert.Equal(ModulePackageSignature.GetSigningBytes(candidate.Manifest), ModulePackageSignature.GetSigningBytes(manifest));
+        foreach (var (relative, expected) in manifest.Files)
+            Assert.Equal(expected, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(package, relative.Replace('/', Path.DirectorySeparatorChar))))));
+    }
+
     private static string RepositoryRoot()
     {
         for (var parent = new DirectoryInfo(AppContext.BaseDirectory); parent is not null; parent = parent.Parent)
             if (File.Exists(Path.Combine(parent.FullName, "Hispania.sln"))) return parent.FullName;
         throw new DirectoryNotFoundException("Repository root not found.");
+    }
+
+    private static string ProjectOutputAssembly(string projectRelativePath, string assemblyName)
+    {
+        var repositoryRoot = RepositoryRoot();
+        var testBin = Path.Combine(repositoryRoot, "tests", "unit", "bin");
+        var testOutput = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
+        var outputSuffix = Path.GetRelativePath(testBin, testOutput);
+        if (outputSuffix == "." || outputSuffix == ".." || outputSuffix.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            throw new DirectoryNotFoundException("Test output is not under the unit-test bin directory.");
+
+        var assemblyPath = Path.Combine(repositoryRoot, projectRelativePath, "bin", outputSuffix, assemblyName);
+        if (!File.Exists(assemblyPath))
+            throw new FileNotFoundException($"Expected project output was not built for the current test runtime ({outputSuffix}).", assemblyPath);
+        return assemblyPath;
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
@@ -512,7 +854,7 @@ public sealed class PackageLifecycleIntegrationTests
             Keys = new() { ["TEST-ONLY-base"] = rsa.ExportSubjectPublicKeyInfoPem(), ["TEST-ONLY-consumer"] = rsa.ExportSubjectPublicKeyInfoPem() };
             Runtime = new(Registry);
             Catalog = new(Installed, new Version(1, 0, 0), Runtime, Registry, new Dictionary<string, Func<IModule>>(), authorized ?? [BaseId, ConsumerId],
-                moduleHostPath: Path.Combine(RepositoryRoot(), "apps", "module-host", "bin", new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name, "net10.0", "Hispania.ModuleHost.dll"),
+                moduleHostPath: ProjectOutputAssembly("apps/module-host", "Hispania.ModuleHost.dll"),
                 trustedPublisherKeys: Keys, requirePublisherSignature: requireSignature,
                 resourceLimits: drainTimeout is null ? null : new OutOfProcessResourceLimits { MaximumRequestDuration = drainTimeout.Value });
             BaseArchive = Archive(BaseId, "1.0.0", typeof(PackageBaseModule));

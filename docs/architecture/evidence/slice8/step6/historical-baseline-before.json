@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "operation": "compare",
+  "contentId": "44B43088658F2F70FE8A0745EA5DFC3B1519CBF10B9347F3F4B88835EEDB3B12",
+  "manifestSha256": "22D05298F7329BE8C2892BDEE33EBE71C6851EBC5D7A6B6BBF2A49C34F45FE87",
+  "added": [],
+  "missing": [],
+  "modified": [],
+  "selfTest": []
+}

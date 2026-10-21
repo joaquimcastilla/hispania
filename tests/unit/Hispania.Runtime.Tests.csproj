@@ -26,6 +26,8 @@
     <ProjectReference Include="..\..\modules\extension-demo\Hispania.ExtensionDemo.csproj" />
     <ProjectReference Include="..\..\modules\architecture-test\Hispania.ArchitectureTest.Modules.csproj" />
     <ProjectReference Include="..\module-job-fixtures\Hispania.ModuleJob.Fixtures.csproj" />
+    <ProjectReference Include="..\private-module-fixtures\module-v1\Hispania.PrivateFixture.ModuleV1.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\private-module-fixtures\module-v2\Hispania.PrivateFixture.ModuleV2.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\application\playback\Hispania.Playback.Application.csproj" />
     <ProjectReference Include="..\..\application\library\Hispania.Library.Application.csproj" />
     <ProjectReference Include="..\..\application\metadata\Hispania.Metadata.Application.csproj" />

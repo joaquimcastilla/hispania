@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Hispania.CoreArtifactValidator;
@@ -44,7 +45,7 @@ public sealed class ArtifactValidatorTests
         try
         {
             foreach (var name in new[] { "Hispania.Core.dll", "Hispania.ModuleSystem.Contracts.dll", "Hispania.Platform.Contracts.dll" })
-                File.WriteAllBytes(Path.Combine(root, name), [1, 2, 3]);
+                File.Copy(typeof(ArtifactValidatorTests).Assembly.Location, Path.Combine(root, name));
             File.WriteAllText(Path.Combine(root, "Hispania.Core.deps.json"), """
             {"runtimeTarget":{"name":".NETCoreApp,Version=v10.0/win-x64"},"targets":{".NETCoreApp,Version=v10.0/win-x64":{"Hispania.Core/1.0.0":{"type":"project","dependencies":{"Hispania.ModuleSystem.Contracts":"1.0.0","Hispania.Platform.Contracts":"1.0.0"}},"Hispania.ModuleSystem.Contracts/1.0.0":{"type":"project"},"Hispania.Platform.Contracts/1.0.0":{"type":"project"}}},"libraries":{"Hispania.Core/1.0.0":{"type":"project"},"Hispania.ModuleSystem.Contracts/1.0.0":{"type":"project"},"Hispania.Platform.Contracts/1.0.0":{"type":"project"}}}
             """);
@@ -61,7 +62,7 @@ public sealed class ArtifactValidatorTests
             Assert.Equal(0, RunCli(createArgs).ExitCode);
             Assert.Equal(0, RunCli("validate", "--root", root, "--policy", policyPath).ExitCode);
 
-            File.WriteAllBytes(Path.Combine(root, "NuGet.Common.dll"), [4, 5, 6]);
+            File.Copy(typeof(ArtifactValidatorTests).Assembly.Location, Path.Combine(root, "NuGet.Common.dll"));
             var conditionalFile = RunCli(createArgs);
             Assert.NotEqual(0, conditionalFile.ExitCode);
             Assert.Contains("File is conditional and not currently authorized: NuGet.Common.dll", conditionalFile.Output, StringComparison.Ordinal);
@@ -107,6 +108,95 @@ public sealed class ArtifactValidatorTests
         using var fixture = new Fixture();
         var report = fixture.Validate();
         Assert.True(report.Passed, string.Join(Environment.NewLine, report.Issues));
+    }
+
+    [Fact]
+    public void ManagedDllIsClassifiedAsManagedAssembly()
+    {
+        using var fixture = new Fixture();
+        Assert.Contains(fixture.Manifest.Files, file => file.Path == "Hispania.Core.dll" && file.FileType == "managedAssembly");
+        Assert.True(fixture.Validate().Passed);
+    }
+
+    [Fact]
+    public void NativeDllIsClassifiedAsNativeRuntime()
+    {
+        using var fixture = new Fixture();
+        fixture.AddNativeDll("e_sqlite3.dll");
+        Assert.Contains(fixture.Manifest.Files, file => file.Path == "e_sqlite3.dll" && file.FileType == "nativeRuntime");
+        Assert.True(fixture.Validate().Passed, string.Join(Environment.NewLine, fixture.Validate().Issues));
+    }
+
+    [Fact]
+    public void NativeDllDeclaredAsManagedAssemblyIsRejected()
+    {
+        using var fixture = new Fixture();
+        fixture.AddNativeDll("e_sqlite3.dll");
+        fixture.UpdateManifest(manifest => manifest with
+        { Files = manifest.Files.Select(file => file.Path == "e_sqlite3.dll" ? file with { FileType = "managedAssembly" } : file).ToArray() });
+        Assert.Contains(fixture.Validate().Issues, issue => issue.Contains("Manifest file type mismatch: e_sqlite3.dll declares managedAssembly, payload is nativeRuntime", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ManagedDllDeclaredAsNativeRuntimeIsRejected()
+    {
+        using var fixture = new Fixture();
+        fixture.UpdateManifest(manifest => manifest with
+        { Files = manifest.Files.Select(file => file.Path == "Hispania.Core.dll" ? file with { FileType = "nativeRuntime" } : file).ToArray() });
+        Assert.Contains(fixture.Validate().Issues, issue => issue.Contains("Manifest file type mismatch: Hispania.Core.dll declares nativeRuntime, payload is managedAssembly", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ManagedExecutableIsClassifiedAsManagedAssembly()
+    {
+        using var fixture = new Fixture();
+        fixture.AddManagedFile("managed-fixture.exe");
+        Assert.Contains(fixture.Manifest.Files, file => file.Path == "managed-fixture.exe" && file.FileType == "managedAssembly");
+        Assert.True(fixture.Validate().Passed, string.Join(Environment.NewLine, fixture.Validate().Issues));
+    }
+
+    [Fact]
+    public void AllowedNonAssemblyIsClassifiedAsContent()
+    {
+        using var fixture = new Fixture();
+        fixture.AddContentFile("notice.txt", "synthetic content");
+        Assert.Contains(fixture.Manifest.Files, file => file.Path == "notice.txt" && file.FileType == "content");
+        Assert.True(fixture.Validate().Passed, string.Join(Environment.NewLine, fixture.Validate().Issues));
+    }
+
+    [Fact]
+    public void UnknownManifestFileTypeIsRejected()
+    {
+        using var fixture = new Fixture();
+        fixture.UpdateManifest(manifest => manifest with
+        { Files = manifest.Files.Select(file => file.Path == "Hispania.Core.dll" ? file with { FileType = "unknownAssemblyKind" } : file).ToArray() });
+        Assert.Contains(fixture.Validate().Issues, issue => issue.Contains("Invalid size, SHA-256, or file type: Hispania.Core.dll", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SemanticValidationPreservesPayloadHashesAndCanonicalContentId()
+    {
+        using var fixture = new Fixture();
+        var originalHashes = fixture.Manifest.Files.ToDictionary(file => file.Path, file => file.Sha256, StringComparer.Ordinal);
+        var originalContentId = fixture.Manifest.ContentId;
+        var report = fixture.Validate();
+        Assert.True(report.Passed, string.Join(Environment.NewLine, report.Issues));
+        Assert.Equal(originalContentId, ManifestJson.ContentId(fixture.Manifest));
+        Assert.Equal(originalHashes, fixture.Manifest.Files.ToDictionary(file => file.Path, file => file.Sha256, StringComparer.Ordinal));
+        Assert.Equal(originalContentId, report.ContentId);
+    }
+
+    [Fact]
+    public void FileTypeRemainsPartOfCanonicalContentIdentity()
+    {
+        using var fixture = new Fixture();
+        var original = fixture.Manifest;
+        var relabeled = original with
+        {
+            Files = original.Files.Select(file => file.Path == "Hispania.Core.dll" ? file with { FileType = "content" } : file).ToArray()
+        };
+        Assert.NotEqual(ManifestJson.ContentId(original), ManifestJson.ContentId(relabeled));
+        Assert.Equal(original.Files.Select(file => file.Sha256), relabeled.Files.Select(file => file.Sha256));
     }
 
     [Fact]
@@ -361,7 +451,7 @@ public sealed class ArtifactValidatorTests
 
     private sealed class Fixture : IDisposable
     {
-        private readonly ArtifactPolicy policy;
+        private ArtifactPolicy policy;
         public string Parent { get; }
         public string Root { get; }
         public string PolicyPath { get; }
@@ -379,7 +469,7 @@ public sealed class ArtifactValidatorTests
             File.WriteAllText(PolicyPath, JsonSerializer.Serialize(policy, ManifestJson.Options));
             var payloads = new Dictionary<string, byte[]>(StringComparer.Ordinal)
             {
-                ["Hispania.Core.dll"] = [1, 3, 3, 7],
+                ["Hispania.Core.dll"] = File.ReadAllBytes(typeof(ArtifactValidatorTests).Assembly.Location),
                 ["Hispania.Core.deps.json"] = DepsJson(),
                 ["Hispania.Core.runtimeconfig.json"] = """{"runtimeOptions":{"tfm":"net10.0","frameworks":[{"name":"Microsoft.NETCore.App","version":"10.0.12"},{"name":"Microsoft.AspNetCore.App","version":"10.0.12"}]}}"""u8.ToArray()
             };
@@ -443,8 +533,38 @@ public sealed class ArtifactValidatorTests
             }) libraries[name] = JsonNode.Parse("""{"type":"package"}""");
 
             File.WriteAllText(depsPath, deps.ToJsonString());
-            foreach (var name in new[] { "Microsoft.Data.Sqlite.dll", "SQLitePCLRaw.batteries_v2.dll", "SQLitePCLRaw.core.dll", "SQLitePCLRaw.provider.e_sqlite3.dll", "e_sqlite3.dll" })
-                File.WriteAllBytes(Path.Combine(Root, name), [7, 8, 9]);
+            foreach (var name in new[] { "Microsoft.Data.Sqlite.dll", "SQLitePCLRaw.batteries_v2.dll", "SQLitePCLRaw.core.dll", "SQLitePCLRaw.provider.e_sqlite3.dll" })
+                File.Copy(typeof(ArtifactValidatorTests).Assembly.Location, Path.Combine(Root, name));
+            AddNativeDll("e_sqlite3.dll");
+            Manifest = Build(Manifest.GeneratedAtUtc);
+            Save(Manifest);
+        }
+
+        public void AddNativeDll(string name)
+        {
+            var source = Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), "coreclr.dll");
+            if (!File.Exists(source)) throw new FileNotFoundException("Windows native CLR fixture was not found.", source);
+            policy = policy with { AllowedFilePatterns = [.. policy.AllowedFilePatterns, name] };
+            File.WriteAllText(PolicyPath, JsonSerializer.Serialize(policy, ManifestJson.Options));
+            File.Copy(source, Path.Combine(Root, name), overwrite: true);
+            Manifest = Build(Manifest.GeneratedAtUtc);
+            Save(Manifest);
+        }
+
+        public void AddManagedFile(string name)
+        {
+            policy = policy with { AllowedFilePatterns = [.. policy.AllowedFilePatterns, name] };
+            File.WriteAllText(PolicyPath, JsonSerializer.Serialize(policy, ManifestJson.Options));
+            File.Copy(typeof(ArtifactValidatorTests).Assembly.Location, Path.Combine(Root, name));
+            Manifest = Build(Manifest.GeneratedAtUtc);
+            Save(Manifest);
+        }
+
+        public void AddContentFile(string name, string content)
+        {
+            policy = policy with { AllowedFilePatterns = [.. policy.AllowedFilePatterns, name] };
+            File.WriteAllText(PolicyPath, JsonSerializer.Serialize(policy, ManifestJson.Options));
+            File.WriteAllText(Path.Combine(Root, name), content);
             Manifest = Build(Manifest.GeneratedAtUtc);
             Save(Manifest);
         }

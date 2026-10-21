@@ -55,6 +55,7 @@ public sealed partial class ModuleExtensionCatalog : IRetentionOwnerV1
                         (File.GetAttributes(candidate.Path) & FileAttributes.ReparsePoint) != 0 ||
                         !OwnedPackageStaging(candidate.Path) ||
                         DateTimeOffset.UtcNow - Directory.GetLastWriteTimeUtc(candidate.Path) < (plan.Policy.MinimumAge ?? TimeSpan.FromDays(30))) continue;
+                    StoragePathGuard.EnsureTreeHasNoReparsePoints(candidate.Path);
                     Directory.Delete(candidate.Path, recursive: true);
                 }
                 else
@@ -74,8 +75,12 @@ public sealed partial class ModuleExtensionCatalog : IRetentionOwnerV1
                             throw new InvalidOperationException("An active generation blocks package cleanup.");
                         if (Directory.Exists(package))
                         {
-                            if ((File.GetAttributes(package) & FileAttributes.ReparsePoint) != 0)
-                                throw new InvalidDataException("Package directory cannot be a link.");
+                            StoragePathGuard.EnsureTreeHasNoReparsePoints(package);
+                            var stored = ReadStoredManifest(package);
+                            if (!SameManifest(stored, inspected.Manifest))
+                                throw new InvalidDataException("Stored package manifest disagrees with its retained artifact.");
+                            ValidateBackupPackage(stored, package);
+                            EnsurePackageFilesAreOwned(stored, package);
                             Directory.Delete(package, recursive: true);
                         }
                     }

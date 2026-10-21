@@ -1,5 +1,6 @@
 using Hispania.Core.Identity;
 using Hispania.Core.Modules;
+using Hispania.Runtime;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Builder;
@@ -41,6 +42,11 @@ internal static class CoreModuleEndpoints
             await audit.RecordAsync("http.modules.install.succeeded", access.Actor, cancellationToken).ConfigureAwait(false);
             return Results.Json(new ModuleOperationResponse(id, "installed"), statusCode: StatusCodes.Status201Created);
         }
+        catch (ModuleRuntimePolicyException)
+        {
+            await audit.RecordAsync("http.modules.install.rejected", access.Actor, cancellationToken).ConfigureAwait(false);
+            return Results.Json(new CoreAuthEndpoints.ErrorResponse("module_runtime_not_allowed"), statusCode: StatusCodes.Status400BadRequest);
+        }
         catch (Exception exception) when (exception is InvalidDataException or InvalidOperationException or IOException or ArgumentException)
         {
             await audit.RecordAsync("http.modules.install.rejected", access.Actor, cancellationToken).ConfigureAwait(false);
@@ -70,6 +76,11 @@ internal static class CoreModuleEndpoints
             await manager.SetEnabledAsync(id, enabled, cancellationToken).ConfigureAwait(false);
             await audit.RecordAsync("http.modules.policy.changed", access.Actor, cancellationToken).ConfigureAwait(false);
             return Results.Json(new ModuleOperationResponse(id, enabled ? "enabled" : "disabled"));
+        }
+        catch (ModuleRuntimePolicyException)
+        {
+            await audit.RecordAsync("http.modules.operation.failed", access.Actor, cancellationToken).ConfigureAwait(false);
+            return Results.Json(new CoreAuthEndpoints.ErrorResponse("module_runtime_not_allowed"), statusCode: StatusCodes.Status409Conflict);
         }
         catch (Exception exception) when (exception is InvalidDataException or InvalidOperationException or IOException or ArgumentException)
         {

@@ -139,6 +139,14 @@ public sealed class ModuleInfrastructureTests
 
             await catalog.DeactivateAsync(moduleId, CancellationToken.None);
             Assert.True(await catalog.UnloadAsync(moduleId));
+            var foreign = Path.Combine(installedV2.Directory, "foreign-owner-canary.txt");
+            var canary = System.Text.Encoding.UTF8.GetBytes("test-only foreign file");
+            await File.WriteAllBytesAsync(foreign, canary);
+            var canaryHash = Convert.ToHexString(SHA256.HashData(canary));
+            await Assert.ThrowsAsync<InvalidDataException>(() => catalog.UninstallAsync(moduleId, "2.0.0"));
+            Assert.Equal(canaryHash, Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(foreign))));
+            Assert.True(Directory.Exists(installedV2.Directory));
+            File.Delete(foreign);
             Assert.True(await catalog.UninstallAsync(moduleId, "2.0.0"));
         }
         finally
@@ -312,9 +320,7 @@ public sealed class ModuleInfrastructureTests
             using var unknownPublisherKey = RSA.Create(2048);
             using var unknownPublisherPackage = CreateGreetingPackage("4.0.0", "Hispania.ExtensionDemo.IndependentGreetingModule",
                 publisherId: "hispania.unknown.editor", publisherPrivateKeyPem: unknownPublisherKey.ExportPkcs8PrivateKeyPem());
-            await catalog.InstallAsync(unknownPublisherPackage);
-            _ = catalog.Discover(); // Prefer the newly installed package in discovery while v1 remains loaded.
-            await Assert.ThrowsAsync<InvalidOperationException>(() => catalog.UpdateAsync(moduleId, "4.0.0"));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => catalog.InstallAsync(unknownPublisherPackage));
             using (var stillTrusted = catalog.Acquire<IExtensionDemoV1>(moduleId))
                 Assert.Equal("Hello from an independently implemented extension.", stillTrusted.Value.GetMessage());
 

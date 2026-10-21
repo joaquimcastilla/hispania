@@ -3,6 +3,7 @@ using System.Globalization;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Hispania.Core.Configuration;
+using Hispania.Runtime;
 
 namespace Hispania.Core.Persistence;
 
@@ -319,7 +320,11 @@ internal sealed class SqliteCorePersistence : ICorePersistence
     {
         try
         {
+            StoragePathGuard.RequireOutside(_options.DataDirectory, AppContext.BaseDirectory,
+                "Core data directory overlaps the application publish directory.");
             Directory.CreateDirectory(_options.DataDirectory);
+            StoragePathGuard.RequireOutside(_options.DataDirectory, AppContext.BaseDirectory,
+                "Core data directory overlaps the application publish directory.");
             var directoryAttributes = File.GetAttributes(_options.DataDirectory);
             if ((directoryAttributes & FileAttributes.ReparsePoint) != 0)
                 throw new CorePersistenceException("Core data directory cannot be a symbolic link or reparse point.");
@@ -329,7 +334,7 @@ internal sealed class SqliteCorePersistence : ICorePersistence
                 File.SetUnixFileMode(_options.DataDirectory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
         catch (CorePersistenceException) { throw; }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             DirectoryPreparationFailed(_logger, exception.GetType().Name, null);
             throw new CorePersistenceException("Core data directory is unavailable; existing data was preserved.");

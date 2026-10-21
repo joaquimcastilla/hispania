@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.DataProtection;
 using System.Security.Cryptography.X509Certificates;
 using Hispania.Core.Http;
 using System.Threading.RateLimiting;
@@ -52,6 +53,17 @@ internal static class CoreHost
         builder.Logging.SetMinimumLevel(hostOptions.MinimumLogLevel);
         builder.Logging.AddJsonConsole();
         builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = hostOptions.ShutdownTimeout);
+        if (hostOptions.DataProtection.KeysDirectory is { } keysDirectory)
+        {
+            if (!OperatingSystem.IsWindows())
+                throw new CoreConfigurationException("DATA_PROTECTION_KEYS_DIRECTORY is supported only on Windows.");
+            // Explicit persistence locations disable ASP.NET Core's automatic at-rest
+            // protection discovery. Preserve the existing Windows DPAPI protection and
+            // fail closed if it cannot be initialized; never fall back to the profile key ring.
+            builder.Services.AddDataProtection()
+                .PersistKeysToFileSystem(new DirectoryInfo(keysDirectory))
+                .ProtectKeysWithDpapi();
+        }
         builder.Services.AddSingleton(hostOptions.Storage);
         builder.Services.AddModuleRuntime();
         builder.Services.AddSingleton<ModuleExtensionCatalog>(services =>
@@ -65,7 +77,12 @@ internal static class CoreHost
                 services.GetRequiredService<IModuleRegistry>(), new Dictionary<string, Func<Hispania.ModuleSystem.Contracts.IModule>>(),
                 ["hispania.slice7.fixture"], trustedPublisherKeys: publishers, revokedPublisherIds: revoked,
                 requirePublisherSignature: true,
-                moduleHostPath: builder.Configuration["MODULES:MODULEHOSTPATH"]);
+                moduleHostPath: builder.Configuration["MODULES:MODULEHOSTPATH"],
+                resourceLimits: null,
+                restartPolicy: null,
+                packageAuditWriter: null,
+                jobContributionRegistry: null,
+                allowedRuntimes: ["dotnet-outofprocess"]);
         });
         builder.Services.AddSingleton(services => new CoreModuleManager(
             services.GetRequiredService<ModuleExtensionCatalog>(), hostOptions.Storage.DataDirectory));

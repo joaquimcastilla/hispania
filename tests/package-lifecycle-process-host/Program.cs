@@ -43,6 +43,45 @@ if (args.Length == 2 && args[0] == "--phase21-resource-probe")
     return 64;
 }
 
+// Test-only cross-process package-set mutation. The parent waits until each process has
+// planned against the same generation, then releases both at once to exercise mutation.lock.
+if (args.Length == 7 && args[0] == "--concurrent-package-mutation")
+{
+    var concurrentRoot = args[1]; var concurrentAction = args[2]; var concurrentPayload = args[3];
+    var concurrentKeys = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(args[4]))!;
+    var concurrentReady = args[5]; var concurrentGate = args[6];
+    var concurrentRegistry = new ModuleRegistry(); var concurrentRuntime = new ModuleRuntime(concurrentRegistry);
+    using var concurrentCatalog = new ModuleExtensionCatalog(concurrentRoot, new Version(1, 0, 0), concurrentRuntime, concurrentRegistry, new Dictionary<string, Func<IModule>>(),
+        ["test.package.base", "test.package.consumer"], trustedPublisherKeys: concurrentKeys, requirePublisherSignature: true);
+    PackageOperationPlan? concurrentPlan = null;
+    if (concurrentAction == "install")
+    {
+        var concurrentCandidate = await PackageArchiveInspector.InspectAsync(concurrentPayload);
+        concurrentPlan = await concurrentCatalog.PlanPackageSetAsync([concurrentPayload], new Dictionary<string, string> { [concurrentCandidate.Id] = $"[{concurrentCandidate.Version}]" });
+    }
+    else if (concurrentAction == "remove")
+        concurrentPlan = await concurrentCatalog.PlanPackageSetAsync([], new Dictionary<string, string>(), new HashSet<string>(StringComparer.Ordinal) { concurrentPayload });
+    else if (concurrentAction == "enable")
+        concurrentPlan = await concurrentCatalog.PlanPackageSetAsync([], new Dictionary<string, string>());
+    else return 64;
+
+    File.WriteAllText(concurrentReady, "planned");
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+    while (!File.Exists(concurrentGate)) await Task.Delay(10, timeout.Token);
+    try
+    {
+        if (concurrentAction == "enable")
+            await concurrentCatalog.ApplyPackageSetAsync(concurrentPlan!, new HashSet<string>(StringComparer.Ordinal) { concurrentPayload }, cancellationToken: timeout.Token);
+        else await concurrentCatalog.ApplyPackageSetAsync(concurrentPlan!, cancellationToken: timeout.Token);
+        await concurrentCatalog.StopManagedPackagesAsync(CancellationToken.None);
+        return 0;
+    }
+    catch (InvalidOperationException exception) when (exception.Message == "Stale package operation plan.")
+    {
+        return 10; // Expected, controlled loser when another process committed first.
+    }
+}
+
 if (args.Length != 5) return 2;
 var root = args[0]; var archive = args[1]; var stage = Enum.Parse<PackageOperationStage>(args[2]); var marker = args[3];
 var keys = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(args[4]))!;

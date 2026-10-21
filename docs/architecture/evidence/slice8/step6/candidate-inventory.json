@@ -1,0 +1,97 @@
+[
+  {
+    "path": "core-artifact-manifest.json",
+    "size": 8686,
+    "sha256": "A336746DA28F172A7E4B84F7E5577AA5F27BC90CB8FDF2D312B74BB5B4AEAB6C"
+  },
+  {
+    "path": "e_sqlite3.dll",
+    "size": 1978880,
+    "sha256": "B7385D722C83FB52142A00477A726723745916D22A555711EE89834C1111FB2E"
+  },
+  {
+    "path": "Hispania.Core.deps.json",
+    "size": 6305,
+    "sha256": "C0411ADAA85FDB2E5F9A7414698C1332312D198B92FE343547BC750BE5A28D07"
+  },
+  {
+    "path": "Hispania.Core.dll",
+    "size": 226304,
+    "sha256": "E6581155E12B9EAB0403C87472EF3304EFFCF36F362BADD6627FB4FBAC5CF959"
+  },
+  {
+    "path": "Hispania.Core.exe",
+    "size": 162304,
+    "sha256": "389714A3F515207A2D1A7452096C5D2E17DD33D7C653DFF7B77CC4C2B7D249AE"
+  },
+  {
+    "path": "Hispania.Core.runtimeconfig.json",
+    "size": 458,
+    "sha256": "B4AAD84277C120C025A443649C4E09CA20B08725ACC12EF60940786BFB8C024F"
+  },
+  {
+    "path": "Hispania.ModuleSystem.Contracts.dll",
+    "size": 103424,
+    "sha256": "079B5BCE61FF8D80BC39465FB877B53C79E896C3926BF27B9E46EEAF486BB784"
+  },
+  {
+    "path": "Hispania.Platform.Contracts.dll",
+    "size": 187904,
+    "sha256": "668AA7DCC1EDD2CEC18DF1B6E58636504CC779A3BFAB3A9559378B7E583B1307"
+  },
+  {
+    "path": "Hispania.Runtime.dll",
+    "size": 350720,
+    "sha256": "7CF4080254FF717E52A0B83F9B53402A920A1F8A7C8F066F04E1D1C1858E6BC4"
+  },
+  {
+    "path": "Microsoft.Data.Sqlite.dll",
+    "size": 177464,
+    "sha256": "B98D957462BE432895B00DCCCA012D3C127E118D3D4262418014B92C7BBD66CF"
+  },
+  {
+    "path": "module-host/Hispania.ModuleHost.deps.json",
+    "size": 1377,
+    "sha256": "819BD7AAF94E558F0AABF82BF8D2218F815E196C43125AB3E88B94705A6FABBF"
+  },
+  {
+    "path": "module-host/Hispania.ModuleHost.dll",
+    "size": 31744,
+    "sha256": "B022F55113A10257FF0A3596EBBDA13A32C126EAF7A65DC897CEF17F64A16976"
+  },
+  {
+    "path": "module-host/Hispania.ModuleHost.runtimeconfig.json",
+    "size": 342,
+    "sha256": "C230A317A54DD960BCBEB5F347F52E18DC665A26F7EFDA2159FCED9A5AC7E097"
+  },
+  {
+    "path": "module-host/Hispania.ModuleSystem.Contracts.dll",
+    "size": 103424,
+    "sha256": "079B5BCE61FF8D80BC39465FB877B53C79E896C3926BF27B9E46EEAF486BB784"
+  },
+  {
+    "path": "module-host/Hispania.Platform.Contracts.dll",
+    "size": 187904,
+    "sha256": "668AA7DCC1EDD2CEC18DF1B6E58636504CC779A3BFAB3A9559378B7E583B1307"
+  },
+  {
+    "path": "NuGet.Versioning.dll",
+    "size": 62264,
+    "sha256": "FC2F75A7A5F3BE9B4C3DCFC21644B871BB5A41ADA8615C92D778713D2A310670"
+  },
+  {
+    "path": "SQLitePCLRaw.batteries_v2.dll",
+    "size": 5120,
+    "sha256": "815CE410C9EAB531DD219318E3BA16C5E38E83D361CFBBDBB4BBCA222C497B0B"
+  },
+  {
+    "path": "SQLitePCLRaw.core.dll",
+    "size": 51200,
+    "sha256": "AF340AC9EB9195795660D7FC1114F486B6AB63998F33176E2F24C8E0ACB9AA84"
+  },
+  {
+    "path": "SQLitePCLRaw.provider.e_sqlite3.dll",
+    "size": 36864,
+    "sha256": "DF996BCAE63C2CABCFE8D4B9C5110EB39A2A4706178B07D875665391C6EB3995"
+  }
+]

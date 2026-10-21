@@ -1,0 +1,91 @@
+{
+  "overall": "PASS",
+  "artifact": "%TEMP%\\hispania-slice8-step6-candidate-46043923704b4a3ebe7a27f61f9b625a-publish",
+  "evidence": {
+    "coreContentId": "9459242A34B042402F79D140CEED7D16BDEB149616EC7B08573188A34D31BED0",
+    "coreExeSha256": "389714A3F515207A2D1A7452096C5D2E17DD33D7C653DFF7B77CC4C2B7D249AE",
+    "moduleHostSha256": "4457DBDB9C5657865B1C7A4313A23B53D6709F3249E3B2083D60C11F7CEB583E",
+    "dataProtectionKeysRelativeDirectory": "data-protection-keys",
+    "dataProtectionKeyCount": 1,
+    "dataProtectionAtRestProtection": "Windows DPAPI",
+    "fixtureAssemblySha256": "251CE2B17778AD6D943FC1BD718B2BB8DB5E00A78359925CC5E80E73AD6939AB",
+    "signedFixturePackageSha256": "BE6C75284F8BBD8A9CD23F63AFCA3A841347E155A7D8BA399253AE05FEB98DE5",
+    "coreExitCode": 0,
+    "failureFixturePackageSha256": "21D5D356753DA519A16600AF779FD5C6C8AA22A1F439D49807399819585DDEEA"
+  },
+  "checks": [
+    {
+      "check": "candidate source/content ID, inventory and manifest SHA-256 verified",
+      "result": "PASS"
+    },
+    {
+      "check": "publisher trust configured through existing protected host settings",
+      "result": "PASS"
+    },
+    {
+      "check": "published Core fresh SQLite database and one-time local bootstrap",
+      "result": "PASS"
+    },
+    {
+      "check": "published Core HTTPS liveness with SAN-validated test certificate",
+      "result": "PASS"
+    },
+    {
+      "check": "Data Protection keys persisted in isolated directory with DPAPI protection",
+      "result": "PASS"
+    },
+    {
+      "check": "authenticated admin has module read/manage permissions; fresh registry empty",
+      "result": "PASS"
+    },
+    {
+      "check": "signed in-process package rejected by published Core before install",
+      "result": "PASS"
+    },
+    {
+      "check": "signed fixture installed through published Core and listed disabled/trusted/authorized",
+      "result": "PASS"
+    },
+    {
+      "check": "fixture activation and healthy state",
+      "result": "PASS"
+    },
+    {
+      "check": "isolated DPAPI key ring persisted across published Core restart",
+      "result": "PASS"
+    },
+    {
+      "check": "published Core restart preserves enabled fixture state and health",
+      "result": "PASS"
+    },
+    {
+      "check": "fixture disabled and removed through published Core endpoints",
+      "result": "PASS"
+    },
+    {
+      "check": "controlled fixture start failure leaves published Core healthy and fixture removable",
+      "result": "PASS"
+    },
+    {
+      "check": "published Core stopped cleanly after CTRL+BREAK",
+      "result": "PASS"
+    },
+    {
+      "check": "published candidate remained byte-for-byte unchanged",
+      "result": "PASS"
+    },
+    {
+      "check": "no residual Core or owned ModuleHost processes",
+      "result": "PASS"
+    },
+    {
+      "check": "exclusive temporary directory cleanup",
+      "result": "PASS"
+    }
+  ],
+  "failureStage": null,
+  "errorCode": null,
+  "failureDetailCode": null,
+  "failure": null,
+  "secretsPrinted": false
+}

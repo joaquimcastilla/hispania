@@ -42,6 +42,8 @@ public sealed partial class ModuleExtensionCatalog
     public async Task<PackageOperationPlan> PlanPackageSetAsync(IReadOnlyList<string> localArchives,
         IReadOnlyDictionary<string, string> targets, IReadOnlySet<string>? remove = null, CancellationToken cancellationToken = default)
     {
+        StoragePathGuard.EnsureNoReparsePoints(directory);
+        if (Directory.Exists(directory)) StoragePathGuard.EnsureTreeHasNoReparsePoints(directory);
         var current = ReadPackageState();
         foreach (var entry in current.Packages)
         {
@@ -115,6 +117,7 @@ public sealed partial class ModuleExtensionCatalog
             using var mutationLock = await AcquirePackageMutationLockAsync(cancellationToken).ConfigureAwait(false);
             EnsureNoIncompleteOperation();
             if (!plan.Resolved) throw new InvalidOperationException("Unresolved package operation plan.");
+            foreach (var candidate in plan.Selected) ValidateManagedModuleRuntime(candidate.Manifest);
             if (!allowDowngrade && plan.Changes.Any(change => change.Action == "downgrade")) throw new InvalidOperationException("Deliberate downgrade requires explicit operator consent and module data compatibility.");
             var previous = ReadPackageState();
             if (!SameSet(previous.Packages.Select(ToCandidate), plan.Current)) throw new InvalidOperationException("Stale package operation plan.");
@@ -190,7 +193,11 @@ public sealed partial class ModuleExtensionCatalog
                 await AuditPackageOperationAsync(entry.Enabled ? "enable" : "disable", "success", entry.Manifest.Id).ConfigureAwait(false);
             WriteState(Path.Combine(PackageStateRoot, "previous.json"), previous);
             journal = journal with { Stage = PackageOperationStage.Completed }; WriteJournal(journal);
-            if (Directory.Exists(stageRoot)) Directory.Delete(stageRoot, recursive: true);
+            if (Directory.Exists(stageRoot))
+            {
+                StoragePathGuard.EnsureTreeHasNoReparsePoints(stageRoot);
+                Directory.Delete(stageRoot, recursive: true);
+            }
             PackageSuccess.Add(1);
         }
         catch
@@ -275,6 +282,7 @@ public sealed partial class ModuleExtensionCatalog
     private async Task StartPackageSetAsync(PackageSetState state, CancellationToken cancellationToken)
     {
         ValidateStoredGraph(state);
+        foreach (var entry in state.Packages.Where(entry => entry.Enabled)) ValidateManagedModuleRuntime(entry.Manifest);
         foreach (var id in PackageDependencyResolver.TopologicalOrder(state.Packages.Select(ToCandidate).ToArray()))
         {
             var entry = state.Packages.Single(entry => entry.Manifest.Id == id);
@@ -378,10 +386,12 @@ public sealed partial class ModuleExtensionCatalog
 
     private static void ValidateStoredGraph(PackageSetState state)
     {
-        if (state.Generation != 1 || state.Packages is null || state.Packages.Length > PackageDependencyResolver.MaximumPackages)
+        if (state is null || state.Generation != 1 || state.Packages is null || state.Packages.Length > PackageDependencyResolver.MaximumPackages)
             throw new InvalidDataException("Unsupported or invalid package catalog generation.");
         foreach (var entry in state.Packages)
         {
+            if (entry is null || entry.Manifest is null || string.IsNullOrEmpty(entry.ArtifactHash) || string.IsNullOrEmpty(entry.RelativeDirectory))
+                throw new InvalidDataException("Package catalog contains an incomplete entry.");
             PackageDependencyResolver.ValidateManifest(entry.Manifest);
             if (entry.ArtifactHash.Length != 64 || !entry.ArtifactHash.All(Uri.IsHexDigit) ||
                 entry.RelativeDirectory != entry.Manifest.Id + "/" + (entry.Manifest.PackageVersion ?? Version.Parse(entry.Manifest.Version).ToString()))
@@ -401,10 +411,7 @@ public sealed partial class ModuleExtensionCatalog
         if (parts.Length != 2) throw new InvalidDataException("Invalid package catalog path.");
         PackageDependencyResolver.ValidateId(parts[0]);
         if (!Version.TryParse(parts[1], out _)) _ = PackageDependencyResolver.ParseVersion(parts[1]);
-        var path = Path.GetFullPath(Path.Combine(directory, parts[0], parts[1]));
-        for (var cursor = new DirectoryInfo(path); cursor is not null && cursor.FullName.StartsWith(directory, StringComparison.OrdinalIgnoreCase); cursor = cursor.Parent)
-            if (cursor.Exists && (cursor.Attributes & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException("Package state path contains a link.");
-        return path;
+        return StoragePathGuard.RequireWithin(directory, Path.Combine(directory, parts[0], parts[1]), "Package state path escaped its authorized store.");
     }
 
     private static ModuleManifest ReadStoredManifest(string path)
@@ -456,15 +463,19 @@ public sealed partial class ModuleExtensionCatalog
 
     private static void ValidateJournal(PackageOperationJournal journal)
     {
-        if (journal.Generation != 1 || journal.OperationId is null || journal.OperationId.Length != 32 || !journal.OperationId.All(Uri.IsHexDigit) || !Enum.IsDefined(journal.Stage))
+        if (journal is null || journal.Generation != 1 || journal.OperationId is null || journal.OperationId.Length != 32 || !journal.OperationId.All(Uri.IsHexDigit) || !Enum.IsDefined(journal.Stage) ||
+            journal.Previous is null || journal.Next is null)
             throw new InvalidDataException("Unsupported or invalid package journal identity/stage.");
         ValidateStoredGraph(journal.Previous); ValidateStoredGraph(journal.Next);
     }
 
     private async Task<FileStream> AcquirePackageMutationLockAsync(CancellationToken cancellationToken)
     {
+        StoragePathGuard.EnsureNoReparsePoints(directory);
+        Directory.CreateDirectory(directory);
+        StoragePathGuard.EnsureTreeHasNoReparsePoints(directory);
         Directory.CreateDirectory(PackageStateRoot);
-        if ((File.GetAttributes(PackageStateRoot) & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException("Package state directory cannot be a link.");
+        StoragePathGuard.RequireWithin(directory, PackageStateRoot, "Package state escaped its authorized store.");
         using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         bounded.CancelAfter(resourceLimits.MaximumRequestDuration);
         while (true)
@@ -503,7 +514,7 @@ public sealed partial class ModuleExtensionCatalog
             var artifacts = Path.Combine(PackageStateRoot, "artifacts");
             if (Directory.Exists(artifacts))
             {
-                if ((File.GetAttributes(artifacts) & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException("Artifact store cannot be a link.");
+                StoragePathGuard.EnsureNoReparsePoints(artifacts);
                 foreach (var file in Directory.EnumerateFiles(artifacts, "*.hispania").Order(StringComparer.Ordinal))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -517,7 +528,16 @@ public sealed partial class ModuleExtensionCatalog
                     {
                         var package = ResolveStoredDirectory(relative);
                         if (loaded.Values.Any(extension => Path.GetFullPath(extension.PackageDirectory) == package)) throw new InvalidOperationException("An active generation blocks package cleanup.");
-                        if (Directory.Exists(package)) Directory.Delete(package, recursive: true);
+                        if (Directory.Exists(package))
+                        {
+                            StoragePathGuard.EnsureTreeHasNoReparsePoints(package);
+                            var stored = ReadStoredManifest(package);
+                            if (!SameManifest(stored, candidate.Manifest))
+                                throw new InvalidDataException("Stored package manifest disagrees with its retained artifact.");
+                            ValidateBackupPackage(stored, package);
+                            EnsurePackageFilesAreOwned(stored, package);
+                            Directory.Delete(package, recursive: true);
+                        }
                     }
                     File.Delete(file);
                 }
@@ -528,7 +548,10 @@ public sealed partial class ModuleExtensionCatalog
                 if ((File.GetAttributes(staging) & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException("Staging root cannot be a link.");
                 foreach (var path in Directory.EnumerateDirectories(staging))
                     if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0 && OwnedPackageStaging(path))
+                    {
+                        StoragePathGuard.EnsureTreeHasNoReparsePoints(path);
                         Directory.Delete(path, recursive: true);
+                    }
             }
         }
         finally { activationGate.Release(); }

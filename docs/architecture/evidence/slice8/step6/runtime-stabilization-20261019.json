@@ -1,0 +1,503 @@
+{
+  "run": "Slice 8 Step 6 Runtime ALC stabilization",
+  "date": "2026-10-19",
+  "branch": "codex/hispania-v1-baseline-consolidation",
+  "head": "ef7365bb5e7d7551cb1093519743cc1885757b5b",
+  "beforeHistoricalArtifact": {
+    "passed": true,
+    "contentId": "44B43088658F2F70FE8A0745EA5DFC3B1519CBF10B9347F3F4B88835EEDB3B12",
+    "manifestSha256": "22D05298F7329BE8C2892BDEE33EBE71C6851EBC5D7A6B6BBF2A49C34F45FE87",
+    "added": [],
+    "missing": [],
+    "modified": [],
+    "capturedInCommandResult": true,
+    "rawJsonPersisted": false,
+    "resultSha256": "64A73CACB74F0B05BD679B72A90365FA5164EFF376B6AF9EDE65500FE79CD5FE",
+    "command": "pwsh -NoProfile -File tools/verify-slice8-artifact-baseline.ps1 -ArtifactRoot %TEMP%\\hispania-slice7-accepted-20261018-publish -BaselinePath docs/architecture/evidence/slice8/core-artifact-baseline-win-x64.json"
+  },
+  "afterHistoricalArtifact": {
+    "path": ".artifacts/slice8-step6-runtime-stabilization-20261019/historical-baseline-after.json",
+    "sha256": "64A73CACB74F0B05BD679B72A90365FA5164EFF376B6AF9EDE65500FE79CD5FE",
+    "contentId": "44B43088658F2F70FE8A0745EA5DFC3B1519CBF10B9347F3F4B88835EEDB3B12",
+    "manifestSha256": "22D05298F7329BE8C2892BDEE33EBE71C6851EBC5D7A6B6BBF2A49C34F45FE87",
+    "added": [],
+    "missing": [],
+    "modified": [],
+    "resultSha256": "64A73CACB74F0B05BD679B72A90365FA5164EFF376B6AF9EDE65500FE79CD5FE"
+  },
+  "testSource": {
+    "path": "tests/unit/PrivateModuleDependencyIsolationTests.cs",
+    "historicalSourceHashAvailable": false,
+    "priorEvidence": "alc-correction-results-20261019.json records 10/10 positive, 10/10 missing, 10/10 incompatible; prior source hash was not recorded",
+    "currentBehavior": "separate no-inline async frame, lease disposal, weak-reference waits, in-process failure exception release, no production references modified",
+    "diagnosticOnlyChange": "Attach before-delete and delete-failed snapshots to cleanup exception so testhost retains pre-clean state",
+    "currentSourceSha256": "30471BC3D3934FFE12581F33531EE18CE37F027D0DF8BC27D690D7AB0391F23F"
+  },
+  "individualRuns": [
+    {
+      "run": "individual-01",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-01/run.trx",
+      "trxSha256": "BEAC4643481C8377EC53E922022EC203979EC88A8CE89424119A9E456FD910CA",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-02",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-02/run.trx",
+      "trxSha256": "C93C131A5D9BCB44F0A9336B9FFCEB16E81CD111E6128038B6287909C2150BB8",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-03",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-03/run.trx",
+      "trxSha256": "3829D8DCB119FC6DF7378490BAFF83442B2FB88B98F054A7FFC39634CD72D788",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-04",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-04/run.trx",
+      "trxSha256": "D4735E45C4890D0D9080FEBD8868FC9634A65374EE61FB627343AD0077F8E5C3",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-05",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-05/run.trx",
+      "trxSha256": "CEA8C26B1348F6C127D7FF808DB17ADDF62490A998DED9D9918FD051A458A6C3",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-06",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-06/run.trx",
+      "trxSha256": "F8B0CF3805A8A13E2001C4F3E923233C87D367937E0FA6842B7202E6838F18A3",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-07",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-07/run.trx",
+      "trxSha256": "A4C2D21441388141C1502D7950FA230D6E000BCACF19B01C5F512CEF67D20677",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-08",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-08/run.trx",
+      "trxSha256": "9DD32C17A1F067A33708D856EBD4846BB7C4ADCE9F30BC230D0AB136718ECEE4",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-09",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-09/run.trx",
+      "trxSha256": "999BFFF71AA4F9D37A4BCE3F65450753F9267415A41C91C548E349F4F552F355",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-10",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-10/run.trx",
+      "trxSha256": "7BA049A4EED6C07B7D8D6BD9D80733FE4AA6CD19F1867C26C03F042A321ED381",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-11",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-11/run.trx",
+      "trxSha256": "CC21D92638CA2355283DE2DB38C6E1E26D179705D8B165E6897D722624BBC054",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-12",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-12/run.trx",
+      "trxSha256": "5A7F8E096E19C2EDF357313FE67AFD51817E7F139DB122CCD88FCC7201B52664",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-13",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-13/run.trx",
+      "trxSha256": "FCDBDCCB8A1A6145C6382326C7D844B5FA425F3048EA4A2D9BDA5D2C6B5AF92E",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-14",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-14/run.trx",
+      "trxSha256": "AC5AE309846779E8A54FE6222D9A6E39DE3E7025A5CD9A497D46F971EA616243",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-15",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-15/run.trx",
+      "trxSha256": "B1B4CBD92D9948437EBECE8A5BEE1513EE431C913A689EBFEFAE55E8AC0F92A7",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-16",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-16/run.trx",
+      "trxSha256": "D5196BF8AC9CCD5A891CFCA6650D3E2007689EB7496EAA9E3294BFD948C64E59",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-17",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-17/run.trx",
+      "trxSha256": "8D56CB91FA9EBC3389ED75500A822B2319D5E6742979A29C196F7FC96C150D79",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-18",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-18/run.trx",
+      "trxSha256": "70B3996D258AECF181265405A6E5DE066FBA58EBBE8323DF189099EA80205E0C",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-19",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-19/run.trx",
+      "trxSha256": "EECE5E4348A9CCA932E56516E7F3E3235EA7504E07F7859B83BD29C857C476F2",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "individual-20",
+      "passed": 1,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/individual-20/run.trx",
+      "trxSha256": "2722FB7C7C5B357327D04A39F424EBA514946B56A4135260CAB7FB8D99ACFF08",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    }
+  ],
+  "classRuns": [
+    {
+      "run": "class-01",
+      "passed": 5,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/class-01/run.trx",
+      "trxSha256": "D3DF5D05180D95D641EEBBAAB1E3623F28E955C75EB20A247E21B7F021ECD21E",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "class-02",
+      "passed": 5,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/class-02/run.trx",
+      "trxSha256": "0CCEE0D097B8DEF0EFADB98E7997CFB55F4ACE24540FBC1E2BED07886ABC7C41",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "class-03",
+      "passed": 5,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/class-03/run.trx",
+      "trxSha256": "7E79188E1EF3CA9AD91AAD4056BA84C558C72E169A191FA2777DC91D9063A6AB",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "class-04",
+      "passed": 5,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/class-04/run.trx",
+      "trxSha256": "E4CF0DB64BBF05873D6028D3B30E5C12CE6E760AFC4AE4DAE2C1C6C9BFD51DA3",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "class-05",
+      "passed": 5,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/class-05/run.trx",
+      "trxSha256": "90B6BCE1171043CF464F0218E69C243FCA13EF4DCED2A5768C281C390C191A38",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "class-06",
+      "passed": 5,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/class-06/run.trx",
+      "trxSha256": "F4AEE881A40B634C5AEC780595958F487AF9AD42BB7BFCD44A88DCD852663B40",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "class-07",
+      "passed": 5,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/class-07/run.trx",
+      "trxSha256": "223F47CC5669583715628DFCBCAA020D31CB4995330716017EBC779522AFEAFD",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "class-08",
+      "passed": 5,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/class-08/run.trx",
+      "trxSha256": "267406394C08C5E48D86D6469CC6B395E7613EAD788B5A7B9034CD1A8ED16FDB",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "class-09",
+      "passed": 5,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/class-09/run.trx",
+      "trxSha256": "698B38870311A7FF0AC1C2A9D1A22145C8BE849F61B436712CAB2A620D9296C2",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "class-10",
+      "passed": 5,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/class-10/run.trx",
+      "trxSha256": "2BF35D8BF9F22013254BE0B711B38E94CD616E768203CA47F5C56C3B213E0907",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    }
+  ],
+  "runtimeRuns": [
+    {
+      "run": "runtime-01",
+      "passed": 264,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/runtime-01/run.trx",
+      "trxSha256": "BD471DF88901935869AFC49822D6944BF56981F8D1C9781E30AD85B5313A7AD7",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "runtime-02",
+      "passed": 264,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/runtime-02/run.trx",
+      "trxSha256": "483237A26806F2DD2D317822BF3400EDA020EA8AA6B21D7EED12EF4AC018CC2D",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "runtime-03",
+      "passed": 264,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/runtime-03/run.trx",
+      "trxSha256": "7026479826E3C6E81308C92456C84DC2D5B6D5D6C75F352B07A0866E2652C82F",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "runtime-04",
+      "passed": 264,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/runtime-04/run.trx",
+      "trxSha256": "904C14309CE1365226FE01BCA52E09AB4FA6B2DAC9A5EA7D0583333D06B15B1A",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    },
+    {
+      "run": "runtime-05",
+      "passed": 264,
+      "failed": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/runtime-05/run.trx",
+      "trxSha256": "0088EB485FEECE3930A8EF648D5D586E5A811CB544A78ACD6BD24E2D5D9040A2",
+      "failedTests": [
+        "Hispania.Runtime.Tests.PrivateModuleDependencyIsolationTests.PackagesResolveSamePrivateAssemblyIdentityIndependentlyAndUnloadAfterLeaseRelease(runtime: \"dotnet-inprocess-trusted\")"
+      ]
+    }
+  ],
+  "diagnosticProbe": {
+    "path": ".artifacts/slice8-step6-runtime-stabilization-20261019/diagnostic-probe-inprocess-no-rid/run.trx",
+    "trxSha256": "9609EC8BB05B6DF3B44430F8F60091E19268B32127D8F1C5BD4C9D795F84FE56",
+    "passed": 0,
+    "failed": 1,
+    "failure": "Directory.Delete(recursive:true), UnauthorizedAccessException 0x80070005",
+    "beforeDelete": {
+      "alcWeakReferencesAlive": [
+        false,
+        true
+      ],
+      "loadedFixtureAssemblies": 0,
+      "deleteAccessProbe": "opened",
+      "exclusiveReadProbe": "opened"
+    },
+    "afterFailure": {
+      "alcWeakReferencesAlive": [
+        false,
+        true
+      ],
+      "loadedFixtureAssemblies": 0,
+      "moduleHostProcessIds": [],
+      "nativeError": 5,
+      "message": "Access denied deleting private dependency DLL"
+    },
+    "generatedTemporaryRoot": "one additional failure root; retained"
+  },
+  "regressions": [
+    {
+      "name": "core-win-x64",
+      "passed": 70,
+      "failed": 0,
+      "notExecuted": 1,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/regressions/core-win-x64/run.trx",
+      "trxSha256": "B3CC8D811A3DC9E6D6A1FBC65B15BD4700DD948FF0A0A130DD5F84735825AF5C",
+      "skipped": 1
+    },
+    {
+      "name": "data-protection-win-x64",
+      "passed": 8,
+      "failed": 0,
+      "notExecuted": 0,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/regressions/data-protection-win-x64/run.trx",
+      "trxSha256": "509895D2B3912E08B2E1AC426A52E6CA35E60385FCC2BBACEE3CA28FC314D579"
+    },
+    {
+      "name": "modulehost",
+      "passed": 10,
+      "failed": 0,
+      "notExecuted": 0,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/regressions/modulehost/run.trx",
+      "trxSha256": "1EEDBFC3478AFF7D18DF9E2E3447AE6CBA8799500AC3F7CF025AA8DAD44B3504"
+    },
+    {
+      "name": "publisher-trust",
+      "passed": 32,
+      "failed": 0,
+      "notExecuted": 0,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/regressions/publisher-trust/run.trx",
+      "trxSha256": "5F5275DD1A95630B9E168780B30A9F77EC3E2396BD712FB9495EB05EE45C1EED"
+    },
+    {
+      "name": "package-lifecycle-no-rid",
+      "passed": 94,
+      "failed": 0,
+      "notExecuted": 0,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/regressions/package-lifecycle-no-rid/run.trx",
+      "trxSha256": "C6C5B235A42F936C53CC7D0783F0302C630A19C2A7E80E11C428725D0A1A49E1"
+    },
+    {
+      "name": "package-lifecycle-rid",
+      "passed": 79,
+      "failed": 15,
+      "notExecuted": 0,
+      "trxPath": ".artifacts/slice8-step6-runtime-stabilization-20261019/regressions/package-lifecycle-rid/run.trx",
+      "trxSha256": "7F8D821534D621741196A2D7E75BA5F9E3E951839A987E1F35DC5EAEA9227004"
+    }
+  ],
+  "packageLifecycleRid": {
+    "result": "79 PASS / 15 FAIL",
+    "buildOutput": "tests/package-lifecycle-process-host/bin/Release/net10.0/win-x64/Hispania.PackageLifecycle.ProcessHost.dll",
+    "attemptedPath": "tests/package-lifecycle-process-host/bin/net10.0/net10.0/Hispania.PackageLifecycle.ProcessHost.dll",
+    "cause": "test harness derives Configuration from AppContext.BaseDirectory.Parent.Name; with RID this is net10.0 rather than Release, then appends net10.0 again; does not involve published distribution",
+    "trxSha256": "7F8D821534D621741196A2D7E75BA5F9E3E951839A987E1F35DC5EAEA9227004"
+  },
+  "dataProtectionRelation": {
+    "directDependencyFound": false,
+    "runtimeTestsProjectReferencesCore": false,
+    "runtimeTestInstantiatesCoreHost": false,
+    "assessment": "No demonstrated causal link; the failing test calls ModuleExtensionCatalog directly. Data Protection is registered in apps/core/Hosting/CoreHost.cs and covered by tests/core/CoreDataProtectionTests.cs."
+  },
+  "temporaryRoots": {
+    "historicalInventoryCount": 69,
+    "historicalRootsMissing": 0,
+    "countAtStart": 70,
+    "countAtEnd": 106,
+    "newRootsPreserved": 37,
+    "deleted": false
+  },
+  "processes": {
+    "hispaniaCore": 0,
+    "hispaniaModuleHost": 0
+  },
+  "changes": {
+    "productionChanged": false,
+    "contractsChangedByThisRun": false,
+    "commitCreated": false,
+    "pushPerformed": false,
+    "step7Started": false,
+    "slice9Started": false
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "overall": "PASS",
+  "artifact": "C:\\Users\\joaqu\\AppData\\Local\\Temp\\hispania-slice8-step6-candidate-187c3f92ba8042298b28ef05452c939f-publish",
+  "evidence": {
+    "coreContentId": "BCA8F79A51A2705CCD4DE10AF12ED819EE4AD426B8E74048EAB25E0FE0F11CD8",
+    "coreExeSha256": "389714A3F515207A2D1A7452096C5D2E17DD33D7C653DFF7B77CC4C2B7D249AE",
+    "moduleHostSha256": "B022F55113A10257FF0A3596EBBDA13A32C126EAF7A65DC897CEF17F64A16976",
+    "fixtureAssemblySha256": "292F2E11ED4E3D3295A6706BE7701E9B3198B4E8C4F3A7FB88F4EAB4D10F3985",
+    "signedFixturePackageSha256": "1E8331A40C1283C330C3E4E8B0CF6D30A16540AD92C3BB8D297EBDCAB67BB455",
+    "coreExitCode": 0,
+    "failureFixturePackageSha256": "7C3A49FCF1364732BA28D8B6F6AA7C7B320DCFFE7E38943768F2F3DE0E183B06"
+  },
+  "checks": [
+    {
+      "check": "candidate source/content ID, inventory and manifest SHA-256 verified",
+      "result": "PASS"
+    },
+    {
+      "check": "publisher trust configured through existing protected host settings",
+      "result": "PASS"
+    },
+    {
+      "check": "published Core fresh SQLite database and one-time local bootstrap",
+      "result": "PASS"
+    },
+    {
+      "check": "published Core HTTPS liveness with SAN-validated test certificate",
+      "result": "PASS"
+    },
+    {
+      "check": "authenticated admin has module read/manage permissions; fresh registry empty",
+      "result": "PASS"
+    },
+    {
+      "check": "signed in-process package rejected by published Core before install",
+      "result": "PASS"
+    },
+    {
+      "check": "signed fixture installed through published Core and listed disabled/trusted/authorized",
+      "result": "PASS"
+    },
+    {
+      "check": "fixture activation and healthy state",
+      "result": "PASS"
+    },
+    {
+      "check": "published Core restart preserves enabled fixture state and health",
+      "result": "PASS"
+    },
+    {
+      "check": "fixture disabled and removed through published Core endpoints",
+      "result": "PASS"
+    },
+    {
+      "check": "controlled fixture start failure leaves published Core healthy and fixture removable",
+      "result": "PASS"
+    },
+    {
+      "check": "published Core stopped cleanly after CTRL+BREAK",
+      "result": "PASS"
+    },
+    {
+      "check": "published candidate remained byte-for-byte unchanged",
+      "result": "PASS"
+    },
+    {
+      "check": "no residual Core or owned ModuleHost processes",
+      "result": "PASS"
+    },
+    {
+      "check": "exclusive temporary directory cleanup",
+      "result": "PASS"
+    }
+  ],
+  "failureStage": null,
+  "errorCode": null,
+  "failureDetailCode": null,
+  "failure": null,
+  "secretsPrinted": false
+}

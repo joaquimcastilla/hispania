@@ -11,7 +11,6 @@ public sealed record InstalledExtensionPackage(string Id, Version Version, strin
 /// <summary>Validates and installs local .hispania ZIP packages as inert files; it never loads package code.</summary>
 public sealed class ExtensionPackageInstaller
 {
-    private const int MaximumEntries = 512;
     private const long MaximumPackageBytes = 128L * 1024 * 1024;
     private const long MaximumExpandedBytes = 256L * 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
@@ -44,18 +43,7 @@ public sealed class ExtensionPackageInstaller
         }
         packageCopy.Position = 0;
         using var archive = new ZipArchive(packageCopy, ZipArchiveMode.Read, leaveOpen: true);
-        if (archive.Entries.Count is < 1 or > MaximumEntries) throw new InvalidDataException("Package entry count is outside the allowed range.");
-        var entries = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
-        long expandedBytes = 0;
-        foreach (var entry in archive.Entries)
-        {
-            if (entry.FullName.EndsWith('/')) continue;
-            ValidateRelativePath(entry.FullName);
-            if (!entries.TryAdd(entry.FullName, entry)) throw new InvalidDataException($"Duplicate package path '{entry.FullName}'.");
-            if ((entry.ExternalAttributes >> 16 & 0xF000) == 0xA000) throw new InvalidDataException("Symbolic links are not allowed in packages.");
-            expandedBytes = checked(expandedBytes + entry.Length);
-            if (entry.Length < 0 || expandedBytes > MaximumExpandedBytes) throw new InvalidDataException("Expanded package size exceeds the configured limit.");
-        }
+        var entries = PackageArchiveInspector.ValidateArchiveEntries(archive);
         if (!entries.TryGetValue("module.json", out var manifestEntry)) throw new InvalidDataException("Package must contain a root module.json.");
         if (manifestEntry.Length > 1024 * 1024) throw new InvalidDataException("Package manifest exceeds the size limit.");
         ModuleManifest manifest;
@@ -79,14 +67,18 @@ public sealed class ExtensionPackageInstaller
 
         var version = Version.Parse(manifest.Version);
         var destination = Path.GetFullPath(Path.Combine(root, manifest.Id, manifest.PackageVersion ?? version.ToString()));
-        EnsureWithinRoot(destination);
+        StoragePathGuard.RequireWithin(root, destination, "Package destination escaped its authorized store.");
         if (Directory.Exists(destination)) throw new IOException($"Extension version '{manifest.Id}@{version}' is already installed.");
+        StoragePathGuard.EnsureNoReparsePoints(root);
         Directory.CreateDirectory(root);
+        StoragePathGuard.EnsureNoReparsePoints(root);
         var moduleDirectory = Path.Combine(root, manifest.Id);
         if (Directory.Exists(moduleDirectory) && (File.GetAttributes(moduleDirectory) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("Extension version directory cannot be a reparse point.");
         var staging = Path.Combine(root, ".staging-" + Guid.NewGuid().ToString("N"));
+        StoragePathGuard.RequireWithin(root, staging, "Package staging escaped its authorized store.");
         Directory.CreateDirectory(staging);
+        StoragePathGuard.RequireWithin(root, staging, "Package staging escaped its authorized store.");
         try
         {
             long actualExpandedBytes = 0;
@@ -129,6 +121,7 @@ public sealed class ExtensionPackageInstaller
         }
         catch
         {
+            StoragePathGuard.EnsureTreeHasNoReparsePoints(staging);
             if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
             throw;
         }
@@ -157,7 +150,7 @@ public sealed class ExtensionPackageInstaller
             throw new InvalidDataException("Every out-of-process provided capability requires an explicit public CLR contract type.");
         if (manifest.ContractTypes is null || manifest.ContractTypes.Any(pair => string.IsNullOrWhiteSpace(pair.Key) || string.IsNullOrWhiteSpace(pair.Value) || !manifest.Provides.Contains(pair.Key, StringComparer.Ordinal)))
             throw new InvalidDataException("Public contract type mappings must refer to declared provided capabilities.");
-        ValidateRelativePath(manifest.EntryAssembly);
+        PackageArchiveInspector.ValidateRelativePath(manifest.EntryAssembly);
         if (manifest.Files is null || manifest.Files.Values.Any(hash => hash.Length != 64 || !hash.All(Uri.IsHexDigit))) throw new InvalidDataException("Every payload file must have a SHA-256 digest.");
         foreach (var dependency in manifest.Dependencies ?? [])
         {
@@ -167,7 +160,7 @@ public sealed class ExtensionPackageInstaller
         if (manifest.DependencyMinimumVersions is null || manifest.DependencyMinimumVersions.Keys.Any(key => !manifest.Dependencies.Contains(key, StringComparer.Ordinal)) ||
             manifest.DependencyMinimumVersions.Values.Any(value => !Version.TryParse(value, out _)))
             throw new InvalidDataException("Invalid minimum module dependency versions.");
-        foreach (var path in manifest.Files.Keys) ValidateRelativePath(path);
+        foreach (var path in manifest.Files.Keys) PackageArchiveInspector.ValidateRelativePath(path);
     }
 
     private void EnsureWithinRoot(string path) => EnsureWithinRoot(root, path);
@@ -179,19 +172,4 @@ public sealed class ExtensionPackageInstaller
         if (!full.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Package path escapes the authorized extension directory.");
     }
 
-    private static void ValidateRelativePath(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path) || path.Contains('\\') || Path.IsPathRooted(path) || path.Split('/').Any(segment => segment is "" or "." or "..") || path.Contains(':') || path.Contains('\0'))
-            throw new InvalidDataException($"Unsafe package path '{path}'.");
-        foreach (var segment in path.Split('/'))
-        {
-            if (segment.Any(character => character < 32 || character is '<' or '>' or '"' or '|' or '?' or '*') || segment.EndsWith(' ') || segment.EndsWith('.'))
-                throw new InvalidDataException($"Unsafe package path '{path}'.");
-            var deviceName = segment.Split('.')[0];
-            if (deviceName.Equals("CON", StringComparison.OrdinalIgnoreCase) || deviceName.Equals("PRN", StringComparison.OrdinalIgnoreCase) ||
-                deviceName.Equals("AUX", StringComparison.OrdinalIgnoreCase) || deviceName.Equals("NUL", StringComparison.OrdinalIgnoreCase) ||
-                deviceName.Length == 4 && (deviceName.StartsWith("COM", StringComparison.OrdinalIgnoreCase) || deviceName.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)) && deviceName[3] is >= '1' and <= '9')
-                throw new InvalidDataException($"Unsafe package path '{path}'.");
-        }
-    }
 }

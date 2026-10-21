@@ -8,7 +8,7 @@ using System.Security.Cryptography;
 
 namespace Hispania.Core.Configuration;
 
-internal sealed record CoreHostOptions(IPAddress ListenAddress, int Port, TimeSpan ShutdownTimeout, LogLevel MinimumLogLevel, int LoginRateLimit, int LoginRateWindowSeconds, string Version, string EnvironmentName, CoreStorageOptions Storage, string? HttpsCertificatePath)
+internal sealed record CoreHostOptions(IPAddress ListenAddress, int Port, TimeSpan ShutdownTimeout, LogLevel MinimumLogLevel, int LoginRateLimit, int LoginRateWindowSeconds, string Version, string EnvironmentName, CoreStorageOptions Storage, CoreDataProtectionOptions DataProtection, string? HttpsCertificatePath)
 {
     public const string DefaultListenAddress = "127.0.0.1";
     public const int DefaultPort = 5070;
@@ -46,8 +46,9 @@ internal sealed record CoreHostOptions(IPAddress ListenAddress, int Port, TimeSp
 
         var version = typeof(CoreHostOptions).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
         var storage = CoreStorageOptions.Read(configuration, AppContext.BaseDirectory);
+        var dataProtection = CoreDataProtectionOptions.Read(configuration, AppContext.BaseDirectory);
         var certificatePath = configuration["HTTPS_CERTIFICATE_PATH"];
-        return new CoreHostOptions(address, port, TimeSpan.FromSeconds(timeout), minimumLogLevel, loginLimit, loginWindow, version, environmentName, storage, certificatePath);
+        return new CoreHostOptions(address, port, TimeSpan.FromSeconds(timeout), minimumLogLevel, loginLimit, loginWindow, version, environmentName, storage, dataProtection, certificatePath);
     }
 
     public X509Certificate2 LoadHttpsCertificate(string? certificatePassword)

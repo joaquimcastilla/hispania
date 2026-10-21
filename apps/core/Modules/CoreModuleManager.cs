@@ -12,9 +12,11 @@ internal sealed class CoreModuleManager(ModuleExtensionCatalog catalog, string d
     {
         ArgumentNullException.ThrowIfNull(source);
         var staging = Path.Combine(dataDirectory, "module-staging");
+        StoragePathGuard.RequireWithin(dataDirectory, staging, "Module staging escaped DATA_DIRECTORY.");
+        StoragePathGuard.RequireOutside(staging, AppContext.BaseDirectory, "Module staging overlaps the Core publish directory.");
         Directory.CreateDirectory(staging);
-        if ((File.GetAttributes(staging) & FileAttributes.ReparsePoint) != 0)
-            throw new InvalidDataException("Module staging directory cannot be a reparse point.");
+        StoragePathGuard.RequireWithin(dataDirectory, staging, "Module staging escaped DATA_DIRECTORY.");
+        StoragePathGuard.RequireOutside(staging, AppContext.BaseDirectory, "Module staging overlaps the Core publish directory.");
 
         var archivePath = Path.Combine(staging, Guid.NewGuid().ToString("N") + ".hispania");
         try
@@ -35,6 +37,7 @@ internal sealed class CoreModuleManager(ModuleExtensionCatalog catalog, string d
             }
 
             var candidate = await PackageArchiveInspector.InspectAsync(archivePath, cancellationToken).ConfigureAwait(false);
+            catalog.ValidateManagedModuleRuntime(candidate.Manifest);
             var targets = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 [candidate.Id] = $"[{candidate.Version}]"
@@ -52,6 +55,7 @@ internal sealed class CoreModuleManager(ModuleExtensionCatalog catalog, string d
         }
         finally
         {
+            StoragePathGuard.EnsureNoReparsePoints(archivePath);
             if (File.Exists(archivePath)) File.Delete(archivePath);
         }
     }

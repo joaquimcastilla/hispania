@@ -11,3 +11,6 @@ public sealed class ModuleContractNotProvidedException(string moduleId, Type con
 
 public sealed class ModuleStartupException(string moduleId, Exception innerException)
     : InvalidOperationException($"Module '{moduleId}' failed during startup.", innerException);
+
+public sealed class ModuleRuntimePolicyException(string runtime)
+    : InvalidOperationException($"Module runtime '{runtime}' is not allowed by the host policy; only 'dotnet-outofprocess' is permitted.");

@@ -1,0 +1,376 @@
+{
+  "capturedAtUtc": "2026-10-18T21:06:16.5263105+00:00",
+  "branch": "codex/hispania-v1-baseline-consolidation",
+  "head": "ef7365bb5e7d7551cb1093519743cc1885757b5b",
+  "worktreeClean": false,
+  "scope": "all non-ignored paths reported by git status, excluding this self-referential snapshot; file paths include size and SHA-256",
+  "selfExcluded": "source-worktree-state.json excluded from own list and digest to avoid recursion",
+  "changes": [
+    {
+      "status": " M",
+      "path": "apps/core/Configuration/CoreStorageOptions.cs",
+      "size": 2336,
+      "sha256": "29CBB67C71AF90647797A13B121722F1FF28E032F67BB24875DECBBB337DC336"
+    },
+    {
+      "status": " M",
+      "path": "apps/core/Hosting/CoreHost.cs",
+      "size": 12567,
+      "sha256": "6B8FC1A39C54FA049D0B53FFD08A55F60E66B4A9A34361F419B48C5D72FC14A6"
+    },
+    {
+      "status": " M",
+      "path": "apps/core/Http/CoreModuleEndpoints.cs",
+      "size": 9024,
+      "sha256": "061A791044E232E203EA515EB90573C9F8DFBACC214AB40EDB1A052DCDCFB181"
+    },
+    {
+      "status": " M",
+      "path": "apps/core/Modules/CoreModuleManager.cs",
+      "size": 3937,
+      "sha256": "94214B9D2A89D290DD946E4E0E8E4F14AB868F96A9DF9DBBE761459706FA4309"
+    },
+    {
+      "status": " M",
+      "path": "apps/core/Persistence/SqliteCorePersistence.cs",
+      "size": 27185,
+      "sha256": "818E0B4C6F73CC6A8AB449F174FB7EE96207FFFC0E2DC19CB05A7A5471D7E378"
+    },
+    {
+      "status": " M",
+      "path": "core/runtime/ExtensionPackageInstaller.cs",
+      "size": 13167,
+      "sha256": "430E499F2599EA264D6492196BE6476C1998108DCAB8CBAA2481A9EE6716D66B"
+    },
+    {
+      "status": " M",
+      "path": "core/runtime/ModuleExceptions.cs",
+      "size": 935,
+      "sha256": "B2A75217CA1212C076D92F9A91BDF92D4AE6D1894FA7F9D3E8C5F923E323498E"
+    },
+    {
+      "status": " M",
+      "path": "core/runtime/ModuleExtensionCatalog.cs",
+      "size": 57208,
+      "sha256": "D7C84E6E983AAE23BD5BBEB55C9BFCE1AAAFE774111CCD6B1574CCD8EB464E17"
+    },
+    {
+      "status": " M",
+      "path": "core/runtime/PackageArchiveInspector.cs",
+      "size": 10409,
+      "sha256": "CD7D418B7DE1EB5B13AD69BC0F4892437B45C542311D21AB59F15FB8AC2855B6"
+    },
+    {
+      "status": " M",
+      "path": "core/runtime/PackageRetentionOwnerV1.cs",
+      "size": 10672,
+      "sha256": "28E85892711F853117FE313BD276A596803BD0FEABD7758CE42C31AD28F56D3B"
+    },
+    {
+      "status": " M",
+      "path": "core/runtime/PackageSetLifecycle.cs",
+      "size": 44026,
+      "sha256": "34730D1A78F7B21F79F4969301FA6896ED15448852C3A583CC059CF53A2ACD7E"
+    },
+    {
+      "status": " M",
+      "path": "docs/architecture/HISPANIA-V1-CORE-DEPENDENCY-ALLOWLIST.md",
+      "size": 12168,
+      "sha256": "CD00352DDE081907B47D31FCA78D526810C3F0B422AA66775FDDCBBF66275CA8"
+    },
+    {
+      "status": " M",
+      "path": "docs/architecture/HISPANIA-V1-EVIDENCE-LEDGER.md",
+      "size": 72972,
+      "sha256": "168742E61D6654B8F8AC1710EE7BB1E917E9856420F08D8A938F7F90234B56F8"
+    },
+    {
+      "status": " M",
+      "path": "docs/architecture/HISPANIA-V1-PHASE1-SLICE7-MODULE-MANAGER-REPORT.md",
+      "size": 13797,
+      "sha256": "379A1C913085BCC243F4F433C22B774C8C804C8B4D80692A4A6C624E41E6B4B1"
+    },
+    {
+      "status": " M",
+      "path": "tests/core/CorePersistenceTests.cs",
+      "size": 30647,
+      "sha256": "1A2527443C325BFA9972072F632E6A40594A5061122ACA7D54D826332B3D61AC"
+    },
+    {
+      "status": " M",
+      "path": "tests/core/Slice7ModuleLifecycleTests.cs",
+      "size": 16071,
+      "sha256": "74BBA60D5B7DB2FE8D8334E12091722511336EFF22AD848AE7A7BB0CD6558B8B"
+    },
+    {
+      "status": " M",
+      "path": "tests/package-lifecycle-process-host/Program.cs",
+      "size": 5562,
+      "sha256": "B78A28935D6AFA8D25DED1CA32CAD27B7342332E25C0D966A11C74299969E26F"
+    },
+    {
+      "status": " M",
+      "path": "tests/unit/Hispania.Runtime.Tests.csproj",
+      "size": 3327,
+      "sha256": "C6D1A825CFD0885A51A1997C1177EACA244B5B09B405147E05F7F367C7D836C3"
+    },
+    {
+      "status": " M",
+      "path": "tests/unit/ModuleHostPlatformJobContributionTests.cs",
+      "size": 12844,
+      "sha256": "42D2936E1322B81010F2F7552BB5C819D253EC13F4FC56BFBC9446EF9977F43C"
+    },
+    {
+      "status": " M",
+      "path": "tests/unit/ModuleInfrastructureTests.cs",
+      "size": 48816,
+      "sha256": "6DFD33F5008BE642437E6B087CA49DA78E40AC0231221782975A372DAE7A7877"
+    },
+    {
+      "status": " M",
+      "path": "tests/unit/PackageLifecycleIntegrationTests.cs",
+      "size": 57207,
+      "sha256": "5A52F89FBBD30F42D6A5C93947B456F4548FDC9D2A081B4F2280ECC6F5E82F89"
+    },
+    {
+      "status": "??",
+      "path": "core/runtime/StoragePathGuard.cs",
+      "size": 4069,
+      "sha256": "FC536C9C32B9B0996E6DC6F89D5465E7FCF9B5D8871FF258DDB7A1E6828D53CF"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/HISPANIA-V1-PHASE1-SLICE8-ARTIFACT-ISOLATION-REPORT.md",
+      "size": 52700,
+      "sha256": "D1ECB659755FC37E17FBCD590BF9B5B7E257F5B9571A55A6593A38B0B4FEE30C"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice7/README.md",
+      "size": 1044,
+      "sha256": "6FE91641E2F4E252D2275AF92D9C678D6AD0A631E98B5E341C7D0E61BFA8718D"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice7/published-core-fixture-smoke-20261018.json",
+      "size": 2505,
+      "sha256": "FDE46346CD3B88402D7F0E725A12F4B00DA806F930F4B28C810F988BC6FC6F56"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/core-artifact-baseline-win-x64.json",
+      "size": 4188,
+      "sha256": "0473080A339C2E96AB7C66E1085ECFE468D8891039DEAF74DA90DC96013C68E5"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step2-adversarial-extraction-matrix.md",
+      "size": 6066,
+      "sha256": "90DFED4C7F8F58CCA8ED5DBD3F06E0A56300208BA3C5DE0988894BF5ACCF11E5"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step3-transactions-concurrency.md",
+      "size": 8098,
+      "sha256": "406C9D140EE13803E2F2E976F50FEBA3FA5C16D40E5CCF1D3312B7762DA42795"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step3/artifact-after.json",
+      "size": 296,
+      "sha256": "64A73CACB74F0B05BD679B72A90365FA5164EFF376B6AF9EDE65500FE79CD5FE"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step3/artifact-comparator-selftest.json",
+      "size": 611,
+      "sha256": "3E2A09CA974C982BAD3DF996514836227E0C52900C2CF56F6C1BFB487DEE9B2F"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step4-safe-deletion-matrix.md",
+      "size": 7235,
+      "sha256": "1F5AEEF21F9CBB5109D7F973622A03A784D45D10F7FF54F0C8A699A6802143F0"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step4/artifact-after.json",
+      "size": 296,
+      "sha256": "64A73CACB74F0B05BD679B72A90365FA5164EFF376B6AF9EDE65500FE79CD5FE"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step4/artifact-before.json",
+      "size": 296,
+      "sha256": "64A73CACB74F0B05BD679B72A90365FA5164EFF376B6AF9EDE65500FE79CD5FE"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step4/artifact-comparator-selftest.json",
+      "size": 611,
+      "sha256": "3E2A09CA974C982BAD3DF996514836227E0C52900C2CF56F6C1BFB487DEE9B2F"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step5/artifact-after.json",
+      "size": 296,
+      "sha256": "64A73CACB74F0B05BD679B72A90365FA5164EFF376B6AF9EDE65500FE79CD5FE"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step5/artifact-before.json",
+      "size": 296,
+      "sha256": "64A73CACB74F0B05BD679B72A90365FA5164EFF376B6AF9EDE65500FE79CD5FE"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step5/artifact-validator-after.txt",
+      "size": 164,
+      "sha256": "08DD9A585910E064CEFAC1EBACE64B80CDB1BF9A26B34EA330D486A4C841EC4F"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step5/artifact-validator-before.txt",
+      "size": 164,
+      "sha256": "08DD9A585910E064CEFAC1EBACE64B80CDB1BF9A26B34EA330D486A4C841EC4F"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step5/module-loading-execution-matrix.md",
+      "size": 13837,
+      "sha256": "6F2414C3DEE7A60D8D88C62E74FA0CAF76E1B42D11323D3ACF8DEEDC2B64618C"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step6/artifact-fitness-matrix.md",
+      "size": 9729,
+      "sha256": "AC0D1F04DB2BBAD0EEADBAE9BC0D84472553B2585D3DC52C525DCC5322F302BB"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step6/candidate-core-artifact-manifest.json",
+      "size": 8686,
+      "sha256": "A336746DA28F172A7E4B84F7E5577AA5F27BC90CB8FDF2D312B74BB5B4AEAB6C"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step6/candidate-inventory.json",
+      "size": 3038,
+      "sha256": "F47F2505A66C1A183F392FEE9F488B3CF8E451BD7F8976DCA5AA96220B556A96"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step6/candidate-validator-report.json",
+      "size": 164,
+      "sha256": "EEB54E0E2C469F12ADD69B054E3D429A7EBA0A4BFFF48D97C2DA50E094CF1FDA"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step6/evidence-file-hashes.json",
+      "size": 1185,
+      "sha256": "4E4A6ABCBC28348865C31B9CDCFC0809EF4C48D64C713288C65049923684929B"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step6/historical-baseline-after.json",
+      "size": 296,
+      "sha256": "64A73CACB74F0B05BD679B72A90365FA5164EFF376B6AF9EDE65500FE79CD5FE"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step6/historical-baseline-before.json",
+      "size": 296,
+      "sha256": "64A73CACB74F0B05BD679B72A90365FA5164EFF376B6AF9EDE65500FE79CD5FE"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step6/published-candidate-smoke-sanitized.json",
+      "size": 2734,
+      "sha256": "F43444469CBDD5558563C1C569430449BE45CAD7ACFAF5CD3BAEEFA1C000DE1D"
+    },
+    {
+      "status": "??",
+      "path": "docs/architecture/evidence/slice8/step6/same-environment-reproducibility.json",
+      "size": 339,
+      "sha256": "BF1C66F4215D86BF18019F2173A665DCE81C9DF33F36364727E7B072A17DB519"
+    },
+    {
+      "status": "??",
+      "path": "tests/private-module-fixtures/dependency-v1/Hispania.PrivateFixture.Dependency.csproj",
+      "size": 382,
+      "sha256": "B47C19BF9E2AD2F8FF3300742FCA28DDD57EFE7A1CCEAE3E97FCCD46FC4CCA43"
+    },
+    {
+      "status": "??",
+      "path": "tests/private-module-fixtures/dependency-v1/PrivateDependency.cs",
+      "size": 153,
+      "sha256": "2A9C1CFDB04F54EE436DD876858CF261FF9484284B5BDF0921AFA513CD76D1CF"
+    },
+    {
+      "status": "??",
+      "path": "tests/private-module-fixtures/dependency-v2/Hispania.PrivateFixture.Dependency.csproj",
+      "size": 382,
+      "sha256": "117BF9CDA5595B643A49606AB37005316F7685066B7A579E01F33AE0DA40AAB8"
+    },
+    {
+      "status": "??",
+      "path": "tests/private-module-fixtures/dependency-v2/PrivateDependency.cs",
+      "size": 238,
+      "sha256": "937860E3CC69799A1DCDA8D72D8A782EE9919B6BE8695BB38EDAFF1731022A17"
+    },
+    {
+      "status": "??",
+      "path": "tests/private-module-fixtures/module-v1/Hispania.PrivateFixture.ModuleV1.csproj",
+      "size": 602,
+      "sha256": "8261D58180981032955650B414B4F3BC71D8A1A351F9D8BC00B2C6A5D049DF75"
+    },
+    {
+      "status": "??",
+      "path": "tests/private-module-fixtures/module-v1/PrivateModule.cs",
+      "size": 967,
+      "sha256": "C0D5ACA9ED152864F466F66D4F048C64B2465B501F81A2B68BE7826D9F99AB77"
+    },
+    {
+      "status": "??",
+      "path": "tests/private-module-fixtures/module-v2/Hispania.PrivateFixture.ModuleV2.csproj",
+      "size": 602,
+      "sha256": "44F39E1800C3243F30C1255D2D4BA0B69A6152676575012D84F9B85FB1862745"
+    },
+    {
+      "status": "??",
+      "path": "tests/private-module-fixtures/module-v2/PrivateModule.cs",
+      "size": 975,
+      "sha256": "183DB7BE50A6E2D7EFF4009AB463FD788A1049A4E0DFA093229061664118B049"
+    },
+    {
+      "status": "??",
+      "path": "tests/unit/PackageArchiveAdversarialTests.cs",
+      "size": 10552,
+      "sha256": "4A0A51F2463552C467AB0BAC10968A430EDC0BDCCAEE8B6FACD0E86389FDCFEA"
+    },
+    {
+      "status": "??",
+      "path": "tests/unit/PrivateModuleDependencyIsolationTests.cs",
+      "size": 11969,
+      "sha256": "E5C8BA3AEE7369C8EBF25A05BD82EC3A56F9594D291DC6250DE5FD0387E08840"
+    },
+    {
+      "status": "??",
+      "path": "tools/test-slice7-published-fixture-lifecycle.ps1",
+      "size": 43335,
+      "sha256": "53038645BB408D76946D3F5F36BCDAE23E199179682E4AFFF84CDDFB17C1B636"
+    },
+    {
+      "status": "??",
+      "path": "tools/test-slice8-published-artifact-fitness.ps1",
+      "size": 44423,
+      "sha256": "61123CE48CBC6A8EB12DC4F75F060B6D09101E425D4B0D45ED4D5B9537525F23"
+    },
+    {
+      "status": "??",
+      "path": "tools/verify-slice8-artifact-baseline.ps1",
+      "size": 13598,
+      "sha256": "79F9F63E1C7C55D0C0FB6D2875573515A0D506EEE1FA398B5949C7ED526B03D1"
+    }
+  ]
+}
