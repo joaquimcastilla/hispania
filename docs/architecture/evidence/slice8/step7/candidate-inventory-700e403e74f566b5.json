@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "HISPANIA-SLICE8-STEP7-4-CANDIDATE-INVENTORY",
+  "capturedAtUtc": "2026-10-25T10:46:43.0006540Z",
+  "sourceCommit": "de790c970ba9773f667613d752a699e526fad296",
+  "sourceTree": "9e666734baf74d2904c1ad80d471597c65e20c34",
+  "targetFramework": "net10.0",
+  "runtimeIdentifier": "win-x64",
+  "publishMode": "framework-dependent",
+  "contentId": "700E403E74F566B5D47E9F079907EE978EED46D3C4315DFD0D5EA43DD9BF7D18",
+  "manifestSha256": "1CB4D94FBC60B9BE2CE55A38317116B7B38B3D5C6C4682BBD8A693EB50C1A21B",
+  "manifestListedFileCount": 18,
+  "totalFileCount": 19,
+  "files": [
+    {
+      "path": "core-artifact-manifest.json",
+      "size": 8692,
+      "sha256": "1CB4D94FBC60B9BE2CE55A38317116B7B38B3D5C6C4682BBD8A693EB50C1A21B"
+    },
+    {
+      "path": "e_sqlite3.dll",
+      "size": 1978880,
+      "sha256": "B7385D722C83FB52142A00477A726723745916D22A555711EE89834C1111FB2E"
+    },
+    {
+      "path": "Hispania.Core.deps.json",
+      "size": 6305,
+      "sha256": "C0411ADAA85FDB2E5F9A7414698C1332312D198B92FE343547BC750BE5A28D07"
+    },
+    {
+      "path": "Hispania.Core.dll",
+      "size": 229376,
+      "sha256": "87D032DA1D4C73863D46D095BC59EA682F8C5DA6AA564FD58AE8D4C485313292"
+    },
+    {
+      "path": "Hispania.Core.exe",
+      "size": 162304,
+      "sha256": "702786F48F2F0BBA7B2FFF65B6DB397877CB1237C212CBEA84D076F7EC411363"
+    },
+    {
+      "path": "Hispania.Core.runtimeconfig.json",
+      "size": 458,
+      "sha256": "B4AAD84277C120C025A443649C4E09CA20B08725ACC12EF60940786BFB8C024F"
+    },
+    {
+      "path": "Hispania.ModuleSystem.Contracts.dll",
+      "size": 103424,
+      "sha256": "E2D85A919D4B5F5A47F3BA18000C89E29BA92891BBECA2BB807C9C1E00214BAF"
+    },
+    {
+      "path": "Hispania.Platform.Contracts.dll",
+      "size": 188416,
+      "sha256": "FCA491ADDA46944C3409ABFA926898913BBA4087E07180FE35FB970751D8FA0F"
+    },
+    {
+      "path": "Hispania.Runtime.dll",
+      "size": 350720,
+      "sha256": "12E62C10E59481E34AE08E880C54FC208A7A63FE8A90DD267896C254B1949956"
+    },
+    {
+      "path": "Microsoft.Data.Sqlite.dll",
+      "size": 177464,
+      "sha256": "B98D957462BE432895B00DCCCA012D3C127E118D3D4262418014B92C7BBD66CF"
+    },
+    {
+      "path": "module-host/Hispania.ModuleHost.deps.json",
+      "size": 1377,
+      "sha256": "819BD7AAF94E558F0AABF82BF8D2218F815E196C43125AB3E88B94705A6FABBF"
+    },
+    {
+      "path": "module-host/Hispania.ModuleHost.dll",
+      "size": 31744,
+      "sha256": "13BBA50A256DEC48E47DAF9DF2B11267E6F7F06DCEF6B348F5CDF23AFFC3A28F"
+    },
+    {
+      "path": "module-host/Hispania.ModuleHost.runtimeconfig.json",
+      "size": 342,
+      "sha256": "C230A317A54DD960BCBEB5F347F52E18DC665A26F7EFDA2159FCED9A5AC7E097"
+    },
+    {
+      "path": "module-host/Hispania.ModuleSystem.Contracts.dll",
+      "size": 103424,
+      "sha256": "E2D85A919D4B5F5A47F3BA18000C89E29BA92891BBECA2BB807C9C1E00214BAF"
+    },
+    {
+      "path": "module-host/Hispania.Platform.Contracts.dll",
+      "size": 188416,
+      "sha256": "FCA491ADDA46944C3409ABFA926898913BBA4087E07180FE35FB970751D8FA0F"
+    },
+    {
+      "path": "NuGet.Versioning.dll",
+      "size": 62264,
+      "sha256": "FC2F75A7A5F3BE9B4C3DCFC21644B871BB5A41ADA8615C92D778713D2A310670"
+    },
+    {
+      "path": "SQLitePCLRaw.batteries_v2.dll",
+      "size": 5120,
+      "sha256": "815CE410C9EAB531DD219318E3BA16C5E38E83D361CFBBDBB4BBCA222C497B0B"
+    },
+    {
+      "path": "SQLitePCLRaw.core.dll",
+      "size": 51200,
+      "sha256": "AF340AC9EB9195795660D7FC1114F486B6AB63998F33176E2F24C8E0ACB9AA84"
+    },
+    {
+      "path": "SQLitePCLRaw.provider.e_sqlite3.dll",
+      "size": 36864,
+      "sha256": "DF996BCAE63C2CABCFE8D4B9C5110EB39A2A4706178B07D875665391C6EB3995"
+    }
+  ]
+}
