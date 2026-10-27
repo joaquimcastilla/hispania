@@ -8,6 +8,9 @@
     <InformationalVersion>1.0.0</InformationalVersion>
     <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
     <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <CoreModuleHostRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</CoreModuleHostRuntimeIdentifier>
+    <CoreModuleHostRuntimeIdentifier Condition="'$(CoreModuleHostRuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">win-x64</CoreModuleHostRuntimeIdentifier>
+    <CoreModuleHostRuntimeIdentifier Condition="'$(CoreModuleHostRuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Linux'))">linux-x64</CoreModuleHostRuntimeIdentifier>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
@@ -15,20 +18,20 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageReference Include="NuGet.Versioning" Version="7.9.0" />
     <ProjectReference Include="..\..\core\runtime\Hispania.Runtime.csproj" />
-    <ProjectReference Include="..\module-host\Hispania.ModuleHost.csproj" ReferenceOutputAssembly="false" Private="false" AdditionalProperties="RuntimeIdentifier=win-x64" />
+    <ProjectReference Include="..\module-host\Hispania.ModuleHost.csproj" ReferenceOutputAssembly="false" Private="false" AdditionalProperties="RuntimeIdentifier=$(CoreModuleHostRuntimeIdentifier)" />
     <ProjectReference Include="..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />
     <ProjectReference Include="..\..\contracts\platform\Hispania.Platform.Contracts.csproj" />
   </ItemGroup>
   <Target Name="CopyModuleHostForCoreBuild" AfterTargets="Build">
     <ItemGroup>
-      <ModuleHostFiles Include="..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleHost.dll;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleHost.deps.json;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleHost.runtimeconfig.json;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleSystem.Contracts.dll;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.Platform.Contracts.dll" />
+      <ModuleHostFiles Include="..\module-host\bin\$(Configuration)\$(TargetFramework)\$(CoreModuleHostRuntimeIdentifier)\Hispania.ModuleHost.dll;..\module-host\bin\$(Configuration)\$(TargetFramework)\$(CoreModuleHostRuntimeIdentifier)\Hispania.ModuleHost.deps.json;..\module-host\bin\$(Configuration)\$(TargetFramework)\$(CoreModuleHostRuntimeIdentifier)\Hispania.ModuleHost.runtimeconfig.json;..\module-host\bin\$(Configuration)\$(TargetFramework)\$(CoreModuleHostRuntimeIdentifier)\Hispania.ModuleSystem.Contracts.dll;..\module-host\bin\$(Configuration)\$(TargetFramework)\$(CoreModuleHostRuntimeIdentifier)\Hispania.Platform.Contracts.dll" />
     </ItemGroup>
     <MakeDir Directories="$(OutputPath)module-host" />
     <Copy SourceFiles="@(ModuleHostFiles)" DestinationFolder="$(OutputPath)module-host" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CopyModuleHostForCorePublish" AfterTargets="Publish">
     <ItemGroup>
-      <ModuleHostPublishFiles Include="..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleHost.dll;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleHost.deps.json;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleHost.runtimeconfig.json;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.ModuleSystem.Contracts.dll;..\module-host\bin\$(Configuration)\$(TargetFramework)\win-x64\Hispania.Platform.Contracts.dll" />
+      <ModuleHostPublishFiles Include="..\module-host\bin\$(Configuration)\$(TargetFramework)\$(CoreModuleHostRuntimeIdentifier)\Hispania.ModuleHost.dll;..\module-host\bin\$(Configuration)\$(TargetFramework)\$(CoreModuleHostRuntimeIdentifier)\Hispania.ModuleHost.deps.json;..\module-host\bin\$(Configuration)\$(TargetFramework)\$(CoreModuleHostRuntimeIdentifier)\Hispania.ModuleHost.runtimeconfig.json;..\module-host\bin\$(Configuration)\$(TargetFramework)\$(CoreModuleHostRuntimeIdentifier)\Hispania.ModuleSystem.Contracts.dll;..\module-host\bin\$(Configuration)\$(TargetFramework)\$(CoreModuleHostRuntimeIdentifier)\Hispania.Platform.Contracts.dll" />
     </ItemGroup>
     <MakeDir Directories="$(PublishDir)module-host" />
     <Copy SourceFiles="@(ModuleHostPublishFiles)" DestinationFolder="$(PublishDir)module-host" SkipUnchangedFiles="true" />

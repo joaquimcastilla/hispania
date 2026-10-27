@@ -182,16 +182,16 @@
       "id": "SQLitePCLRaw.lib.e_sqlite3:runtimes/linux-x64/native/libe_sqlite3.so",
       "version": "2.1.12",
       "phases": ["publish"],
-      "status": "conditional",
-      "rationale": "Expected native SQLite runtime asset for linux-x64; confirm exact published relative path and hash in Slice 4/9."
+      "status": "allowed",
+      "rationale": "Approved native SQLite runtime asset for the official linux-x64 Core target; the published manifest records the exact artifact path and hash per RID."
     },
     {
       "kind": "runtimeAsset",
       "id": "SQLitePCLRaw.lib.e_sqlite3:runtimes/linux-arm64/native/libe_sqlite3.so",
       "version": "2.1.12",
       "phases": ["publish"],
-      "status": "conditional",
-      "rationale": "Expected native SQLite runtime asset for linux-arm64; confirm exact published relative path and hash in Slice 4/9."
+      "status": "allowed",
+      "rationale": "Approved native SQLite runtime asset for the official linux-arm64 Core target; the published manifest records the exact artifact path and hash per RID."
     }
   ],
   "forbiddenDependencyPrefixes": [
@@ -208,14 +208,13 @@
     "module-host/Hispania.ModuleHost.dll", "module-host/Hispania.ModuleHost.deps.json", "module-host/Hispania.ModuleHost.runtimeconfig.json",
     "module-host/Hispania.ModuleSystem.Contracts.dll", "module-host/Hispania.Platform.Contracts.dll",
     "Microsoft.Data.Sqlite.dll", "SQLitePCLRaw.batteries_v2.dll", "SQLitePCLRaw.core.dll",
-    "SQLitePCLRaw.provider.e_sqlite3.dll", "e_sqlite3.dll"
+    "SQLitePCLRaw.provider.e_sqlite3.dll", "e_sqlite3.dll", "libe_sqlite3.so", "runtimes/linux-x64/native/libe_sqlite3.so", "runtimes/linux-arm64/native/libe_sqlite3.so"
   ],
   "conditionalFilePatterns": [
     "Hispania.Identity.Application.dll", "Hispania.Authorization.Application.dll",
     "Hispania.Core.Persistence.Contracts.dll", "Hispania.Core.Persistence.Sqlite.dll",
     "NuGet.Common.dll", "Microsoft.Data.Sqlite.Core.dll",
-    "SQLitePCLRaw.bundle_e_sqlite3.dll",
-    "runtimes/linux-x64/native/libe_sqlite3.so", "runtimes/linux-arm64/native/libe_sqlite3.so"
+    "SQLitePCLRaw.bundle_e_sqlite3.dll"
   ],
   "excludedSha256": [
     "FCB341C4F3504B8FA85C75E32F386A3251B5CC31A55385B0B6B45FB4A9AF540E",

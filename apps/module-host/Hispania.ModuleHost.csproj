@@ -3,6 +3,7 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>Hispania.ModuleHost</AssemblyName>
     <RootNamespace>Hispania.ModuleHost</RootNamespace>
+    <RuntimeIdentifiers>win-x64;linux-x64;linux-arm64</RuntimeIdentifiers>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\contracts\module-system\Hispania.ModuleSystem.Contracts.csproj" />

@@ -373,6 +373,7 @@ public static class ArtifactValidator
         {
             if (!manifestPaths.Contains(required)) issues.Add($"Required file is missing: {required}.");
         }
+        ValidateRuntimeSpecificFiles(manifest.RuntimeIdentifier, manifestPaths, issues);
         VerifyDirectoryTree(rootPath, manifestPaths, policy, issues);
         ValidateDependencies(manifest.Dependencies, policy, issues);
         try
@@ -397,6 +398,24 @@ public static class ArtifactValidator
         if (!string.Equals(expectedContentId, manifest.ContentId, StringComparison.OrdinalIgnoreCase)) issues.Add("Content identity does not match canonical manifest content.");
 
         return new(issues.Count == 0, issues, manifest.ContentId, policy.PolicyId);
+    }
+
+    private static void ValidateRuntimeSpecificFiles(string runtimeIdentifier, HashSet<string> manifestPaths, List<string> issues)
+    {
+        var isWindows = string.Equals(runtimeIdentifier, "win-x64", StringComparison.Ordinal);
+        var isLinux = runtimeIdentifier is "linux-x64" or "linux-arm64";
+        if (isWindows)
+        {
+            if (manifestPaths.Contains("Hispania.Core")) issues.Add("Linux Core apphost is not allowed in a win-x64 artifact.");
+            if (manifestPaths.Any(path => string.Equals(Path.GetFileName(path), "libe_sqlite3.so", StringComparison.Ordinal)))
+                issues.Add("Linux SQLite native asset is not allowed in a win-x64 artifact.");
+        }
+        else if (isLinux)
+        {
+            if (manifestPaths.Contains("Hispania.Core.exe")) issues.Add("Windows Core apphost is not allowed in a Linux artifact.");
+            if (manifestPaths.Any(path => string.Equals(Path.GetFileName(path), "e_sqlite3.dll", StringComparison.OrdinalIgnoreCase)))
+                issues.Add("Windows SQLite native asset is not allowed in a Linux artifact.");
+        }
     }
 
     private static void ValidateDependencies(IReadOnlyList<ResolvedDependency> dependencies, ArtifactPolicy policy, List<string> issues)

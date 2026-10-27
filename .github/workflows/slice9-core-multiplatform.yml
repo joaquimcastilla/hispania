@@ -1,0 +1,274 @@
+name: HISPANIA Slice 9 Core multi-platform candidate
+
+on:
+  push:
+    branches:
+      - feature/slice9-core-native-smoke
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hispania-slice9-core-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name == 'push' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/feature/slice9-core-native-smoke'
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+      - hispania-windows
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    outputs:
+      linux_x64_artifact: ${{ steps.identity.outputs.linux_x64_artifact }}
+      linux_x64_content_id: ${{ steps.identity.outputs.linux_x64_content_id }}
+      linux_x64_manifest_sha256: ${{ steps.identity.outputs.linux_x64_manifest_sha256 }}
+      linux_x64_integrity_sha256: ${{ steps.identity.outputs.linux_x64_integrity_sha256 }}
+      linux_arm64_artifact: ${{ steps.identity.outputs.linux_arm64_artifact }}
+      linux_arm64_content_id: ${{ steps.identity.outputs.linux_arm64_content_id }}
+      linux_arm64_manifest_sha256: ${{ steps.identity.outputs.linux_arm64_manifest_sha256 }}
+      linux_arm64_integrity_sha256: ${{ steps.identity.outputs.linux_arm64_integrity_sha256 }}
+      fixture_artifact: ${{ steps.identity.outputs.fixture_artifact }}
+      fixture_integrity_sha256: ${{ steps.identity.outputs.fixture_integrity_sha256 }}
+    steps:
+      - name: Checkout exact authorized branch commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install .NET SDK 10.0.401 in runner temp
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/hispania-slice9-dotnet
+
+      - name: Verify source, runner and non-elevated execution
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REPOSITORY -cne 'joaquimcastilla/hispania' -or $env:GITHUB_REF -cne 'refs/heads/feature/slice9-core-native-smoke') { throw 'Unexpected repository or ref.' }
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA) { throw 'Checkout does not match the pushed source SHA.' }
+          if (git status --porcelain --untracked-files=normal) { throw 'Checkout must be clean before building.' }
+          if (-not [Environment]::Is64BitOperatingSystem -or $env:RUNNER_OS -cne 'Windows') { throw 'Publisher must run on Windows x64.' }
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Elevated runners are not permitted.' }
+          if ((dotnet --version).Trim() -ne '10.0.401') { throw 'Unexpected .NET SDK version.' }
+
+      - name: Publish and validate linux-x64, linux-arm64, and signed OOP fixture
+        id: identity
+        shell: pwsh
+        run: ./tools/ci/slice9-publish-core-candidates.ps1
+
+      - name: Upload linux-x64 candidate bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.identity.outputs.linux_x64_artifact }}
+          path: ${{ runner.temp }}/hispania-slice9-candidates-${{ github.run_id }}-${{ github.run_attempt }}/linux-x64/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+      - name: Upload linux-arm64 candidate bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.identity.outputs.linux_arm64_artifact }}
+          path: ${{ runner.temp }}/hispania-slice9-candidates-${{ github.run_id }}-${{ github.run_attempt }}/linux-arm64/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+      - name: Upload synthetic signed fixture bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.identity.outputs.fixture_artifact }}
+          path: ${{ runner.temp }}/hispania-slice9-candidates-${{ github.run_id }}-${{ github.run_attempt }}/fixture/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+      - name: Remove publisher temporary outputs
+        if: always()
+        shell: pwsh
+        run: |
+          $expected = Join-Path $env:RUNNER_TEMP ("hispania-slice9-candidates-{0}-{1}" -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT)
+          $tempRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+          $full = [IO.Path]::GetFullPath($expected)
+          if (-not $full.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $full) -notmatch '^hispania-slice9-candidates-[0-9]+-[0-9]+$') { throw 'Refusing cleanup outside this run-owned publisher directory.' }
+          if (Test-Path -LiteralPath $full) {
+            $reparse = @(Get-ChildItem -LiteralPath $full -Force -Recurse | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint })
+            if ($reparse.Count -gt 0) { throw 'Refusing recursive cleanup of a tree containing reparse points.' }
+            Remove-Item -LiteralPath $full -Recurse -Force
+            if (Test-Path -LiteralPath $full) { throw 'Publisher temporary directory remains after cleanup.' }
+          }
+
+  smoke-linux-x64:
+    needs: publish
+    if: github.event_name == 'push' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/feature/slice9-core-native-smoke'
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - hispania-linux
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Verify runner identity and .NET runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = joaquimcastilla/hispania
+          test "$GITHUB_REF" = refs/heads/feature/slice9-core-native-smoke
+          test "$(uname -m)" = x86_64
+          test "$(id -u)" -ne 0
+          command -v dotnet >/dev/null
+          command -v python3 >/dev/null
+          command -v openssl >/dev/null
+          dotnet --list-runtimes | grep -q '^Microsoft.AspNetCore.App 10\.'
+
+      - name: Checkout exact source for smoke harness only
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download linux-x64 package from publish job
+        uses: actions/download-artifact@v6
+        with:
+          name: ${{ needs.publish.outputs.linux_x64_artifact }}
+          path: ${{ runner.temp }}/hispania-slice9-download-${{ github.run_id }}-${{ github.run_attempt }}/core
+
+      - name: Download signed fixture from publish job
+        uses: actions/download-artifact@v6
+        with:
+          name: ${{ needs.publish.outputs.fixture_artifact }}
+          path: ${{ runner.temp }}/hispania-slice9-download-${{ github.run_id }}-${{ github.run_attempt }}/fixture
+
+      - name: Verify package and run native published Core smoke
+        id: smoke
+        shell: bash
+        env:
+          HISPANIA_EXPECTED_RID: linux-x64
+          HISPANIA_EXPECTED_ARCH: x86_64
+          HISPANIA_EXPECTED_SOURCE_SHA: ${{ github.sha }}
+          HISPANIA_EXPECTED_CONTENT_ID: ${{ needs.publish.outputs.linux_x64_content_id }}
+          HISPANIA_EXPECTED_MANIFEST_SHA256: ${{ needs.publish.outputs.linux_x64_manifest_sha256 }}
+          HISPANIA_EXPECTED_INTEGRITY_SHA256: ${{ needs.publish.outputs.linux_x64_integrity_sha256 }}
+          HISPANIA_EXPECTED_FIXTURE_INTEGRITY_SHA256: ${{ needs.publish.outputs.fixture_integrity_sha256 }}
+          HISPANIA_EVIDENCE_DIR: ${{ runner.temp }}/hispania-slice9-evidence-${{ github.run_id }}-${{ github.run_attempt }}-linux-x64
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/slice9-core-published-smoke.py \
+            --bundle "$RUNNER_TEMP/hispania-slice9-download-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/core" \
+            --fixture "$RUNNER_TEMP/hispania-slice9-download-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/fixture" \
+            --rid linux-x64 --architecture x86_64
+
+      - name: Upload sanitized Linux x64 evidence
+        if: always() && steps.smoke.outcome != 'skipped'
+        uses: actions/upload-artifact@v6
+        with:
+          name: hispania-slice9-evidence-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hispania-slice9-evidence-${{ github.run_id }}-${{ github.run_attempt }}-linux-x64/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Remove Linux x64 run-owned inputs and evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/hispania-slice9-download-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          case "$root" in "$RUNNER_TEMP"/hispania-slice9-download-[0-9]*-[0-9]*) rm -rf -- "$root" ;; *) echo 'Refusing unexpected cleanup path.' >&2; exit 2 ;; esac
+          evidence="$RUNNER_TEMP/hispania-slice9-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-linux-x64"
+          case "$evidence" in "$RUNNER_TEMP"/hispania-slice9-evidence-[0-9]*-[0-9]*-linux-x64) rm -rf -- "$evidence" ;; *) echo 'Refusing unexpected evidence cleanup path.' >&2; exit 2 ;; esac
+
+  smoke-linux-arm64-pi4:
+    needs: publish
+    if: github.event_name == 'push' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/feature/slice9-core-native-smoke'
+    runs-on:
+      - self-hosted
+      - Linux
+      - ARM64
+      - hispania-arm64-integration
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Verify Pi 4B runner identity and .NET runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = joaquimcastilla/hispania
+          test "$GITHUB_REF" = refs/heads/feature/slice9-core-native-smoke
+          test "$(uname -m)" = aarch64
+          test "$(id -u)" -ne 0
+          command -v dotnet >/dev/null
+          command -v python3 >/dev/null
+          command -v openssl >/dev/null
+          dotnet --list-runtimes | grep -q '^Microsoft.AspNetCore.App 10\.'
+          test "$(id -un)" = hispania-integration-runner
+
+      - name: Checkout exact source for smoke harness only
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download linux-arm64 package from publish job
+        uses: actions/download-artifact@v6
+        with:
+          name: ${{ needs.publish.outputs.linux_arm64_artifact }}
+          path: ${{ runner.temp }}/hispania-slice9-download-${{ github.run_id }}-${{ github.run_attempt }}/core
+
+      - name: Download signed fixture from publish job
+        uses: actions/download-artifact@v6
+        with:
+          name: ${{ needs.publish.outputs.fixture_artifact }}
+          path: ${{ runner.temp }}/hispania-slice9-download-${{ github.run_id }}-${{ github.run_attempt }}/fixture
+
+      - name: Verify package and run native published Core smoke
+        id: smoke
+        shell: bash
+        env:
+          HISPANIA_EXPECTED_RID: linux-arm64
+          HISPANIA_EXPECTED_ARCH: aarch64
+          HISPANIA_EXPECTED_SOURCE_SHA: ${{ github.sha }}
+          HISPANIA_EXPECTED_CONTENT_ID: ${{ needs.publish.outputs.linux_arm64_content_id }}
+          HISPANIA_EXPECTED_MANIFEST_SHA256: ${{ needs.publish.outputs.linux_arm64_manifest_sha256 }}
+          HISPANIA_EXPECTED_INTEGRITY_SHA256: ${{ needs.publish.outputs.linux_arm64_integrity_sha256 }}
+          HISPANIA_EXPECTED_FIXTURE_INTEGRITY_SHA256: ${{ needs.publish.outputs.fixture_integrity_sha256 }}
+          HISPANIA_EVIDENCE_DIR: ${{ runner.temp }}/hispania-slice9-evidence-${{ github.run_id }}-${{ github.run_attempt }}-linux-arm64
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/slice9-core-published-smoke.py \
+            --bundle "$RUNNER_TEMP/hispania-slice9-download-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/core" \
+            --fixture "$RUNNER_TEMP/hispania-slice9-download-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/fixture" \
+            --rid linux-arm64 --architecture aarch64
+
+      - name: Upload sanitized ARM64 evidence
+        if: always() && steps.smoke.outcome != 'skipped'
+        uses: actions/upload-artifact@v6
+        with:
+          name: hispania-slice9-evidence-linux-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hispania-slice9-evidence-${{ github.run_id }}-${{ github.run_attempt }}-linux-arm64/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Remove ARM64 run-owned inputs and evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/hispania-slice9-download-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          case "$root" in "$RUNNER_TEMP"/hispania-slice9-download-[0-9]*-[0-9]*) rm -rf -- "$root" ;; *) echo 'Refusing unexpected cleanup path.' >&2; exit 2 ;; esac
+          evidence="$RUNNER_TEMP/hispania-slice9-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-linux-arm64"
+          case "$evidence" in "$RUNNER_TEMP"/hispania-slice9-evidence-[0-9]*-[0-9]*-linux-arm64) rm -rf -- "$evidence" ;; *) echo 'Refusing unexpected evidence cleanup path.' >&2; exit 2 ;; esac

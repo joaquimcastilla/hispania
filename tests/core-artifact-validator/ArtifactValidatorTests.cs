@@ -19,9 +19,11 @@ public sealed class ArtifactValidatorTests
         Assert.Equal(3, policy.SupportedRuntimeIdentifiers.Length);
         Assert.Contains(policy.AllowedDependencies, dependency => dependency.Id == "Microsoft.Data.Sqlite" && dependency.Version == "10.0.12" && dependency.Status == "allowed");
         Assert.Contains(policy.AllowedDependencies, dependency => dependency.Id == "SQLitePCLRaw.lib.e_sqlite3:runtimes/win-x64/native/e_sqlite3.dll" && dependency.Status == "allowed");
-        Assert.Contains(policy.AllowedDependencies, dependency => dependency.Id == "SQLitePCLRaw.lib.e_sqlite3:runtimes/linux-arm64/native/libe_sqlite3.so" && dependency.Status == "conditional");
+        Assert.Contains(policy.AllowedDependencies, dependency => dependency.Id == "SQLitePCLRaw.lib.e_sqlite3:runtimes/linux-x64/native/libe_sqlite3.so" && dependency.Status == "allowed");
+        Assert.Contains(policy.AllowedDependencies, dependency => dependency.Id == "SQLitePCLRaw.lib.e_sqlite3:runtimes/linux-arm64/native/libe_sqlite3.so" && dependency.Status == "allowed");
         Assert.Contains(policy.ForbiddenDependencyPrefixes, prefix => prefix == "Microsoft.EntityFrameworkCore");
         Assert.Contains(policy.AllowedFilePatterns, pattern => pattern == "e_sqlite3.dll");
+        Assert.Contains(policy.AllowedFilePatterns, pattern => pattern == "libe_sqlite3.so");
         Assert.Contains(policy.AllowedDependencies, dependency => dependency.Id == "NuGet.Versioning" && dependency.Status == "allowed");
         Assert.Contains(policy.AllowedFilePatterns, pattern => pattern == "Hispania.Runtime.dll");
         Assert.Contains(policy.AllowedFilePatterns, pattern => pattern == "module-host/Hispania.ModuleHost.dll");
@@ -211,6 +213,42 @@ public sealed class ArtifactValidatorTests
         File.Delete(Path.Combine(fixture.Root, "e_sqlite3.dll"));
         var missing = fixture.Validate();
         Assert.Contains(missing.Issues, issue => issue.Contains("Manifest file is missing: e_sqlite3.dll", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LinuxX64NativeSqliteAssetIsAcceptedWhenItsDependencyGraphSelectsLinuxX64()
+    {
+        using var fixture = new Fixture("linux-x64");
+        fixture.AddSqliteNativeAsset();
+
+        var report = fixture.Validate();
+        Assert.True(report.Passed, string.Join(Environment.NewLine, report.Issues));
+        Assert.Contains(fixture.Manifest.Files, file => file.Path == "libe_sqlite3.so" && file.FileType == "nativeRuntime");
+    }
+
+    [Fact]
+    public void LinuxArm64NativeSqliteAssetIsAcceptedWhenItsDependencyGraphSelectsLinuxArm64()
+    {
+        using var fixture = new Fixture("linux-arm64");
+        fixture.AddSqliteNativeAsset();
+
+        var report = fixture.Validate();
+        Assert.True(report.Passed, string.Join(Environment.NewLine, report.Issues));
+        Assert.Contains(fixture.Manifest.Files, file => file.Path == "libe_sqlite3.so" && file.FileType == "nativeRuntime");
+    }
+
+    [Theory]
+    [InlineData("linux-x64")]
+    [InlineData("linux-arm64")]
+    public void ArtifactValidatorRejectsHostAndSqliteFilesFromTheOppositeRid(string runtimeIdentifier)
+    {
+        using var fixture = new Fixture(runtimeIdentifier);
+        fixture.AddManagedFile("Hispania.Core.exe");
+        fixture.AddNativeDll("e_sqlite3.dll");
+
+        var issues = fixture.Validate().Issues;
+        Assert.Contains(issues, issue => issue == "Windows Core apphost is not allowed in a Linux artifact.");
+        Assert.Contains(issues, issue => issue == "Windows SQLite native asset is not allowed in a Linux artifact.");
     }
 
     [Fact]
@@ -457,9 +495,11 @@ public sealed class ArtifactValidatorTests
         public string PolicyPath { get; }
         public string ManifestPath { get; }
         public ArtifactManifest Manifest { get; private set; }
+        private string RuntimeIdentifier { get; }
 
-        public Fixture(bool createInReverseOrder = false)
+        public Fixture(string runtimeIdentifier = "win-x64", bool createInReverseOrder = false)
         {
+            RuntimeIdentifier = runtimeIdentifier;
             Parent = Path.Combine(Path.GetTempPath(), "hispania-core-manifest-tests-" + Guid.NewGuid().ToString("N"));
             Root = Path.Combine(Parent, "artifact");
             Directory.CreateDirectory(Root);
@@ -470,12 +510,12 @@ public sealed class ArtifactValidatorTests
             var payloads = new Dictionary<string, byte[]>(StringComparer.Ordinal)
             {
                 ["Hispania.Core.dll"] = File.ReadAllBytes(typeof(ArtifactValidatorTests).Assembly.Location),
-                ["Hispania.Core.deps.json"] = DepsJson(),
+                ["Hispania.Core.deps.json"] = DepsJson(RuntimeIdentifier),
                 ["Hispania.Core.runtimeconfig.json"] = """{"runtimeOptions":{"tfm":"net10.0","frameworks":[{"name":"Microsoft.NETCore.App","version":"10.0.12"},{"name":"Microsoft.AspNetCore.App","version":"10.0.12"}]}}"""u8.ToArray()
             };
             var ordered = createInReverseOrder ? payloads.Reverse() : payloads;
             foreach (var payload in ordered) File.WriteAllBytes(Path.Combine(Root, payload.Key), payload.Value);
-            var descriptor = new ArtifactDescriptor(1, "hispania.core", "0123456789abcdef0123456789abcdef01234567", "net10.0", "win-x64", "framework-dependent",
+            var descriptor = new ArtifactDescriptor(1, "hispania.core", "0123456789abcdef0123456789abcdef01234567", "net10.0", RuntimeIdentifier, "framework-dependent",
             [
                 new("project", "contracts/module-system/Hispania.ModuleSystem.Contracts.csproj", "source", "build", true),
                 new("project", "contracts/platform/Hispania.Platform.Contracts.csproj", "source", "build", true)
@@ -515,14 +555,26 @@ public sealed class ArtifactValidatorTests
         {
             var depsPath = Path.Combine(Root, "Hispania.Core.deps.json");
             var deps = JsonNode.Parse(File.ReadAllText(depsPath))!.AsObject();
-            var targetName = ".NETCoreApp,Version=v10.0/win-x64";
+            var targetName = ".NETCoreApp,Version=v10.0/" + RuntimeIdentifier;
             var target = deps["targets"]![targetName]!.AsObject();
             target["hispania.core/1.0.0"]!["dependencies"]!["Microsoft.Data.Sqlite"] = "10.0.12";
             target["Microsoft.Data.Sqlite/10.0.12"] = JsonNode.Parse("""{"type":"package","dependencies":{"Microsoft.Data.Sqlite.Core":"10.0.12","SQLitePCLRaw.bundle_e_sqlite3":"2.1.12","SQLitePCLRaw.core":"2.1.12"}}""");
             target["Microsoft.Data.Sqlite.Core/10.0.12"] = JsonNode.Parse("""{"type":"package","dependencies":{"SQLitePCLRaw.core":"2.1.12"}}""");
             target["SQLitePCLRaw.bundle_e_sqlite3/2.1.12"] = JsonNode.Parse("""{"type":"package","dependencies":{"SQLitePCLRaw.lib.e_sqlite3":"2.1.12","SQLitePCLRaw.provider.e_sqlite3":"2.1.12"}}""");
             target["SQLitePCLRaw.core/2.1.12"] = JsonNode.Parse("""{"type":"package"}""");
-            target["SQLitePCLRaw.lib.e_sqlite3/2.1.12"] = JsonNode.Parse("""{"type":"package","runtimeTargets":{"runtimes/win-x64/native/e_sqlite3.dll":{"rid":"win-x64","assetType":"native"}}}""");
+            var nativeAssetPath = RuntimeIdentifier switch
+            {
+                "win-x64" => "runtimes/win-x64/native/e_sqlite3.dll",
+                "linux-x64" => "runtimes/linux-x64/native/libe_sqlite3.so",
+                "linux-arm64" => "runtimes/linux-arm64/native/libe_sqlite3.so",
+                _ => throw new InvalidOperationException($"Unsupported fixture RID: {RuntimeIdentifier}.")
+            };
+            var nativeAssetFile = RuntimeIdentifier == "win-x64" ? "e_sqlite3.dll" : "libe_sqlite3.so";
+            target["SQLitePCLRaw.lib.e_sqlite3/2.1.12"] = JsonNode.Parse(JsonSerializer.Serialize(new
+            {
+                type = "package",
+                runtimeTargets = new Dictionary<string, object> { [nativeAssetPath] = new { rid = RuntimeIdentifier, assetType = "native" } }
+            }));
             target["SQLitePCLRaw.provider.e_sqlite3/2.1.12"] = JsonNode.Parse("""{"type":"package","dependencies":{"SQLitePCLRaw.core":"2.1.12"}}""");
 
             var libraries = deps["libraries"]!.AsObject();
@@ -535,7 +587,8 @@ public sealed class ArtifactValidatorTests
             File.WriteAllText(depsPath, deps.ToJsonString());
             foreach (var name in new[] { "Microsoft.Data.Sqlite.dll", "SQLitePCLRaw.batteries_v2.dll", "SQLitePCLRaw.core.dll", "SQLitePCLRaw.provider.e_sqlite3.dll" })
                 File.Copy(typeof(ArtifactValidatorTests).Assembly.Location, Path.Combine(Root, name));
-            AddNativeDll("e_sqlite3.dll");
+            if (RuntimeIdentifier == "win-x64") AddNativeDll(nativeAssetFile);
+            else File.WriteAllText(Path.Combine(Root, nativeAssetFile), "synthetic Linux native payload marker");
             Manifest = Build(Manifest.GeneratedAtUtc);
             Save(Manifest);
         }
@@ -569,9 +622,13 @@ public sealed class ArtifactValidatorTests
             Save(Manifest);
         }
 
-        private static byte[] DepsJson() => """
-        {"runtimeTarget":{"name":".NETCoreApp,Version=v10.0/win-x64"},"targets":{".NETCoreApp,Version=v10.0/win-x64":{"hispania.core/1.0.0":{"type":"project","dependencies":{"Hispania.ModuleSystem.Contracts":"1.0.0","Hispania.Platform.Contracts":"1.0.0"}},"Hispania.ModuleSystem.Contracts/1.0.0":{"type":"project"},"Hispania.Platform.Contracts/1.0.0":{"type":"project"},"NuGet.Versioning/7.9.0":{"type":"package"}}},"libraries":{"hispania.core/1.0.0":{"type":"project"},"Hispania.ModuleSystem.Contracts/1.0.0":{"type":"project"},"Hispania.Platform.Contracts/1.0.0":{"type":"project"},"NuGet.Versioning/7.9.0":{"type":"package"}}}
-        """u8.ToArray();
+        private static byte[] DepsJson(string runtimeIdentifier)
+        {
+            var json = """
+            {"runtimeTarget":{"name":".NETCoreApp,Version=v10.0/win-x64"},"targets":{".NETCoreApp,Version=v10.0/win-x64":{"hispania.core/1.0.0":{"type":"project","dependencies":{"Hispania.ModuleSystem.Contracts":"1.0.0","Hispania.Platform.Contracts":"1.0.0"}},"Hispania.ModuleSystem.Contracts/1.0.0":{"type":"project"},"Hispania.Platform.Contracts/1.0.0":{"type":"project"},"NuGet.Versioning/7.9.0":{"type":"package"}}},"libraries":{"hispania.core/1.0.0":{"type":"project"},"Hispania.ModuleSystem.Contracts/1.0.0":{"type":"project"},"Hispania.Platform.Contracts/1.0.0":{"type":"project"},"NuGet.Versioning/7.9.0":{"type":"package"}}}
+            """.Replace("win-x64", runtimeIdentifier, StringComparison.Ordinal);
+            return System.Text.Encoding.UTF8.GetBytes(json);
+        }
         private void Save(ArtifactManifest manifest) => File.WriteAllText(ManifestPath, JsonSerializer.Serialize(manifest, ManifestJson.Options));
         public void Dispose()
         {
@@ -579,7 +636,7 @@ public sealed class ArtifactValidatorTests
             if (Directory.Exists(Parent)) Directory.Delete(Parent, recursive: true);
         }
 
-        private static ArtifactPolicy CreatePolicy() => new(1, "test-policy-v1", ["net10.0"], ["win-x64"], ["framework-dependent"],
+        private static ArtifactPolicy CreatePolicy() => new(1, "test-policy-v1", ["net10.0"], ["win-x64", "linux-x64", "linux-arm64"], ["framework-dependent"],
         ["Hispania.Core.dll", "Hispania.Core.deps.json", "Hispania.Core.runtimeconfig.json"],
         [
             new("project", "contracts/module-system/Hispania.ModuleSystem.Contracts.csproj", "source", ["build", "runtime", "publish"], "allowed", "Synthetic fixture contract.", "Hispania.ModuleSystem.Contracts"),
@@ -593,10 +650,12 @@ public sealed class ArtifactValidatorTests
             new("package", "SQLitePCLRaw.core", "2.1.12", ["build", "runtime", "publish"], "allowed", "Pinned SQLite provider fixture."),
             new("package", "SQLitePCLRaw.lib.e_sqlite3", "2.1.12", ["build", "runtime", "publish"], "allowed", "Pinned SQLite provider fixture."),
             new("package", "SQLitePCLRaw.provider.e_sqlite3", "2.1.12", ["build", "runtime", "publish"], "allowed", "Pinned SQLite provider fixture."),
-            new("runtimeAsset", "SQLitePCLRaw.lib.e_sqlite3:runtimes/win-x64/native/e_sqlite3.dll", "2.1.12", ["publish"], "allowed", "Selected RID-native fixture.")
+            new("runtimeAsset", "SQLitePCLRaw.lib.e_sqlite3:runtimes/win-x64/native/e_sqlite3.dll", "2.1.12", ["publish"], "allowed", "Selected RID-native fixture."),
+            new("runtimeAsset", "SQLitePCLRaw.lib.e_sqlite3:runtimes/linux-x64/native/libe_sqlite3.so", "2.1.12", ["publish"], "allowed", "Selected RID-native fixture."),
+            new("runtimeAsset", "SQLitePCLRaw.lib.e_sqlite3:runtimes/linux-arm64/native/libe_sqlite3.so", "2.1.12", ["publish"], "allowed", "Selected RID-native fixture.")
         ], ["Npgsql", "Hispania.Media"],
-        ["Hispania.Core.dll", "Hispania.Core.deps.json", "Hispania.Core.runtimeconfig.json", "Microsoft.Data.Sqlite.dll", "SQLitePCLRaw.batteries_v2.dll", "SQLitePCLRaw.core.dll", "SQLitePCLRaw.provider.e_sqlite3.dll", "e_sqlite3.dll"],
-        ["Microsoft.Data.Sqlite.Core.dll", "SQLitePCLRaw.bundle_e_sqlite3.dll", "runtimes/linux-x64/native/libe_sqlite3.so", "runtimes/linux-arm64/native/libe_sqlite3.so"],
+        ["Hispania.Core.dll", "Hispania.Core.deps.json", "Hispania.Core.runtimeconfig.json", "Microsoft.Data.Sqlite.dll", "SQLitePCLRaw.batteries_v2.dll", "SQLitePCLRaw.core.dll", "SQLitePCLRaw.provider.e_sqlite3.dll", "e_sqlite3.dll", "libe_sqlite3.so"],
+        ["Microsoft.Data.Sqlite.Core.dll", "SQLitePCLRaw.bundle_e_sqlite3.dll"],
         ["FCB341C4F3504B8FA85C75E32F386A3251B5CC31A55385B0B6B45FB4A9AF540E"], ["**/*.mp4", "**/*.dll.user"]);
     }
 }
