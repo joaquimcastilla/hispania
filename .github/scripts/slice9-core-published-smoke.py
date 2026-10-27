@@ -454,14 +454,15 @@ def main() -> int:
             if modulehost_path is not None and modulehost_processes(modulehost_path):
                 cleanup_ok = False
             if raw_log and raw_log.exists():
-                allowed = re.compile(r"Now listening on:|Core host started\.|Core host stopping\.|Core SQLite passive checkpoint completed\.|Core host stopped\.")
+                allowed = re.compile(r"Now listening on:|Core host started\.|Core host stopping\.|Core SQLite passive checkpoint completed\.|Core host stopped\.|Module package install rejected\.")
                 safe_lines = []
                 for line in raw_log.read_text(encoding="utf-8", errors="replace").splitlines():
                     if allowed.search(line):
                         for secret in secrets_to_redact:
                             if secret:
                                 line = line.replace(secret, "[REDACTED]")
-                        safe_lines.append(line[:500])
+                        limit = 1500 if "Module package install rejected." in line else 500
+                        safe_lines.append(line[:limit])
                 (evidence_dir / "core-lifecycle-sanitized.log").write_text("\n".join(safe_lines) + "\n", encoding="utf-8")
             if temp_root and temp_root.exists():
                 runner_temp = pathlib.Path(os.environ["RUNNER_TEMP"]).resolve()

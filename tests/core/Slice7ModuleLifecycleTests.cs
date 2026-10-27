@@ -8,6 +8,7 @@ using Hispania.Runtime;
 using Hispania.Slice7.Fixture;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace Hispania.Core.Tests;
@@ -15,6 +16,11 @@ namespace Hispania.Core.Tests;
 public sealed class Slice7ModuleLifecycleTests
 {
     private static readonly System.Text.Json.JsonSerializerOptions PackageJsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web);
+    private static readonly HashSet<string> AllowedRejectionFindingCodes = new(StringComparer.Ordinal)
+    {
+        "GraphLimit", "InvalidManifest", "AmbiguousArtifact", "MissingDependency", "VersionConflict",
+        "CycleOrDepth", "ProtocolIncompatible", "HostIncompatible", "UntrustedDependency", "PublisherOwnership"
+    };
     [Fact]
     public async Task TrustedFixtureInstallsDisabledRestartsAndUninstallsWithoutPersistingPrivateKey()
     {
@@ -91,16 +97,41 @@ public sealed class Slice7ModuleLifecycleTests
         using var directory = new TemporaryDirectory();
         using var trusted = RSA.Create(2048);
         using var unknown = RSA.Create(2048);
+        var trustedPublicKey = trusted.ExportSubjectPublicKeyInfoPem();
+        var trustedPrivateKey = trusted.ExportPkcs8PrivateKeyPem();
+        var unknownPrivateKey = unknown.ExportPkcs8PrivateKeyPem();
         var moduleHost = FindModuleHost();
-        await using var app = Build(directory.Path, trusted.ExportSubjectPublicKeyInfoPem(), moduleHost, revoked: ["hispania.slice7.test"]);
+        await using var app = Build(directory.Path, trustedPublicKey, moduleHost, revoked: ["hispania.slice7.test"]);
         await app.StartAsync();
+        using var capturedLogs = new RejectionLogProvider();
+        app.Services.GetRequiredService<ILoggerFactory>().AddProvider(capturedLogs);
         var manager = app.Services.GetRequiredService<CoreModuleManager>();
-        using var unknownPackage = new MemoryStream(BuildPackage(unknown.ExportPkcs8PrivateKeyPem(), typeof(Slice7FixtureModule), publisherId: "hispania.slice7.unknown"), writable: false);
-        await Assert.ThrowsAsync<InvalidDataException>(() => manager.InstallAsync(unknownPackage, CancellationToken.None));
-        using var revokedPackage = new MemoryStream(BuildPackage(trusted.ExportPkcs8PrivateKeyPem(), typeof(Slice7FixtureModule)), writable: false);
-        await Assert.ThrowsAsync<InvalidDataException>(() => manager.InstallAsync(revokedPackage, CancellationToken.None));
+        using var unknownPackage = new MemoryStream(BuildPackage(unknownPrivateKey, typeof(Slice7FixtureModule), publisherId: "hispania.slice7.unknown"), writable: false);
+        var logger = app.Services.GetRequiredService<ILogger<CoreModuleManager>>();
+        await Assert.ThrowsAsync<InvalidDataException>(() => manager.InstallAsync(unknownPackage, CancellationToken.None, logger));
+        using var revokedPackage = new MemoryStream(BuildPackage(trustedPrivateKey, typeof(Slice7FixtureModule)), writable: false);
+        await Assert.ThrowsAsync<InvalidDataException>(() => manager.InstallAsync(revokedPackage, CancellationToken.None, logger));
         Assert.Empty(manager.List());
         Assert.Empty(Directory.EnumerateFiles(Path.Combine(directory.Path, "module-staging")));
+
+        var rejections = capturedLogs.Entries.Where(entry => entry.EventId.Id == 30).ToArray();
+        Assert.Equal(2, rejections.Length);
+        Assert.All(rejections, entry =>
+        {
+            Assert.Equal("package_plan", entry.Properties["Stage"]);
+            Assert.Equal("rejected", entry.Properties["Result"]);
+            Assert.Equal("InvalidDataException", entry.Properties["ExceptionType"]);
+            var findings = Assert.IsType<string>(entry.Properties["FindingCodes"]).Split(',', StringSplitOptions.RemoveEmptyEntries);
+            Assert.Contains("UntrustedDependency", findings);
+            Assert.All(findings, finding => Assert.Contains(finding, AllowedRejectionFindingCodes));
+            Assert.Null(entry.Properties["PublisherTrustStatus"]);
+            Assert.Matches("^[0-9a-f]{32}$", Assert.IsType<string>(entry.Properties["DiagnosticId"]));
+            Assert.False(entry.HasException);
+            Assert.DoesNotContain("BEGIN", entry.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain(trustedPrivateKey, entry.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain(unknownPrivateKey, entry.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain(trustedPublicKey, entry.Message, StringComparison.Ordinal);
+        });
     }
 
     [Fact]
@@ -261,6 +292,30 @@ public sealed class Slice7ModuleLifecycleTests
             if (File.Exists(candidate)) return candidate;
         }
         throw new FileNotFoundException("Build output for the approved ModuleHost project was not found.");
+    }
+
+    private sealed record CapturedRejection(EventId EventId, string Message, IReadOnlyDictionary<string, object?> Properties, bool HasException);
+
+    private sealed class RejectionLogProvider : ILoggerProvider
+    {
+        public List<CapturedRejection> Entries { get; } = [];
+        public ILogger CreateLogger(string categoryName) => new RejectionLogger(Entries);
+        public void Dispose() { }
+
+        private sealed class RejectionLogger(List<CapturedRejection> entries) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter)
+            {
+                if (eventId.Id != 30) return;
+                var properties = state is IEnumerable<KeyValuePair<string, object?>> values
+                    ? values.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+                    : new Dictionary<string, object?>();
+                entries.Add(new(eventId, formatter(state, exception), properties, exception is not null));
+            }
+        }
     }
 }
 

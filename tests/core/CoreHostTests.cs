@@ -643,6 +643,13 @@ public sealed class CoreHostTests : IDisposable
             invalidPackage.Headers.TryAddWithoutValidation("X-Hispania-CSRF", loginBody.CsrfToken);
             using var response = await client.SendAsync(invalidPackage);
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            var publicError = await response.Content.ReadFromJsonAsync<CoreAuthEndpoints.ErrorResponse>();
+            Assert.NotNull(publicError);
+            Assert.Equal("module_package_rejected", publicError.Code);
+            var publicBody = await response.Content.ReadAsStringAsync();
+            Assert.DoesNotContain("Stage", publicBody, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Finding", publicBody, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("DiagnosticId", publicBody, StringComparison.OrdinalIgnoreCase);
         }
     }
 

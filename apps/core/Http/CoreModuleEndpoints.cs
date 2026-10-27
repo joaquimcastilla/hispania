@@ -4,6 +4,7 @@ using Hispania.Runtime;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Logging;
 
 namespace Hispania.Core.Http;
 
@@ -30,7 +31,7 @@ internal static class CoreModuleEndpoints
 
     private static async Task<IResult> InstallAsync(HttpContext context, ICoreSessionService sessions,
         ICoreIdentityService identities, ICoreAuthorizationService authorization, CoreModuleManager manager,
-        IAntiforgery antiforgery, ICoreHttpAuditService audit, CancellationToken cancellationToken)
+        IAntiforgery antiforgery, ICoreHttpAuditService audit, ILogger<CoreModuleManager> logger, CancellationToken cancellationToken)
     {
         var access = await AuthorizeAsync(context, CoreIdentityRules.ModuleManagePermission, true, sessions, identities, authorization, antiforgery, cancellationToken).ConfigureAwait(false);
         if (access.Denial is not null) return access.Denial;
@@ -38,7 +39,8 @@ internal static class CoreModuleEndpoints
             return Results.BadRequest(new CoreAuthEndpoints.ErrorResponse("application_zip_required"));
         try
         {
-            var id = await manager.InstallAsync(context.Request.Body, cancellationToken).ConfigureAwait(false);
+            var diagnosticId = Guid.NewGuid().ToString("N");
+            var id = await manager.InstallAsync(context.Request.Body, cancellationToken, logger, diagnosticId).ConfigureAwait(false);
             await audit.RecordAsync("http.modules.install.succeeded", access.Actor, cancellationToken).ConfigureAwait(false);
             return Results.Json(new ModuleOperationResponse(id, "installed"), statusCode: StatusCodes.Status201Created);
         }
