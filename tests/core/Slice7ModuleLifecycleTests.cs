@@ -69,6 +69,36 @@ public sealed class Slice7ModuleLifecycleTests
     }
 
     [Fact]
+    public async Task CoreBindsDottedPublisherIdFromPrefixedEnvironmentVariable()
+    {
+        using var directory = new TemporaryDirectory();
+        using var signer = RSA.Create(2048);
+        var privateKey = signer.ExportPkcs8PrivateKeyPem();
+        var publicKey = signer.ExportSubjectPublicKeyInfoPem();
+        var variableName = "HISPANIA_CORE_MODULES__TRUSTEDPUBLISHERKEYS__hispania.slice7.test";
+        var previousValue = Environment.GetEnvironmentVariable(variableName);
+        Environment.SetEnvironmentVariable(variableName, publicKey);
+        try
+        {
+            await using var app = CoreHost.Build(new Dictionary<string, string?>
+            {
+                ["DATA_DIRECTORY"] = directory.Path,
+                ["MODULES:MODULEHOSTPATH"] = FindModuleHost()
+            }, httpEnabled: false);
+            await app.StartAsync();
+            var manager = app.Services.GetRequiredService<CoreModuleManager>();
+            using var package = new MemoryStream(BuildPackage(privateKey, typeof(Slice7FixtureModule)), writable: false);
+
+            Assert.Equal("hispania.slice7.fixture", await manager.InstallAsync(package, CancellationToken.None));
+            Assert.True(Assert.Single(manager.List()).Trusted);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variableName, previousValue);
+        }
+    }
+
+    [Fact]
     public async Task FixtureFailureIsRolledBackWithoutStoppingCore()
     {
         using var directory = new TemporaryDirectory();
@@ -132,6 +162,45 @@ public sealed class Slice7ModuleLifecycleTests
             Assert.DoesNotContain(unknownPrivateKey, entry.Message, StringComparison.Ordinal);
             Assert.DoesNotContain(trustedPublicKey, entry.Message, StringComparison.Ordinal);
         });
+    }
+
+    [Fact]
+    public void PublisherKeyHashIsNotAValidTrustedPublicKeyValue()
+    {
+        using var signer = RSA.Create(2048);
+        var publicKey = signer.ExportSubjectPublicKeyInfoPem();
+        var signedManifest = ModulePackageSignature.Sign(new ModuleManifest
+        {
+            PackageFormatVersion = 2,
+            PackageVersion = "1.0.0",
+            PackageDependencies = [],
+            RequiredModuleHostProtocol = 1,
+            Id = "hispania.slice7.fixture",
+            Name = "Synthetic trust test",
+            Version = "1.0.0",
+            Implements = [],
+            Provides = [],
+            Requires = [],
+            OptionalDependencies = [],
+            Dependencies = [],
+            DependencyMinimumVersions = new(StringComparer.Ordinal),
+            Permissions = [],
+            MinimumHostVersion = "1.0.0",
+            MaximumHostVersion = "1.0.0",
+            Runtime = "dotnet-outofprocess",
+            EntryAssembly = "fixture.dll",
+            EntryType = "Fixture.Entry",
+            SharedAssemblies = [],
+            ContractTypes = new(StringComparer.Ordinal),
+            Files = new Dictionary<string, string>(StringComparer.Ordinal)
+        }, "hispania.slice7.test", signer.ExportPkcs8PrivateKeyPem());
+        var revoked = new HashSet<string>(StringComparer.Ordinal);
+        var trusted = new Dictionary<string, string>(StringComparer.Ordinal) { ["hispania.slice7.test"] = publicKey };
+        var digestInPlaceOfKey = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(publicKey)));
+        var incorrect = new Dictionary<string, string>(StringComparer.Ordinal) { ["hispania.slice7.test"] = digestInPlaceOfKey };
+
+        Assert.Equal(PublisherSignatureStatus.Trusted, ModulePackageSignature.Verify(signedManifest, trusted, revoked));
+        Assert.Equal(PublisherSignatureStatus.Invalid, ModulePackageSignature.Verify(signedManifest, incorrect, revoked));
     }
 
     [Fact]

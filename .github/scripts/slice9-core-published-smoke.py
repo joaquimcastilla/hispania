@@ -33,6 +33,23 @@ def sha256(path: pathlib.Path) -> str:
     return digest.hexdigest().upper()
 
 
+def load_verified_publisher_public_key(path: pathlib.Path, expected_hash: str) -> str:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("publisher public key is missing or linked")
+    key_bytes = path.read_bytes()
+    if hashlib.sha256(key_bytes).hexdigest().upper() != expected_hash.upper():
+        raise ValueError("publisher public key hash mismatch")
+    try:
+        key_text = key_bytes.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise ValueError("publisher public key encoding is invalid") from exc
+    if not key_text.startswith("-----BEGIN PUBLIC KEY-----\n") or not (
+        key_text.endswith("-----END PUBLIC KEY-----") or key_text.endswith("-----END PUBLIC KEY-----\n")
+    ):
+        raise ValueError("publisher public key format is invalid")
+    return key_text
+
+
 def safe_relative(value: str) -> pathlib.PurePosixPath:
     rel = pathlib.PurePosixPath(value)
     if rel.is_absolute() or not rel.parts or any(part in ("", ".", "..") for part in rel.parts):
@@ -103,11 +120,16 @@ def verify_bundle(bundle: pathlib.Path, fixture: pathlib.Path, rid: str, arch: s
     fixture_files = fixture_integrity.get("files")
     if not isinstance(fixture_files, dict) or set(fixture_files) != {"fixture.hispania", "publisher-public.pem"}:
         raise ValueError("fixture bundle inventory mismatch")
+    publisher_public_key = None
     for name, expected_hash in fixture_files.items():
         path = fixture / name
-        if path.is_symlink() or not path.is_file() or sha256(path) != expected_hash.upper():
+        if name == "publisher-public.pem":
+            publisher_public_key = load_verified_publisher_public_key(path, expected_hash)
+        elif path.is_symlink() or not path.is_file() or sha256(path) != expected_hash.upper():
             raise ValueError("fixture bundle hash mismatch")
-    return package, fixture / "fixture.hispania", fixture_integrity["files"]["publisher-public.pem"]
+    if publisher_public_key is None:
+        raise ValueError("publisher public key is missing from fixture bundle")
+    return package, fixture / "fixture.hispania", publisher_public_key
 
 
 def get_free_loopback_port() -> int:
