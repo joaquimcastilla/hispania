@@ -140,6 +140,67 @@ def request(opener: urllib.request.OpenerDirector, url: str, method: str = "GET"
         return error.code, error.read(), dict(error.headers.items())
 
 
+_INSTALL_ERROR_ALLOWLIST = {
+    "application_zip_required",
+    "authentication_required",
+    "module_package_rejected",
+    "module_runtime_not_allowed",
+}
+_MODULE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
+
+
+def diagnose_fixture_install(status: int, body: bytes, expected_id: str) -> dict[str, str | bool]:
+    """Extract only contract-relevant, allowlisted diagnostics from install response."""
+    result: dict[str, str | bool] = {
+        "httpStatus": str(status),
+        "identifierStatus": "not_evaluated",
+        "errorCategory": "none",
+        "contractStatus": "rejected",
+        "contractSatisfied": False,
+    }
+    response: object = None
+    try:
+        response = json.loads(body) if body else None
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        response = None
+
+    if isinstance(response, dict):
+        error_code = response.get("error")
+        if isinstance(error_code, str) and error_code in _INSTALL_ERROR_ALLOWLIST:
+            result["errorCategory"] = error_code
+
+    if status == 201:
+        if not isinstance(response, dict):
+            identifier_status = "malformed"
+            returned_id = None
+        elif "id" not in response:
+            identifier_status = "missing"
+            returned_id = None
+        else:
+            returned_id = response["id"]
+            if not isinstance(returned_id, str) or not _MODULE_ID_PATTERN.fullmatch(returned_id):
+                identifier_status = "malformed"
+                returned_id = None
+            else:
+                identifier_status = "match" if returned_id == expected_id else "mismatch"
+        result["identifierStatus"] = identifier_status
+        result["contractSatisfied"] = identifier_status == "match"
+        result["contractStatus"] = "accepted" if result["contractSatisfied"] else "invalid_success_response"
+    elif status == 400 and result["errorCategory"] == "none":
+        result["errorCategory"] = "bad_request_or_antiforgery_rejected"
+    elif status == 401 and result["errorCategory"] == "none":
+        result["errorCategory"] = "authentication_rejected"
+    elif status == 403:
+        result["errorCategory"] = "authorization_or_origin_rejected"
+    elif status == 413:
+        result["errorCategory"] = "request_too_large"
+    elif status >= 500:
+        result["errorCategory"] = "server_error"
+    elif status != 201 and result["errorCategory"] == "none":
+        result["errorCategory"] = "unrecognized_or_absent"
+    return result
+
+
 def modulehost_processes(modulehost_path: pathlib.Path) -> list[int]:
     found: list[int] = []
     proc_root = pathlib.Path("/proc")
@@ -293,11 +354,20 @@ def main() -> int:
         stage = "fixture-install"
         mutating_headers = {"Origin": origin, "X-Hispania-CSRF": csrf}
         package_bytes = fixture_zip.read_bytes()
-        secrets_to_redact.extend([])
         code, body, _ = request(opener, base_url + "/api/v1/auth/modules/install", "POST", package_bytes,
                                 {**mutating_headers, "Content-Type": "application/zip"})
-        installed = json.loads(body) if code == 201 else {}
-        record("signed_fixture_installed", code == 201 and installed.get("id") == "hispania.slice7.fixture")
+        install_diagnostic = diagnose_fixture_install(code, body, "hispania.slice7.fixture")
+        summary["fixtureInstallHttpStatus"] = int(install_diagnostic["httpStatus"])
+        summary["fixtureInstallIdentifierStatus"] = install_diagnostic["identifierStatus"]
+        summary["fixtureInstallErrorCategory"] = install_diagnostic["errorCategory"]
+        summary["fixtureInstallContractStatus"] = install_diagnostic["contractStatus"]
+        summary["fixtureInstallContractSatisfied"] = install_diagnostic["contractSatisfied"]
+        checks.append({"name": "fixture_install_http_201", "status": "PASS" if code == 201 else "FAIL"})
+        if code == 201:
+            identifier_status = install_diagnostic["identifierStatus"]
+            checks.append({"name": "fixture_install_identifier_valid", "status": "PASS" if identifier_status in ("match", "mismatch") else "FAIL"})
+            checks.append({"name": "fixture_install_identifier_matches", "status": "PASS" if identifier_status == "match" else "FAIL"})
+        record("signed_fixture_installed", bool(install_diagnostic["contractSatisfied"]))
         code, body, _ = request(opener, base_url + "/api/v1/auth/modules")
         rows = json.loads(body) if code == 200 else []
         row = next((item for item in rows if item.get("packageId") == "hispania.slice7.fixture"), {})
@@ -370,6 +440,10 @@ def main() -> int:
     except Exception as exc:  # Report only a stable stage and exception class, never response bodies.
         summary["failureStage"] = stage
         summary["errorCode"] = f"S9_{stage.upper().replace('-', '_')}_{type(exc).__name__.upper()}"
+        if stage == "fixture-install" and "fixtureInstallHttpStatus" not in summary:
+            summary["fixtureInstallExceptionType"] = type(exc).__name__
+            summary["fixtureInstallErrorCategory"] = "transport_or_unexpected_exception"
+            summary["fixtureInstallContractStatus"] = "exception"
     finally:
         cleanup_ok = True
         try:
