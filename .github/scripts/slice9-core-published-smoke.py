@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import hashlib
 import http.cookiejar
 import json
@@ -18,6 +19,7 @@ import signal
 import socket
 import sqlite3
 import ssl
+import stat
 import subprocess
 import sys
 import tempfile
@@ -32,6 +34,12 @@ def sha256(path: pathlib.Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest().upper()
+
+
+def sqlite_quick_check(database_path: pathlib.Path) -> str:
+    # sqlite3.Connection's context manager handles transactions but does not close it.
+    with contextlib.closing(sqlite3.connect(str(database_path))) as connection:
+        return connection.execute("PRAGMA quick_check").fetchone()[0]
 
 
 def load_verified_publisher_public_key(path: pathlib.Path, expected_hash: str) -> str:
@@ -286,6 +294,134 @@ def non_privileged_runner() -> bool:
         import ctypes
         return ctypes.windll.shell32.IsUserAnAdmin() == 0
     return os.geteuid() != 0
+
+
+_CLEANUP_EXCEPTION_ALLOWLIST = {
+    "PermissionError", "FileNotFoundError", "NotADirectoryError", "IsADirectoryError",
+    "OSError", "TimeoutExpired", "RuntimeError",
+}
+
+
+def _cleanup_error(exception: BaseException) -> dict[str, object]:
+    winerror = getattr(exception, "winerror", None)
+    error_number = getattr(exception, "errno", None)
+    if winerror == 32 or error_number in (16,):
+        category = "sharing_violation"
+    elif winerror == 5 or error_number in (1, 13):
+        category = "access_denied"
+    elif error_number == 2:
+        category = "not_found"
+    else:
+        category = "other"
+    details: dict[str, object] = {
+        "exceptionType": type(exception).__name__ if type(exception).__name__ in _CLEANUP_EXCEPTION_ALLOWLIST else "Other",
+        "errorCategory": category,
+    }
+    if isinstance(winerror, int):
+        details["winError"] = winerror
+    if isinstance(error_number, int):
+        details["errno"] = error_number
+    return details
+
+
+def cleanup_owned_temp_root(
+    temp_root: pathlib.Path,
+    runner_temp: pathlib.Path,
+    runtime_identifier: str,
+    *,
+    residual_modulehost_count: int | None = 0,
+    remove_tree=shutil.rmtree,
+) -> tuple[bool, list[dict[str, object]]]:
+    """Remove only this smoke's temp root and return safe, structured diagnostics."""
+    diagnostics: list[dict[str, object]] = []
+    root = pathlib.Path(os.path.abspath(temp_root))
+    parent = pathlib.Path(os.path.abspath(runner_temp))
+    prefix = f"hispania-slice9-{runtime_identifier}-"
+    if root.parent != parent or not root.name.startswith(prefix):
+        return False, [{"stage": "temp_root_preflight", "resourceType": "directory", "result": "rejected"}]
+
+    diagnostics.append({
+        "stage": "modulehost_residual_check", "resourceType": "process",
+        "result": "pass" if residual_modulehost_count == 0 else ("unknown" if residual_modulehost_count is None else "fail"),
+    })
+    if residual_modulehost_count is not None:
+        diagnostics[-1]["residualCount"] = max(0, int(residual_modulehost_count))
+    try:
+        root_stat = root.lstat()
+    except FileNotFoundError:
+        diagnostics.append({"stage": "temp_root_check", "resourceType": "directory", "result": "already_absent"})
+        return residual_modulehost_count == 0, diagnostics
+    except OSError as exception:
+        event: dict[str, object] = {"stage": "temp_root_check", "resourceType": "directory", "result": "fail"}
+        event.update(_cleanup_error(exception))
+        diagnostics.append(event)
+        return False, diagnostics
+    if stat.S_ISLNK(root_stat.st_mode) or bool(getattr(root_stat, "st_file_attributes", 0) & 0x400):
+        diagnostics.append({"stage": "reparse_scan", "resourceType": "reparse_point", "result": "blocked", "relativePath": "."})
+        return False, diagnostics
+    try:
+        entries = list(root.rglob("*"))
+        reparse_entries = []
+        for entry in entries:
+            entry_stat = entry.lstat()
+            attributes = getattr(entry_stat, "st_file_attributes", 0)
+            is_reparse = stat.S_ISLNK(entry_stat.st_mode) or bool(attributes & 0x400)
+            if is_reparse:
+                reparse_entries.append(entry)
+    except OSError as exception:
+        event: dict[str, object] = {"stage": "reparse_scan", "resourceType": "filesystem", "result": "fail"}
+        event.update(_cleanup_error(exception))
+        diagnostics.append(event)
+        return False, diagnostics
+
+    if reparse_entries:
+        for entry in reparse_entries[:20]:
+            try:
+                relative = "." if entry == root else entry.relative_to(root).as_posix()
+            except ValueError:
+                relative = "outside_owned_root"
+            diagnostics.append({
+                "stage": "reparse_scan", "resourceType": "reparse_point", "result": "blocked",
+                "relativePath": relative,
+            })
+        return False, diagnostics
+    diagnostics.append({"stage": "reparse_scan", "resourceType": "filesystem", "result": "pass"})
+
+    try:
+        remove_tree(root)
+        diagnostics.append({"stage": "temp_root_delete", "resourceType": "directory", "result": "pass"})
+    except OSError as exception:
+        event = {"stage": "temp_root_delete", "resourceType": "directory", "result": "fail"}
+        event.update(_cleanup_error(exception))
+        exception_path = getattr(exception, "filename", None)
+        if isinstance(exception_path, str):
+            try:
+                candidate = pathlib.Path(exception_path)
+                relative = candidate.relative_to(root).as_posix()
+                if relative and ".." not in pathlib.PurePosixPath(relative).parts:
+                    event["relativePath"] = relative
+            except (ValueError, OSError):
+                pass
+        diagnostics.append(event)
+        return False, diagnostics
+    except Exception as exception:
+        event = {"stage": "temp_root_delete", "resourceType": "directory", "result": "fail"}
+        event.update(_cleanup_error(exception))
+        diagnostics.append(event)
+        return False, diagnostics
+
+    try:
+        remains = root.exists()
+    except OSError as exception:
+        event = {"stage": "post_delete_check", "resourceType": "directory", "result": "fail"}
+        event.update(_cleanup_error(exception))
+        diagnostics.append(event)
+        return False, diagnostics
+    diagnostics.append({
+        "stage": "post_delete_check", "resourceType": "directory",
+        "result": "fail" if remains else "pass",
+    })
+    return not remains and residual_modulehost_count == 0, diagnostics
 
 
 def create_windows_test_certificate(pfx: pathlib.Path, cert_pem: pathlib.Path, password: str) -> None:
@@ -546,8 +682,7 @@ def main() -> int:
         record("sqlite_persisted_across_restart", db_path.is_file() and db_path.stat().st_size > 0)
         if not db_path.is_file():
             raise RuntimeError("SQLite database missing after stop")
-        with sqlite3.connect(str(db_path)) as connection:
-            integrity_result = connection.execute("PRAGMA quick_check").fetchone()[0]
+        integrity_result = sqlite_quick_check(db_path)
         record("sqlite_quick_check_after_shutdown", integrity_result == "ok")
 
         with raw_log.open("ab") as log:
@@ -594,39 +729,67 @@ def main() -> int:
             summary["fixtureInstallContractStatus"] = "exception"
     finally:
         cleanup_ok = True
-        try:
-            if core is not None and core.poll() is None:
+        cleanup_diagnostics: list[dict[str, object]] = []
+        if core is not None and core.poll() is None:
+            try:
                 exit_code = stop_core()
                 if summary.get("coreExitCode") is None:
                     summary["coreExitCode"] = exit_code
-            if modulehost_path is not None and modulehost_processes(modulehost_path):
+                cleanup_diagnostics.append({"stage": "core_stop", "resourceType": "process", "result": "pass" if exit_code == 0 else "fail", "exitCode": exit_code})
+                cleanup_ok = cleanup_ok and exit_code == 0
+            except Exception as exception:
+                diagnostic = {"stage": "core_stop", "resourceType": "process", "result": "fail"}
+                diagnostic.update(_cleanup_error(exception))
+                cleanup_diagnostics.append(diagnostic)
                 cleanup_ok = False
-            if raw_log and raw_log.exists():
-                allowed = re.compile(r"Now listening on:|Core host started\.|Core host stopping\.|Core SQLite passive checkpoint completed\.|Core host stopped\.|Module package install rejected\.")
-                safe_lines = []
-                for line in raw_log.read_text(encoding="utf-8", errors="replace").splitlines():
-                    if allowed.search(line):
-                        for secret in secrets_to_redact:
-                            if secret:
-                                line = line.replace(secret, "[REDACTED]")
-                        limit = 1500 if "Module package install rejected." in line else 500
-                        safe_lines.append(line[:limit])
-                (evidence_dir / "core-lifecycle-sanitized.log").write_text("\n".join(safe_lines) + "\n", encoding="utf-8")
-            if temp_root and temp_root.exists():
+
+        residual_count = 0
+        residual_query_failed = False
+        if modulehost_path is not None:
+            try:
+                residual_count = len(modulehost_processes(modulehost_path))
+                cleanup_ok = cleanup_ok and residual_count == 0
+            except Exception as exception:
+                diagnostic = {"stage": "modulehost_residual_check", "resourceType": "process", "result": "fail"}
+                diagnostic.update(_cleanup_error(exception))
+                cleanup_diagnostics.append(diagnostic)
+                cleanup_ok = False
+                residual_query_failed = True
+
+        if raw_log is not None:
+            try:
+                if raw_log.exists():
+                    allowed = re.compile(r"Now listening on:|Core host started\.|Core host stopping\.|Core SQLite passive checkpoint completed\.|Core host stopped\.|Module package install rejected\.")
+                    safe_lines = []
+                    for line in raw_log.read_text(encoding="utf-8", errors="replace").splitlines():
+                        if allowed.search(line):
+                            for secret in secrets_to_redact:
+                                if secret:
+                                    line = line.replace(secret, "[REDACTED]")
+                            limit = 1500 if "Module package install rejected." in line else 500
+                            safe_lines.append(line[:limit])
+                    (evidence_dir / "core-lifecycle-sanitized.log").write_text("\n".join(safe_lines) + "\n", encoding="utf-8")
+                cleanup_diagnostics.append({"stage": "sanitized_log", "resourceType": "file", "result": "pass"})
+            except Exception as exception:
+                diagnostic = {"stage": "sanitized_log", "resourceType": "file", "result": "fail"}
+                diagnostic.update(_cleanup_error(exception))
+                cleanup_diagnostics.append(diagnostic)
+                cleanup_ok = False
+
+        if temp_root is not None:
+            try:
                 runner_temp = pathlib.Path(os.environ["RUNNER_TEMP"]).resolve()
-                if temp_root.parent != runner_temp or not temp_root.name.startswith(f"hispania-slice9-{args.rid}-"):
-                    cleanup_ok = False
-                else:
-                    if any(path.is_symlink() for path in temp_root.rglob("*")):
-                        cleanup_ok = False
-                    else:
-                        shutil.rmtree(temp_root)
-                    if temp_root.exists():
-                        cleanup_ok = False
-            summary["tempCleanup"] = "PASS" if cleanup_ok else "FAIL"
-        except Exception:
-            cleanup_ok = False
-            summary["tempCleanup"] = "FAIL"
+                deleted, diagnostics = cleanup_owned_temp_root(temp_root, runner_temp, args.rid, residual_modulehost_count=None if residual_query_failed else residual_count)
+                cleanup_diagnostics.extend(diagnostics)
+                cleanup_ok = cleanup_ok and deleted
+            except Exception as exception:
+                diagnostic = {"stage": "temp_root_cleanup", "resourceType": "directory", "result": "fail"}
+                diagnostic.update(_cleanup_error(exception))
+                cleanup_diagnostics.append(diagnostic)
+                cleanup_ok = False
+
+        summary["cleanupDiagnostics"] = cleanup_diagnostics
+        summary["tempCleanup"] = "PASS" if cleanup_ok else "FAIL"
         summary["checks"].append({"name": "temporary_cleanup", "status": "PASS" if cleanup_ok else "FAIL"})
         if not cleanup_ok:
             summary["overall"] = "FAIL"
