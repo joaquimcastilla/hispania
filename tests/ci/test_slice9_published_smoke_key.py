@@ -1,5 +1,5 @@
-import hashlib
 import contextlib
+import hashlib
 import importlib.util
 import json
 import os
@@ -8,6 +8,7 @@ import shutil
 import sqlite3
 import tempfile
 import unittest
+from unittest import mock
 
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[2] / ".github" / "scripts" / "slice9-core-published-smoke.py"
@@ -163,6 +164,49 @@ class OwnedTempCleanupTests(unittest.TestCase):
             self.assertTrue(file_path.exists())
         finally:
             ctypes.windll.kernel32.CloseHandle(handle)
+
+    def test_github_outputs_include_only_gate_metadata(self):
+        output = self.parent / "github-output.txt"
+        summary = {
+            "sourceCommit": "a" * 40,
+            "runtimeIdentifier": "win-x64",
+            "architecture": "x86_64",
+            "aspnetCoreRuntime": "Microsoft.AspNetCore.App 10.0.12 [runtime-root]",
+            "contentId": "b" * 64,
+            "manifestSha256": "c" * 64,
+            "evidenceId": "hispania-slice9-evidence-win-x64-123-1",
+            "runnerName": "hispania-win-ci",
+            "checks": [{"status": "PASS"} for _ in range(38)],
+        }
+        with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(output)}):
+            SMOKE.write_github_smoke_outputs(summary)
+        contents = output.read_text(encoding="utf-8")
+        self.assertIn("source_commit=" + "a" * 40, contents)
+        self.assertIn("check_count=38", contents)
+        self.assertIn("pass_count=38", contents)
+        self.assertIn("fail_count=0", contents)
+        self.assertIn("skip_count=0", contents)
+        self.assertIn("runner_name=hispania-win-ci", contents)
+        self.assertIn("runtime_version=10.0.12", contents)
+        self.assertNotIn("password", contents.lower())
+
+    def test_github_outputs_reject_newline_metadata(self):
+        output = self.parent / "github-output-invalid.txt"
+        summary = {
+            "sourceCommit": "a" * 40,
+            "runtimeIdentifier": "win-x64",
+            "architecture": "x86_64",
+            "aspnetCoreRuntime": "Microsoft.AspNetCore.App 10.0.12 [runtime-root]",
+            "contentId": "b" * 64,
+            "manifestSha256": "c" * 64,
+            "evidenceId": "safe\nINJECTED=value",
+            "runnerName": "hispania-win-ci",
+            "checks": [],
+        }
+        with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(output)}):
+            with self.assertRaisesRegex(ValueError, "safe gate metadata"):
+                SMOKE.write_github_smoke_outputs(summary)
+        self.assertFalse(output.exists())
 
 
 if __name__ == "__main__":

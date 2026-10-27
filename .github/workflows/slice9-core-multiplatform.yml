@@ -24,6 +24,7 @@ jobs:
     permissions:
       contents: read
     outputs:
+      source_sha: ${{ github.sha }}
       win_x64_artifact: ${{ steps.identity.outputs.win_x64_artifact }}
       win_x64_content_id: ${{ steps.identity.outputs.win_x64_content_id }}
       win_x64_manifest_sha256: ${{ steps.identity.outputs.win_x64_manifest_sha256 }}
@@ -124,6 +125,19 @@ jobs:
   smoke-windows-x64:
     needs: publish
     if: github.event_name == 'push' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/feature/slice9-core-native-smoke'
+    outputs:
+      source_sha: ${{ steps.smoke.outputs.source_commit }}
+      runtime_identifier: ${{ steps.smoke.outputs.runtime_identifier }}
+      architecture: ${{ steps.smoke.outputs.architecture }}
+      runtime_version: ${{ steps.smoke.outputs.runtime_version }}
+      content_id: ${{ steps.smoke.outputs.content_id }}
+      manifest_sha256: ${{ steps.smoke.outputs.manifest_sha256 }}
+      check_count: ${{ steps.smoke.outputs.check_count }}
+      pass_count: ${{ steps.smoke.outputs.pass_count }}
+      fail_count: ${{ steps.smoke.outputs.fail_count }}
+      skip_count: ${{ steps.smoke.outputs.skip_count }}
+      evidence_id: ${{ steps.smoke.outputs.evidence_id }}
+      runner_name: ${{ steps.smoke.outputs.runner_name }}
     runs-on:
       - self-hosted
       - Windows
@@ -178,6 +192,7 @@ jobs:
           HISPANIA_EXPECTED_INTEGRITY_SHA256: ${{ needs.publish.outputs.win_x64_integrity_sha256 }}
           HISPANIA_EXPECTED_FIXTURE_INTEGRITY_SHA256: ${{ needs.publish.outputs.fixture_integrity_sha256 }}
           HISPANIA_EVIDENCE_DIR: ${{ runner.temp }}/hispania-slice9-evidence-${{ github.run_id }}-${{ github.run_attempt }}-win-x64
+          HISPANIA_EVIDENCE_ID: hispania-slice9-evidence-win-x64-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           python .github/scripts/slice9-core-published-smoke.py `
             --bundle "$env:RUNNER_TEMP/hispania-slice9-download-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT/core" `
@@ -216,6 +231,19 @@ jobs:
   smoke-linux-x64:
     needs: publish
     if: github.event_name == 'push' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/feature/slice9-core-native-smoke'
+    outputs:
+      source_sha: ${{ steps.smoke.outputs.source_commit }}
+      runtime_identifier: ${{ steps.smoke.outputs.runtime_identifier }}
+      architecture: ${{ steps.smoke.outputs.architecture }}
+      runtime_version: ${{ steps.smoke.outputs.runtime_version }}
+      content_id: ${{ steps.smoke.outputs.content_id }}
+      manifest_sha256: ${{ steps.smoke.outputs.manifest_sha256 }}
+      check_count: ${{ steps.smoke.outputs.check_count }}
+      pass_count: ${{ steps.smoke.outputs.pass_count }}
+      fail_count: ${{ steps.smoke.outputs.fail_count }}
+      skip_count: ${{ steps.smoke.outputs.skip_count }}
+      evidence_id: ${{ steps.smoke.outputs.evidence_id }}
+      runner_name: ${{ steps.smoke.outputs.runner_name }}
     runs-on:
       - self-hosted
       - Linux
@@ -269,6 +297,7 @@ jobs:
           HISPANIA_EXPECTED_INTEGRITY_SHA256: ${{ needs.publish.outputs.linux_x64_integrity_sha256 }}
           HISPANIA_EXPECTED_FIXTURE_INTEGRITY_SHA256: ${{ needs.publish.outputs.fixture_integrity_sha256 }}
           HISPANIA_EVIDENCE_DIR: ${{ runner.temp }}/hispania-slice9-evidence-${{ github.run_id }}-${{ github.run_attempt }}-linux-x64
+          HISPANIA_EVIDENCE_ID: hispania-slice9-evidence-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
           python3 .github/scripts/slice9-core-published-smoke.py \
@@ -297,7 +326,21 @@ jobs:
 
   smoke-linux-arm64-pi4:
     needs: publish
-    if: github.event_name == 'push' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/feature/slice9-core-native-smoke'
+    # Set HISPANIA_ARM64_RUNNER_DISABLED=true only when the native runner is confirmed unavailable.
+    if: github.event_name == 'push' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/feature/slice9-core-native-smoke' && vars.HISPANIA_ARM64_RUNNER_DISABLED != 'true'
+    outputs:
+      source_sha: ${{ steps.smoke.outputs.source_commit }}
+      runtime_identifier: ${{ steps.smoke.outputs.runtime_identifier }}
+      architecture: ${{ steps.smoke.outputs.architecture }}
+      runtime_version: ${{ steps.smoke.outputs.runtime_version }}
+      content_id: ${{ steps.smoke.outputs.content_id }}
+      manifest_sha256: ${{ steps.smoke.outputs.manifest_sha256 }}
+      check_count: ${{ steps.smoke.outputs.check_count }}
+      pass_count: ${{ steps.smoke.outputs.pass_count }}
+      fail_count: ${{ steps.smoke.outputs.fail_count }}
+      skip_count: ${{ steps.smoke.outputs.skip_count }}
+      evidence_id: ${{ steps.smoke.outputs.evidence_id }}
+      runner_name: ${{ steps.smoke.outputs.runner_name }}
     runs-on:
       - self-hosted
       - Linux
@@ -352,6 +395,7 @@ jobs:
           HISPANIA_EXPECTED_INTEGRITY_SHA256: ${{ needs.publish.outputs.linux_arm64_integrity_sha256 }}
           HISPANIA_EXPECTED_FIXTURE_INTEGRITY_SHA256: ${{ needs.publish.outputs.fixture_integrity_sha256 }}
           HISPANIA_EVIDENCE_DIR: ${{ runner.temp }}/hispania-slice9-evidence-${{ github.run_id }}-${{ github.run_attempt }}-linux-arm64
+          HISPANIA_EVIDENCE_ID: hispania-slice9-evidence-linux-arm64-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
           python3 .github/scripts/slice9-core-published-smoke.py \
@@ -377,3 +421,114 @@ jobs:
           case "$root" in "$RUNNER_TEMP"/hispania-slice9-download-[0-9]*-[0-9]*) rm -rf -- "$root" ;; *) echo 'Refusing unexpected cleanup path.' >&2; exit 2 ;; esac
           evidence="$RUNNER_TEMP/hispania-slice9-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-linux-arm64"
           case "$evidence" in "$RUNNER_TEMP"/hispania-slice9-evidence-[0-9]*-[0-9]*-linux-arm64) rm -rf -- "$evidence" ;; *) echo 'Refusing unexpected evidence cleanup path.' >&2; exit 2 ;; esac
+
+  cross-platform-gate:
+    name: Required Windows and Linux x64 gate
+    if: always()
+    needs:
+      - publish
+      - smoke-windows-x64
+      - smoke-linux-x64
+      - smoke-linux-arm64-pi4
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - hispania-linux
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Enforce platform results and summarize provenance
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
+          ARM64_DISABLED: ${{ vars.HISPANIA_ARM64_RUNNER_DISABLED }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+          PUBLISH_SOURCE_SHA: ${{ needs.publish.outputs.source_sha }}
+          WIN_RESULT: ${{ needs.smoke-windows-x64.result }}
+          WIN_SOURCE_SHA: ${{ needs.smoke-windows-x64.outputs.source_sha }}
+          WIN_RID: ${{ needs.smoke-windows-x64.outputs.runtime_identifier }}
+          WIN_ARCH: ${{ needs.smoke-windows-x64.outputs.architecture }}
+          WIN_RUNTIME: ${{ needs.smoke-windows-x64.outputs.runtime_version }}
+          WIN_CONTENT_ID: ${{ needs.smoke-windows-x64.outputs.content_id }}
+          WIN_MANIFEST_SHA: ${{ needs.smoke-windows-x64.outputs.manifest_sha256 }}
+          WIN_CHECKS: ${{ needs.smoke-windows-x64.outputs.check_count }}
+          WIN_PASSES: ${{ needs.smoke-windows-x64.outputs.pass_count }}
+          WIN_FAILS: ${{ needs.smoke-windows-x64.outputs.fail_count }}
+          WIN_SKIPS: ${{ needs.smoke-windows-x64.outputs.skip_count }}
+          WIN_EVIDENCE_ID: ${{ needs.smoke-windows-x64.outputs.evidence_id }}
+          WIN_RUNNER: ${{ needs.smoke-windows-x64.outputs.runner_name }}
+          LINUX_RESULT: ${{ needs.smoke-linux-x64.result }}
+          LINUX_SOURCE_SHA: ${{ needs.smoke-linux-x64.outputs.source_sha }}
+          LINUX_RID: ${{ needs.smoke-linux-x64.outputs.runtime_identifier }}
+          LINUX_ARCH: ${{ needs.smoke-linux-x64.outputs.architecture }}
+          LINUX_RUNTIME: ${{ needs.smoke-linux-x64.outputs.runtime_version }}
+          LINUX_CONTENT_ID: ${{ needs.smoke-linux-x64.outputs.content_id }}
+          LINUX_MANIFEST_SHA: ${{ needs.smoke-linux-x64.outputs.manifest_sha256 }}
+          LINUX_CHECKS: ${{ needs.smoke-linux-x64.outputs.check_count }}
+          LINUX_PASSES: ${{ needs.smoke-linux-x64.outputs.pass_count }}
+          LINUX_FAILS: ${{ needs.smoke-linux-x64.outputs.fail_count }}
+          LINUX_SKIPS: ${{ needs.smoke-linux-x64.outputs.skip_count }}
+          LINUX_EVIDENCE_ID: ${{ needs.smoke-linux-x64.outputs.evidence_id }}
+          LINUX_RUNNER: ${{ needs.smoke-linux-x64.outputs.runner_name }}
+          ARM64_RESULT: ${{ needs.smoke-linux-arm64-pi4.result }}
+          ARM64_SOURCE_SHA: ${{ needs.smoke-linux-arm64-pi4.outputs.source_sha }}
+          ARM64_RID: ${{ needs.smoke-linux-arm64-pi4.outputs.runtime_identifier }}
+          ARM64_ARCH: ${{ needs.smoke-linux-arm64-pi4.outputs.architecture }}
+          ARM64_RUNTIME: ${{ needs.smoke-linux-arm64-pi4.outputs.runtime_version }}
+          ARM64_CONTENT_ID: ${{ needs.smoke-linux-arm64-pi4.outputs.content_id }}
+          ARM64_MANIFEST_SHA: ${{ needs.smoke-linux-arm64-pi4.outputs.manifest_sha256 }}
+          ARM64_CHECKS: ${{ needs.smoke-linux-arm64-pi4.outputs.check_count }}
+          ARM64_PASSES: ${{ needs.smoke-linux-arm64-pi4.outputs.pass_count }}
+          ARM64_FAILS: ${{ needs.smoke-linux-arm64-pi4.outputs.fail_count }}
+          ARM64_SKIPS: ${{ needs.smoke-linux-arm64-pi4.outputs.skip_count }}
+          ARM64_EVIDENCE_ID: ${{ needs.smoke-linux-arm64-pi4.outputs.evidence_id }}
+          ARM64_RUNNER: ${{ needs.smoke-linux-arm64-pi4.outputs.runner_name }}
+        run: |
+          set -euo pipefail
+          errors=0
+          {
+            echo "## HISPANIA Slice 9 multi-platform gate"
+            echo "Source commit: `$EXPECTED_SOURCE_SHA`"
+            echo "Producer: $PUBLISH_RESULT (source=$PUBLISH_SOURCE_SHA)"
+            echo "| RID | Result | Runner | Arch | .NET runtime | Checks | Content ID | Manifest SHA-256 | Evidence |"
+            echo "|---|---|---|---|---|---:|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$PUBLISH_RESULT" != success || "$PUBLISH_SOURCE_SHA" != "$EXPECTED_SOURCE_SHA" ]]; then
+            echo 'Producer failed or source SHA did not match the workflow commit.' >&2
+            errors=1
+          fi
+
+          validate_smoke() {
+            local label="$1" result="$2" source="$3" rid="$4" expected_rid="$5" arch="$6" expected_arch="$7" runtime="$8"
+            local content="$9" manifest="${10}" checks="${11}" passes="${12}" fails="${13}" skips="${14}" evidence="${15}" runner="${16}"
+            local expected_evidence="hispania-slice9-evidence-${expected_rid}-${WORKFLOW_RUN_ID}-${WORKFLOW_RUN_ATTEMPT}"
+            if [[ "$result" != success || "$source" != "$EXPECTED_SOURCE_SHA" || "$rid" != "$expected_rid" || "$arch" != "$expected_arch" || ! "$runtime" =~ ^10\.[0-9]+\.[0-9]+$ || "$checks" != 38 || "$passes" != 38 || "$fails" != 0 || "$skips" != 0 || ! "$content" =~ ^[A-Fa-f0-9]{64}$ || ! "$manifest" =~ ^[A-Fa-f0-9]{64}$ || "$evidence" != "$expected_evidence" || ! "$runner" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+              echo "$label failed its result, provenance, count, or identity checks." >&2
+              errors=1
+            fi
+            echo "| $expected_rid | $result | $runner | $arch | $runtime | $passes/$checks (fail=$fails, skip=$skips) | `$content` | `$manifest` | `$evidence` |" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          validate_smoke 'Windows x64' "$WIN_RESULT" "$WIN_SOURCE_SHA" "$WIN_RID" win-x64 "$WIN_ARCH" x86_64 "$WIN_RUNTIME" "$WIN_CONTENT_ID" "$WIN_MANIFEST_SHA" "$WIN_CHECKS" "$WIN_PASSES" "$WIN_FAILS" "$WIN_SKIPS" "$WIN_EVIDENCE_ID" "$WIN_RUNNER"
+          validate_smoke 'Linux x64' "$LINUX_RESULT" "$LINUX_SOURCE_SHA" "$LINUX_RID" linux-x64 "$LINUX_ARCH" x86_64 "$LINUX_RUNTIME" "$LINUX_CONTENT_ID" "$LINUX_MANIFEST_SHA" "$LINUX_CHECKS" "$LINUX_PASSES" "$LINUX_FAILS" "$LINUX_SKIPS" "$LINUX_EVIDENCE_ID" "$LINUX_RUNNER"
+
+          if [[ "$ARM64_RESULT" == success ]]; then
+            validate_smoke 'Linux ARM64' "$ARM64_RESULT" "$ARM64_SOURCE_SHA" "$ARM64_RID" linux-arm64 "$ARM64_ARCH" aarch64 "$ARM64_RUNTIME" "$ARM64_CONTENT_ID" "$ARM64_MANIFEST_SHA" "$ARM64_CHECKS" "$ARM64_PASSES" "$ARM64_FAILS" "$ARM64_SKIPS" "$ARM64_EVIDENCE_ID" "$ARM64_RUNNER"
+          elif [[ "$ARM64_RESULT" == skipped && "$ARM64_DISABLED" == true ]]; then
+            echo '| linux-arm64 | NOT RUN (runner explicitly disabled) | — | aarch64 | — | — | — | — |' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'ARM64 failed or was skipped without the explicit unavailable-runner setting.' >&2
+            echo '| linux-arm64 | FAIL / unexpected skip | — | aarch64 | — | — | — | — |' >> "$GITHUB_STEP_SUMMARY"
+            errors=1
+          fi
+
+          if [[ "$errors" -ne 0 ]]; then
+            echo 'Gate result: FAIL' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo 'Gate result: PASS (required Windows x64 and Linux x64 passed; ARM64 status shown above).' >> "$GITHUB_STEP_SUMMARY"

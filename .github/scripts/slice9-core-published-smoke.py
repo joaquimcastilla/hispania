@@ -42,6 +42,40 @@ def sqlite_quick_check(database_path: pathlib.Path) -> str:
         return connection.execute("PRAGMA quick_check").fetchone()[0]
 
 
+def write_github_smoke_outputs(summary: dict[str, object]) -> None:
+    output_path = os.environ.get("GITHUB_OUTPUT")
+    if not output_path:
+        return
+    checks = summary.get("checks", [])
+    if not isinstance(checks, list):
+        raise ValueError("Smoke check summary is malformed")
+    runtime = summary.get("aspnetCoreRuntime")
+    runtime_match = re.match(r"^Microsoft\.AspNetCore\.App (10\.\d+\.\d+)(?:\s|$)", runtime) if isinstance(runtime, str) else None
+    if runtime_match is None:
+        raise ValueError("Smoke summary lacks a valid ASP.NET Core 10 runtime identity")
+    counts = {status.lower(): sum(1 for check in checks if isinstance(check, dict) and check.get("status") == status)
+              for status in ("PASS", "FAIL", "SKIP")}
+    values = {
+        "source_commit": summary.get("sourceCommit", ""),
+        "runtime_identifier": summary.get("runtimeIdentifier", ""),
+        "architecture": summary.get("architecture", ""),
+        "runtime_version": runtime_match.group(1),
+        "content_id": summary.get("contentId", ""),
+        "manifest_sha256": summary.get("manifestSha256", ""),
+        "check_count": str(len(checks)),
+        "pass_count": str(counts["pass"]),
+        "fail_count": str(counts["fail"]),
+        "skip_count": str(counts["skip"]),
+        "evidence_id": summary.get("evidenceId", ""),
+        "runner_name": summary.get("runnerName", ""),
+    }
+    if not all(isinstance(value, str) and value and not any(char in value for char in "\r\n") for value in values.values()):
+        raise ValueError("Smoke summary lacks safe gate metadata")
+    with pathlib.Path(output_path).open("a", encoding="utf-8", newline="") as stream:
+        for key, value in values.items():
+            stream.write(f"{key}={value}\n")
+
+
 def load_verified_publisher_public_key(path: pathlib.Path, expected_hash: str) -> str:
     if path.is_symlink() or not path.is_file():
         raise ValueError("publisher public key is missing or linked")
@@ -492,6 +526,12 @@ def main() -> int:
         "runtimeIdentifier": args.rid, "architecture": args.architecture, "checks": checks,
         "failureStage": None, "errorCode": None, "coreExitCode": None, "tempCleanup": "NOT_RUN",
         "secretsPrinted": False,
+        "runnerName": os.environ.get("RUNNER_NAME", "local"),
+        "runnerOS": os.environ.get("RUNNER_OS", platform.system()),
+        "runnerArchitecture": os.environ.get("RUNNER_ARCH", platform.machine()),
+        "workflowRunId": os.environ.get("GITHUB_RUN_ID"),
+        "workflowRunAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+        "evidenceId": os.environ.get("HISPANIA_EVIDENCE_ID", "local"),
     }
     secrets_to_redact: list[str] = []
 
@@ -801,6 +841,15 @@ def main() -> int:
         summary_path = evidence_dir / "summary.json"
         summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         (evidence_dir / "summary.sha256").write_text(sha256(summary_path) + "  summary.json\n", encoding="ascii")
+        try:
+            write_github_smoke_outputs(summary)
+        except Exception:
+            # Output transport must never turn a failed smoke into a passing one.
+            summary["overall"] = "FAIL"
+            summary["failureStage"] = "github-output"
+            summary["errorCode"] = "S9_GATE_OUTPUT_FAILED"
+            summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            (evidence_dir / "summary.sha256").write_text(sha256(summary_path) + "  summary.json\n", encoding="ascii")
         print(f"HISPANIA_SMOKE_OVERALL={summary['overall']}")
         print(f"HISPANIA_SMOKE_CHECKS={len(checks)}")
         print(f"HISPANIA_SMOKE_EVIDENCE={evidence_dir}")
