@@ -35,7 +35,7 @@ Invoke-Dotnet @('build', $fixtureProject, '--configuration', 'Release', '--no-re
 Invoke-Dotnet @('restore', $packagerProject, '--verbosity', 'quiet', '-p:NuGetAudit=false')
 Invoke-Dotnet @('build', $packagerProject, '--configuration', 'Release', '--no-restore', '--verbosity', 'quiet')
 
-$rids = @('linux-x64', 'linux-arm64')
+$rids = @('win-x64', 'linux-x64', 'linux-arm64')
 foreach ($rid in $rids) {
     $bundle = Join-Path $outputRoot $rid
     $package = Join-Path $bundle 'package'
@@ -97,7 +97,7 @@ foreach ($rid in $rids) {
 
 $fixtureRoot = Join-Path $outputRoot 'fixture'
 New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
-$contractAssembly = Join-Path $outputRoot 'linux-x64/package/Hispania.ModuleSystem.Contracts.dll'
+$contractAssembly = Join-Path $outputRoot 'win-x64/package/Hispania.ModuleSystem.Contracts.dll'
 Invoke-Dotnet @($packagerDll, $fixtureAssembly, $contractAssembly, (Join-Path $fixtureRoot 'fixture.hispania'), (Join-Path $fixtureRoot 'publisher-public.pem'))
 $fixtureHashes = [ordered]@{}
 foreach ($name in @('fixture.hispania','publisher-public.pem')) { $fixtureHashes[$name] = (Get-FileHash -LiteralPath (Join-Path $fixtureRoot $name) -Algorithm SHA256).Hash.ToLowerInvariant() }

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import http.cookiejar
 import json
@@ -138,6 +139,16 @@ def get_free_loopback_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def plaintext_http_rejected(port: int) -> bool:
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health/live", timeout=2):
+            return False
+    except urllib.error.HTTPError:
+        return False
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return True
+
+
 def wait_health(opener: urllib.request.OpenerDirector, url: str, process: subprocess.Popen[bytes]) -> None:
     deadline = time.monotonic() + 45
     while time.monotonic() < deadline:
@@ -224,6 +235,28 @@ def diagnose_fixture_install(status: int, body: bytes, expected_id: str) -> dict
 
 
 def modulehost_processes(modulehost_path: pathlib.Path) -> list[int]:
+    if os.name == "nt":
+        script = r"""
+$target = $env:HISPANIA_MODULEHOST_PATH
+$ids = @(Get-CimInstance Win32_Process -Filter "Name = 'dotnet.exe'" |
+    Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($target, [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
+    ForEach-Object { [int]$_.ProcessId })
+ConvertTo-Json -InputObject $ids -Compress
+"""
+        encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+        env = os.environ.copy()
+        env["HISPANIA_MODULEHOST_PATH"] = str(modulehost_path)
+        result = subprocess.run(
+            ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+            check=True, capture_output=True, text=True, env=env, timeout=15,
+        )
+        parsed = json.loads(result.stdout.strip() or "[]")
+        if isinstance(parsed, int):
+            return [parsed]
+        if not isinstance(parsed, list) or any(not isinstance(pid, int) for pid in parsed):
+            raise RuntimeError("Unable to classify ModuleHost process state")
+        return parsed
+
     found: list[int] = []
     proc_root = pathlib.Path("/proc")
     needle = str(modulehost_path).encode()
@@ -239,11 +272,74 @@ def modulehost_processes(modulehost_path: pathlib.Path) -> list[int]:
     return found
 
 
+def normalized_machine(machine_name: str | None = None) -> str:
+    machine = (machine_name or platform.machine()).lower()
+    if machine in ("amd64", "x86_64"):
+        return "x86_64"
+    if machine in ("arm64", "aarch64"):
+        return "aarch64"
+    return machine
+
+
+def non_privileged_runner() -> bool:
+    if os.name == "nt":
+        import ctypes
+        return ctypes.windll.shell32.IsUserAnAdmin() == 0
+    return os.geteuid() != 0
+
+
+def create_windows_test_certificate(pfx: pathlib.Path, cert_pem: pathlib.Path, password: str) -> None:
+    script = r"""
+$ErrorActionPreference = 'Stop'
+$rsa = [System.Security.Cryptography.RSA]::Create(2048)
+$certificate = $null
+try {
+  $name = [System.Security.Cryptography.X509Certificates.X500DistinguishedName]::new('CN=127.0.0.1')
+  $request = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
+    $name, $rsa, [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+    [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+  $san = [System.Security.Cryptography.X509Certificates.SubjectAlternativeNameBuilder]::new()
+  $san.AddIpAddress([System.Net.IPAddress]::Parse('127.0.0.1'))
+  $request.CertificateExtensions.Add($san.Build())
+  $oids = [System.Security.Cryptography.OidCollection]::new()
+  [void]$oids.Add([System.Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.1'))
+  $request.CertificateExtensions.Add([System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($oids, $false))
+  $certificate = $request.CreateSelfSigned([DateTimeOffset]::UtcNow.AddMinutes(-5), [DateTimeOffset]::UtcNow.AddDays(1))
+  $sanEntry = $certificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.17' } | Select-Object -First 1
+  if (-not $sanEntry) { throw 'Expected IP subject alternative name is missing.' }
+  $sanExtension = [System.Security.Cryptography.X509Certificates.X509SubjectAlternativeNameExtension]::new($sanEntry.RawData, $false)
+  if (-not (@($sanExtension.EnumerateIpAddresses() | ForEach-Object { $_.ToString() }) -contains '127.0.0.1')) { throw 'Expected IP subject alternative name is invalid.' }
+  [IO.File]::WriteAllBytes($env:HISPANIA_TEST_PFX_PATH, $certificate.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx, $env:HISPANIA_TEST_PFX_PASSWORD))
+  [IO.File]::WriteAllText($env:HISPANIA_TEST_CERT_PATH, $certificate.ExportCertificatePem(), [Text.Encoding]::ASCII)
+  Write-Output 'SAN=127.0.0.1'
+}
+finally {
+  if ($certificate) { $certificate.Dispose() }
+  $rsa.Dispose()
+}
+"""
+    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+    env = os.environ.copy()
+    env.update({
+        "HISPANIA_TEST_PFX_PATH": str(pfx),
+        "HISPANIA_TEST_CERT_PATH": str(cert_pem),
+        "HISPANIA_TEST_PFX_PASSWORD": password,
+    })
+    result = subprocess.run(
+        ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+        check=True, capture_output=True, text=True, env=env, timeout=30,
+    )
+    if result.stdout.strip() != "SAN=127.0.0.1":
+        raise RuntimeError("Windows TLS certificate helper did not confirm the IP subject alternative name")
+    if not pfx.is_file() or not cert_pem.is_file() or pfx.stat().st_size == 0 or cert_pem.stat().st_size == 0:
+        raise RuntimeError("Windows TLS certificate helper did not create the expected files")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle", required=True)
     parser.add_argument("--fixture", required=True)
-    parser.add_argument("--rid", required=True, choices=("linux-x64", "linux-arm64"))
+    parser.add_argument("--rid", required=True, choices=("win-x64", "linux-x64", "linux-arm64"))
     parser.add_argument("--architecture", required=True, choices=("x86_64", "aarch64"))
     args = parser.parse_args()
     evidence_dir = pathlib.Path(os.environ["HISPANIA_EVIDENCE_DIR"]).resolve()
@@ -272,7 +368,10 @@ def main() -> int:
         nonlocal core
         if core is None or core.poll() is not None:
             return core.returncode if core is not None else None
-        core.terminate()
+        if os.name == "nt":
+            core.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            core.terminate()
         try:
             return core.wait(timeout=15)
         except subprocess.TimeoutExpired:
@@ -281,8 +380,8 @@ def main() -> int:
             raise RuntimeError("Core did not stop gracefully")
 
     try:
-        expected_machine = args.architecture
-        record("native_linux_architecture", platform.system() == "Linux" and platform.machine() == expected_machine)
+        expected_system = "Windows" if args.rid == "win-x64" else "Linux"
+        record("native_platform_architecture", platform.system() == expected_system and normalized_machine() == args.architecture)
         package, fixture_zip, public_key = verify_bundle(pathlib.Path(args.bundle).resolve(), pathlib.Path(args.fixture).resolve(), args.rid, args.architecture)
         record("artifact_integrity_manifest_allowlist", True)
         runtimes = subprocess.run(["dotnet", "--list-runtimes"], check=True, capture_output=True, text=True).stdout
@@ -294,7 +393,7 @@ def main() -> int:
         summary["coreAssemblySha256"] = sha256(package / "Hispania.Core.dll")
         summary["moduleHostSha256"] = sha256(package / "module-host/Hispania.ModuleHost.dll")
         summary["fixturePackageSha256"] = sha256(fixture_zip)
-        record("non_root_runner", os.geteuid() != 0)
+        record("non_privileged_runner", non_privileged_runner())
 
         temp_parent = pathlib.Path(os.environ["RUNNER_TEMP"]).resolve()
         temp_root = pathlib.Path(tempfile.mkdtemp(prefix=f"hispania-slice9-{args.rid}-", dir=temp_parent)).resolve()
@@ -304,6 +403,9 @@ def main() -> int:
         data = temp_root / "data"
         home.mkdir()
         data.mkdir()
+        data_protection_keys = home / "data-protection-keys"
+        if os.name == "nt":
+            data_protection_keys.mkdir()
         cert_key = temp_root / "tls-key.pem"
         cert_pem = temp_root / "tls-cert.pem"
         pfx = temp_root / "tls-cert.pfx"
@@ -314,21 +416,27 @@ def main() -> int:
         secrets_to_redact.extend([pfx_password, admin_password])
         record("exclusive_temp_sqlite_and_home_paths", data != package and home != package)
 
-        openssl_env = os.environ.copy()
-        openssl_env["HISPANIA_TEST_PFX_PASSWORD"] = pfx_password
-        subprocess.run([
-            "openssl", "req", "-x509", "-newkey", "rsa:2048", "-sha256", "-days", "1", "-nodes",
-            "-keyout", str(cert_key), "-out", str(cert_pem), "-subj", "/CN=127.0.0.1",
-            "-addext", "subjectAltName=IP:127.0.0.1", "-addext", "extendedKeyUsage=serverAuth",
-        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=openssl_env)
-        subprocess.run([
-            "openssl", "pkcs12", "-export", "-out", str(pfx), "-inkey", str(cert_key), "-in", str(cert_pem),
-            "-passout", "env:HISPANIA_TEST_PFX_PASSWORD",
-        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=openssl_env)
-        os.chmod(cert_key, 0o600)
-        os.chmod(pfx, 0o600)
-        cert_inspect = subprocess.run(["openssl", "x509", "-in", str(cert_pem), "-noout", "-ext", "subjectAltName"], check=True, capture_output=True, text=True).stdout
-        record("https_certificate_ip_san", "IP Address:127.0.0.1" in cert_inspect)
+        if os.name == "nt":
+            create_windows_test_certificate(pfx, cert_pem, pfx_password)
+            cert_key = None
+            cert_san_valid = cert_pem.read_text(encoding="ascii").startswith("-----BEGIN CERTIFICATE-----")
+        else:
+            openssl_env = os.environ.copy()
+            openssl_env["HISPANIA_TEST_PFX_PASSWORD"] = pfx_password
+            subprocess.run([
+                "openssl", "req", "-x509", "-newkey", "rsa:2048", "-sha256", "-days", "1", "-nodes",
+                "-keyout", str(cert_key), "-out", str(cert_pem), "-subj", "/CN=127.0.0.1",
+                "-addext", "subjectAltName=IP:127.0.0.1", "-addext", "extendedKeyUsage=serverAuth",
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=openssl_env)
+            subprocess.run([
+                "openssl", "pkcs12", "-export", "-out", str(pfx), "-inkey", str(cert_key), "-in", str(cert_pem),
+                "-passout", "env:HISPANIA_TEST_PFX_PASSWORD",
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=openssl_env)
+            os.chmod(cert_key, 0o600)
+            os.chmod(pfx, 0o600)
+            cert_inspect = subprocess.run(["openssl", "x509", "-in", str(cert_pem), "-noout", "-ext", "subjectAltName"], check=True, capture_output=True, text=True).stdout
+            cert_san_valid = "IP Address:127.0.0.1" in cert_inspect
+        record("https_certificate_ip_san", cert_san_valid)
 
         env = os.environ.copy()
         env.update({
@@ -339,7 +447,11 @@ def main() -> int:
             "HISPANIA_CORE_HTTPS_CERTIFICATE_PASSWORD": pfx_password,
             "HISPANIA_CORE_MODULES__TRUSTEDPUBLISHERKEYS__hispania.slice7.test": public_key,
         })
-        env.pop("HISPANIA_CORE_DATA_PROTECTION_KEYS_DIRECTORY", None)
+        if os.name == "nt":
+            env["HISPANIA_CORE_DATA_PROTECTION_KEYS_DIRECTORY"] = str(data_protection_keys)
+        else:
+            env.pop("HISPANIA_CORE_DATA_PROTECTION_KEYS_DIRECTORY", None)
+        record("data_protection_storage_isolated", data_protection_keys.is_relative_to(temp_root) and (os.name != "nt" or data_protection_keys.is_dir()))
         core_dll = package / "Hispania.Core.dll"
         bootstrap_input = f"ci-admin\n{admin_password}\n{admin_password}\n"
         bootstrap = subprocess.run(["dotnet", str(core_dll), "bootstrap-admin"], input=bootstrap_input, text=True,
@@ -354,12 +466,24 @@ def main() -> int:
         base_url = f"https://127.0.0.1:{port}"
         stage = "start-core"
         with raw_log.open("wb") as log:
-            core = subprocess.Popen(["dotnet", str(core_dll)], cwd=package, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+            core = subprocess.Popen(["dotnet", str(core_dll)], cwd=package, env=env, stdin=subprocess.DEVNULL,
+                                    stdout=log, stderr=subprocess.STDOUT, creationflags=creationflags)
             wait_health(opener, base_url, core)
         record("published_core_https_health", True)
+        record("plaintext_http_not_available", plaintext_http_rejected(port))
 
         stage = "auth"
         origin = base_url
+        unauthenticated_opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=str(cert_pem))))
+        code, _, _ = request(unauthenticated_opener, base_url + "/api/v1/auth/me")
+        record("unauthenticated_identity_rejected", code == 401)
+        code, _, _ = request(unauthenticated_opener, base_url + "/api/v1/auth/modules")
+        record("unauthenticated_module_administration_rejected", code == 401)
+        code, _, _ = request(unauthenticated_opener, base_url + "/api/v1/auth/login", "POST",
+                             json.dumps({"username": "ci-admin", "password": admin_password}).encode(),
+                             {"Content-Type": "application/json", "Origin": "https://invalid.example"})
+        record("invalid_origin_login_rejected", code == 403)
         code, body, _ = request(opener, base_url + "/api/v1/auth/login", "POST",
                                 json.dumps({"username": "ci-admin", "password": admin_password}).encode(),
                                 {"Content-Type": "application/json", "Origin": origin})
@@ -422,12 +546,14 @@ def main() -> int:
         record("sqlite_persisted_across_restart", db_path.is_file() and db_path.stat().st_size > 0)
         if not db_path.is_file():
             raise RuntimeError("SQLite database missing after stop")
-        with sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True) as connection:
+        with sqlite3.connect(str(db_path)) as connection:
             integrity_result = connection.execute("PRAGMA quick_check").fetchone()[0]
         record("sqlite_quick_check_after_shutdown", integrity_result == "ok")
 
         with raw_log.open("ab") as log:
-            core = subprocess.Popen(["dotnet", str(core_dll)], cwd=package, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+            core = subprocess.Popen(["dotnet", str(core_dll)], cwd=package, env=env, stdin=subprocess.DEVNULL,
+                                    stdout=log, stderr=subprocess.STDOUT, creationflags=creationflags)
             wait_health(opener, base_url, core)
         summary["secondCorePid"] = core.pid
         code, _, _ = request(opener, base_url + "/api/v1/auth/me")

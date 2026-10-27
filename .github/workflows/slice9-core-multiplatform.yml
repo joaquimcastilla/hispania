@@ -24,6 +24,10 @@ jobs:
     permissions:
       contents: read
     outputs:
+      win_x64_artifact: ${{ steps.identity.outputs.win_x64_artifact }}
+      win_x64_content_id: ${{ steps.identity.outputs.win_x64_content_id }}
+      win_x64_manifest_sha256: ${{ steps.identity.outputs.win_x64_manifest_sha256 }}
+      win_x64_integrity_sha256: ${{ steps.identity.outputs.win_x64_integrity_sha256 }}
       linux_x64_artifact: ${{ steps.identity.outputs.linux_x64_artifact }}
       linux_x64_content_id: ${{ steps.identity.outputs.linux_x64_content_id }}
       linux_x64_manifest_sha256: ${{ steps.identity.outputs.linux_x64_manifest_sha256 }}
@@ -61,7 +65,7 @@ jobs:
           if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Elevated runners are not permitted.' }
           if ((dotnet --version).Trim() -ne '10.0.401') { throw 'Unexpected .NET SDK version.' }
 
-      - name: Publish and validate linux-x64, linux-arm64, and signed OOP fixture
+      - name: Publish and validate win-x64, linux-x64, linux-arm64, and signed OOP fixture
         id: identity
         shell: pwsh
         run: ./tools/ci/slice9-publish-core-candidates.ps1
@@ -71,6 +75,15 @@ jobs:
         with:
           name: ${{ steps.identity.outputs.linux_x64_artifact }}
           path: ${{ runner.temp }}/hispania-slice9-candidates-${{ github.run_id }}-${{ github.run_attempt }}/linux-x64/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+      - name: Upload win-x64 candidate bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.identity.outputs.win_x64_artifact }}
+          path: ${{ runner.temp }}/hispania-slice9-candidates-${{ github.run_id }}-${{ github.run_attempt }}/win-x64/
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
@@ -106,6 +119,98 @@ jobs:
             if ($reparse.Count -gt 0) { throw 'Refusing recursive cleanup of a tree containing reparse points.' }
             Remove-Item -LiteralPath $full -Recurse -Force
             if (Test-Path -LiteralPath $full) { throw 'Publisher temporary directory remains after cleanup.' }
+          }
+
+  smoke-windows-x64:
+    needs: publish
+    if: github.event_name == 'push' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/feature/slice9-core-native-smoke'
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+      - hispania-windows
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Verify runner identity and .NET runtime
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REPOSITORY -cne 'joaquimcastilla/hispania' -or $env:GITHUB_REF -cne 'refs/heads/feature/slice9-core-native-smoke') { throw 'Unexpected repository or ref.' }
+          if ($env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64' -or -not [Environment]::Is64BitOperatingSystem) { throw 'Windows x64 runner is required.' }
+          if ([Environment]::Is64BitProcess -eq $false) { throw 'A 64-bit runner process is required.' }
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Elevated runners are not permitted.' }
+          if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { throw '.NET runtime is unavailable.' }
+          if (-not (Get-Command python -ErrorAction SilentlyContinue)) { throw 'Python is unavailable.' }
+          if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) { throw 'PowerShell 7 is unavailable.' }
+          if (-not ((dotnet --list-runtimes) -match '^Microsoft\.AspNetCore\.App 10\.')) { throw 'ASP.NET Core 10 runtime is unavailable.' }
+
+      - name: Checkout exact source for smoke harness only
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download win-x64 package from publish job
+        uses: actions/download-artifact@v6
+        with:
+          name: ${{ needs.publish.outputs.win_x64_artifact }}
+          path: ${{ runner.temp }}/hispania-slice9-download-${{ github.run_id }}-${{ github.run_attempt }}/core
+
+      - name: Download signed fixture from publish job
+        uses: actions/download-artifact@v6
+        with:
+          name: ${{ needs.publish.outputs.fixture_artifact }}
+          path: ${{ runner.temp }}/hispania-slice9-download-${{ github.run_id }}-${{ github.run_attempt }}/fixture
+
+      - name: Verify package and run native published Core smoke
+        id: smoke
+        shell: pwsh
+        env:
+          HISPANIA_EXPECTED_RID: win-x64
+          HISPANIA_EXPECTED_ARCH: x86_64
+          HISPANIA_EXPECTED_SOURCE_SHA: ${{ github.sha }}
+          HISPANIA_EXPECTED_CONTENT_ID: ${{ needs.publish.outputs.win_x64_content_id }}
+          HISPANIA_EXPECTED_MANIFEST_SHA256: ${{ needs.publish.outputs.win_x64_manifest_sha256 }}
+          HISPANIA_EXPECTED_INTEGRITY_SHA256: ${{ needs.publish.outputs.win_x64_integrity_sha256 }}
+          HISPANIA_EXPECTED_FIXTURE_INTEGRITY_SHA256: ${{ needs.publish.outputs.fixture_integrity_sha256 }}
+          HISPANIA_EVIDENCE_DIR: ${{ runner.temp }}/hispania-slice9-evidence-${{ github.run_id }}-${{ github.run_attempt }}-win-x64
+        run: |
+          python .github/scripts/slice9-core-published-smoke.py `
+            --bundle "$env:RUNNER_TEMP/hispania-slice9-download-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT/core" `
+            --fixture "$env:RUNNER_TEMP/hispania-slice9-download-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT/fixture" `
+            --rid win-x64 --architecture x86_64
+          if ($LASTEXITCODE -ne 0) { throw 'Published Windows x64 smoke failed.' }
+
+      - name: Upload sanitized Windows x64 evidence
+        if: always() && steps.smoke.outcome != 'skipped'
+        uses: actions/upload-artifact@v6
+        with:
+          name: hispania-slice9-evidence-win-x64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hispania-slice9-evidence-${{ github.run_id }}-${{ github.run_attempt }}-win-x64/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Remove Windows x64 run-owned inputs and evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP ("hispania-slice9-download-{0}-{1}" -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT)
+          $evidence = Join-Path $env:RUNNER_TEMP ("hispania-slice9-evidence-{0}-{1}-win-x64" -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT)
+          $tempRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+          foreach ($path in @($root, $evidence)) {
+            $full = [IO.Path]::GetFullPath($path)
+            if (-not $full.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing cleanup outside runner temp.' }
+            if ((Split-Path -Leaf $full) -notmatch '^hispania-slice9-(download-[0-9]+-[0-9]+|evidence-[0-9]+-[0-9]+-win-x64)$') { throw 'Refusing unexpected cleanup path.' }
+            if (Test-Path -LiteralPath $full) {
+              $reparse = @(Get-ChildItem -LiteralPath $full -Force -Recurse | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint })
+              if ($reparse.Count -gt 0) { throw 'Refusing recursive cleanup of a tree containing reparse points.' }
+              Remove-Item -LiteralPath $full -Recurse -Force
+              if (Test-Path -LiteralPath $full) { throw 'Run-owned temporary directory remains after cleanup.' }
+            }
           }
 
   smoke-linux-x64:
