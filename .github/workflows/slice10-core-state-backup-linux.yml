@@ -15,6 +15,8 @@ concurrency:
 jobs:
   core-state-backup-linux-x64:
     if: github.event_name == 'push' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/feature/slice10-core-state-backup'
+    env:
+      HISPANIA_DIAGNOSTIC_ONLY: "${{ github.event.head_commit.message == 'ci(slice10): preserve sanitized Linux build diagnostics' }}"
     runs-on:
       - self-hosted
       - Linux
@@ -146,8 +148,13 @@ jobs:
             echo 'Core Release linux-x64 build: PASS'
           else
             status=$?
+            printf '%s\n' "$status" > "$HISPANIA_RESULTS_DIR/build-core.exit"
             echo "Core Release linux-x64 build: FAIL (exit $status); detailed output is withheld from the workflow log."
             exit "$status"
+          fi
+          if [[ "$HISPANIA_DIAGNOSTIC_ONLY" == 'true' ]]; then
+            echo 'Diagnostic-only run: Core build completed; skipping additional builds and all tests.'
+            exit 0
           fi
           if dotnet build tests/core/Hispania.Core.Tests.csproj --configuration Release --runtime linux-x64 --no-restore \
             > "$HISPANIA_RESULTS_DIR/build-tests.log" 2>&1; then
@@ -166,7 +173,84 @@ jobs:
             exit "$status"
           fi
 
+      - name: Preserve sanitized Core compiler diagnostics for the authorized diagnostic run
+        if: always() && env.HISPANIA_DIAGNOSTIC_ONLY == 'true'
+        shell: bash
+        env:
+          HISPANIA_RESULTS_DIR: ${{ runner.temp }}/hispania-slice10-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          CORE_BUILD_OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          set -euo pipefail
+          python3 - "$HISPANIA_SOURCE_DIR" "$HISPANIA_RESULTS_DIR" "$GITHUB_SHA" "$RUNNER_NAME" "$RUNNER_OS" "$RUNNER_ARCH" "$CORE_BUILD_OUTCOME" <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          source_root = Path(sys.argv[1])
+          root = Path(sys.argv[2])
+          source_sha, runner, os_name, arch, outcome = sys.argv[3:]
+          diagnostic_pattern = re.compile(r"(?:\berror\s+(?:CS\d+|MSB\d+|NETSDK\d+|NU\d+|[A-Z]{2,}\d+)\b|:\s*error\s*:|\bBuild FAILED\b)", re.IGNORECASE)
+          secret_patterns = [
+              re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----.*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", re.IGNORECASE | re.DOTALL),
+              re.compile(r"\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{15,}\b"),
+              re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+              re.compile(r"(?i)\b(password|token|secret|credential)\s*[:=]\s*[^\s,;]+", re.IGNORECASE),
+          ]
+          log_path = root / "build-core.log"
+          diagnostics = []
+          if log_path.is_file():
+              for raw_line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                  if not diagnostic_pattern.search(raw_line):
+                      continue
+                  line = raw_line.replace(str(source_root) + os.sep, "<checkout>/")
+                  line = line.replace(str(root), "<run-temp>")
+                  line = re.sub(r"(?i)[A-Z]:\\(?:[^\\\s:]+\\)*([^\\\s:]+)", r"<path>/\1", line)
+                  line = re.sub(r"(?<![A-Za-z0-9_>])/(?:[^/\s:]+/)*([^/\s:]+)", r"<path>/\1", line)
+                  for pattern in secret_patterns:
+                      line = pattern.sub("[REDACTED]", line)
+                  diagnostics.append(line[:1000])
+                  if len(diagnostics) >= 80:
+                      break
+          summary = {
+              "schemaVersion": 1,
+              "sourceCommit": source_sha,
+              "runner": runner,
+              "os": os_name,
+              "architecture": arch,
+              "runtimeIdentifier": "linux-x64",
+              "sdk": "10.0.401",
+              "command": "dotnet build apps/core/Hispania.Core.csproj --configuration Release --runtime linux-x64 --no-restore",
+              "stepOutcome": outcome.upper(),
+              "exitCode": (root / "build-core.exit").read_text().strip() if (root / "build-core.exit").is_file() else None,
+              "diagnosticLines": diagnostics,
+              "rawLogsUploaded": False,
+              "secretsIncluded": False,
+          }
+          root.mkdir(parents=True, exist_ok=True)
+          (root / "build-diagnostic.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as report:
+              report.write("## Slice 10 Linux Core build diagnostics (sanitized)\n\n")
+              report.write(f"Commit `{source_sha}`; runner `{runner}` ({os_name}/{arch}); SDK `10.0.401`; build outcome `{outcome}`.\n\n")
+              if diagnostics:
+                  report.write("```text\n" + "\n".join(diagnostics) + "\n```\n")
+              else:
+                  report.write("No compiler diagnostic lines were retained; inspect the structured summary outcome.\n")
+          print(f"Sanitized Core diagnostic lines retained: {len(diagnostics)}")
+          PY
+
+      - name: Upload sanitized Core build diagnostic only for the authorized diagnostic run
+        if: always() && env.HISPANIA_DIAGNOSTIC_ONLY == 'true' && steps.build.outcome != 'skipped'
+        uses: actions/upload-artifact@v6
+        with:
+          name: hispania-slice10-linux-build-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hispania-slice10-backup-${{ github.run_id }}-${{ github.run_attempt }}/build-diagnostic.json
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Run backup and portable persistence suites serially
+        if: env.HISPANIA_DIAGNOSTIC_ONLY != 'true'
         id: tests
         shell: bash
         env:
@@ -222,9 +306,10 @@ jobs:
           RESTORE_OUTCOME: ${{ steps.restore.outcome }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
           TEST_OUTCOME: ${{ steps.tests.outcome }}
+          DIAGNOSTIC_ONLY: ${{ env.HISPANIA_DIAGNOSTIC_ONLY }}
         run: |
           set -euo pipefail
-          python3 - "$HISPANIA_RESULTS_DIR" "$GITHUB_SHA" "$RUNNER_NAME" "$RUNNER_OS" "$RUNNER_ARCH" "$RESTORE_OUTCOME" "$BUILD_OUTCOME" "$TEST_OUTCOME" <<'PY'
+          python3 - "$HISPANIA_RESULTS_DIR" "$GITHUB_SHA" "$RUNNER_NAME" "$RUNNER_OS" "$RUNNER_ARCH" "$RESTORE_OUTCOME" "$BUILD_OUTCOME" "$TEST_OUTCOME" "$DIAGNOSTIC_ONLY" <<'PY'
           import json
           import os
           import sys
@@ -232,7 +317,7 @@ jobs:
           from pathlib import Path
 
           root = Path(sys.argv[1])
-          source_sha, runner, os_name, arch, restore, build, test_step = sys.argv[2:]
+          source_sha, runner, os_name, arch, restore, build, test_step, diagnostic_only = sys.argv[2:]
           suites = {}
           expected = {
               "backup": (8, 8, 0, 0),
@@ -271,6 +356,7 @@ jobs:
               "restore": restore.upper(),
               "build": build.upper(),
               "testStep": test_step.upper(),
+              "diagnosticOnly": diagnostic_only.lower() == "true",
               "suites": suites,
               "historicalSymlinkSkipPreserved": True,
               "backupArchivesUploaded": False,
@@ -282,6 +368,8 @@ jobs:
           summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as report:
               report.write("## HISPANIA Slice 10 Core state backup/restore — Linux x64\n\n")
+              if diagnostic_only.lower() == "true":
+                  report.write("This is an authorized diagnostic-only run; test suites were intentionally not run.\n\n")
               report.write(f"Result: **{overall}**\n\n")
               report.write(f"Commit: `{source_sha}`; runner: `{runner}` ({os_name}/{arch}); RID: `linux-x64`; .NET SDK: `10.0.401`.\n\n")
               report.write(f"Restore: {restore}; build: {build}; test step: {test_step}.\n\n")
