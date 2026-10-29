@@ -324,20 +324,43 @@ public sealed class PackageLifecycleIntegrationTests
                 held = new FileStream(Path.Combine(staging, "ownership.marker"), FileMode.Open, FileAccess.Read, FileShare.None);
             }
         };
+        IOException? cleanupFailure = null;
         try
         {
-            await Assert.ThrowsAsync<IOException>(() => fixture.Catalog.ApplyPackageSetAsync(plan));
-            Assert.Equal("1.0.0", fixture.Catalog.InspectPackageGraph().Single(row => row.PackageId == BaseId).Version);
-            Assert.Equal("consumer", Message(fixture.Catalog));
+            try
+            {
+                await fixture.Catalog.ApplyPackageSetAsync(plan);
+            }
+            catch (IOException ex)
+            {
+                cleanupFailure = ex;
+            }
             Assert.NotNull(held);
         }
         finally { held?.Dispose(); fixture.Catalog.PackageOperationCheckpoint = null; }
 
-        Assert.NotEmpty(Directory.EnumerateDirectories(Path.Combine(fixture.Installed, ".package-state", "staging")));
-        await fixture.Catalog.RecoverPackageSetAsync();
-        await fixture.Catalog.CleanupPackageHistoryAsync();
-        Assert.Empty(Directory.EnumerateDirectories(Path.Combine(fixture.Installed, ".package-state", "staging")));
-        Assert.Equal("1.0.0", fixture.Catalog.InspectPackageGraph().Single(row => row.PackageId == BaseId).Version);
+        var stagingRoot = Path.Combine(fixture.Installed, ".package-state", "staging");
+        if (cleanupFailure is not null)
+        {
+            // Windows may prevent removal while ownership.marker is open. The operation
+            // must roll back and leave owned staging recoverable.
+            Assert.Equal("1.0.0", fixture.Catalog.InspectPackageGraph().Single(row => row.PackageId == BaseId).Version);
+            Assert.Equal("consumer", Message(fixture.Catalog));
+            Assert.NotEmpty(Directory.EnumerateDirectories(stagingRoot));
+            await fixture.Catalog.RecoverPackageSetAsync();
+            await fixture.Catalog.CleanupPackageHistoryAsync();
+            Assert.Empty(Directory.EnumerateDirectories(stagingRoot));
+            Assert.Equal("1.0.0", fixture.Catalog.InspectPackageGraph().Single(row => row.PackageId == BaseId).Version);
+        }
+        else
+        {
+            // Filesystems that allow unlinking an open file can complete the replacement.
+            var applied = Assert.Single(fixture.Catalog.InspectPackageGraph(), row => row.PackageId == BaseId);
+            Assert.Equal("1.1.0", applied.Version);
+            Assert.True(applied.Installed);
+            Assert.Equal("consumer", Message(fixture.Catalog));
+            Assert.Empty(Directory.EnumerateDirectories(stagingRoot));
+        }
     }
 
     [Fact]
