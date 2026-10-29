@@ -1,0 +1,348 @@
+name: HISPANIA Slice 10 Core state backup and restore (Linux x64)
+
+on:
+  push:
+    branches:
+      - feature/slice10-core-state-backup
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hispania-slice10-core-backup-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  core-state-backup-linux-x64:
+    if: github.event_name == 'push' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/feature/slice10-core-state-backup'
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - hispania-linux
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Validate authorized event and Linux x64 runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'joaquimcastilla/hispania'
+          test "$GITHUB_EVENT_NAME" = 'push'
+          test "$GITHUB_REF" = 'refs/heads/feature/slice10-core-state-backup'
+          test "$GITHUB_ACTOR" = 'joaquimcastilla'
+          test "$GITHUB_TRIGGERING_ACTOR" = 'joaquimcastilla'
+          test "$RUNNER_OS" = 'Linux'
+          test "$RUNNER_ARCH" = 'X64'
+          test "$(uname -m)" = 'x86_64'
+          test "$(id -u)" -ne 0
+          command -v python3 >/dev/null
+
+      - name: Allocate run-owned source, result and SDK paths
+        shell: bash
+        env:
+          HISPANIA_SOURCE_DIR: ${{ github.workspace }}/.artifacts/slice10-source-${{ github.run_id }}-${{ github.run_attempt }}
+          HISPANIA_RESULTS_DIR: ${{ runner.temp }}/hispania-slice10-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          HISPANIA_DOTNET_DIR: ${{ runner.temp }}/hispania-slice10-dotnet-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          for path in "$HISPANIA_SOURCE_DIR" "$HISPANIA_RESULTS_DIR" "$HISPANIA_DOTNET_DIR"; do
+            if [[ -e "$path" || -L "$path" ]]; then
+              echo 'A unique run-owned path already exists; refusing to reuse it.' >&2
+              exit 2
+            fi
+          done
+          workspace_root="$(realpath -m "$GITHUB_WORKSPACE")"
+          case "$(realpath -m "$HISPANIA_SOURCE_DIR")" in
+            "$workspace_root"/.artifacts/slice10-source-[0-9]*-[0-9]*) ;;
+            *) echo 'Refusing an unexpected source checkout path.' >&2; exit 2 ;;
+          esac
+          results_root="$(realpath -m "$RUNNER_TEMP")"
+          case "$(realpath -m "$HISPANIA_RESULTS_DIR")" in
+            "$results_root"/hispania-slice10-backup-[0-9]*-[0-9]*) ;;
+            *) echo 'Refusing an unexpected result path.' >&2; exit 2 ;;
+          esac
+          case "$(realpath -m "$HISPANIA_DOTNET_DIR")" in
+            "$results_root"/hispania-slice10-dotnet-[0-9]*-[0-9]*) ;;
+            *) echo 'Refusing an unexpected SDK path.' >&2; exit 2 ;;
+          esac
+          mkdir -m 700 "$HISPANIA_RESULTS_DIR" "$HISPANIA_DOTNET_DIR"
+          printf '%s\n' "$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT" > "$HISPANIA_RESULTS_DIR/.owner"
+          printf '%s\n' "$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT" > "$HISPANIA_DOTNET_DIR/.owner"
+          printf 'HISPANIA_SOURCE_DIR=%s\n' "$HISPANIA_SOURCE_DIR" >> "$GITHUB_ENV"
+          printf 'HISPANIA_RESULTS_DIR=%s\n' "$HISPANIA_RESULTS_DIR" >> "$GITHUB_ENV"
+          printf 'HISPANIA_DOTNET_DIR=%s\n' "$HISPANIA_DOTNET_DIR" >> "$GITHUB_ENV"
+
+      - name: Checkout exact pushed commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: .artifacts/slice10-source-${{ github.run_id }}-${{ github.run_attempt }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install pinned .NET SDK 10.0.401 into the run-owned directory
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/hispania-slice10-dotnet-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Verify checkout identity and clean source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$HISPANIA_SOURCE_DIR"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"
+          test "$(dotnet --version)" = '10.0.401'
+          printf 'Source SHA: %s\nRunner: %s (%s/%s)\n.NET SDK: %s\n' \
+            "$GITHUB_SHA" "$RUNNER_NAME" "$RUNNER_OS" "$RUNNER_ARCH" "$(dotnet --version)"
+
+      - name: Mark the exact checkout as run-owned
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$HISPANIA_SOURCE_DIR" = "$GITHUB_WORKSPACE/.artifacts/slice10-source-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test "$(git -C "$HISPANIA_SOURCE_DIR" rev-parse HEAD)" = "$GITHUB_SHA"
+          printf '%s\n' "$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT" > "$HISPANIA_SOURCE_DIR/.owner"
+
+      - name: Restore Linux x64 dependencies
+        id: restore
+        shell: bash
+        env:
+          DOTNET_CLI_HOME: ${{ runner.temp }}/hispania-slice10-backup-${{ github.run_id }}-${{ github.run_attempt }}/dotnet-cli
+        run: |
+          set -euo pipefail
+          mkdir -p "$DOTNET_CLI_HOME" "$HISPANIA_RESULTS_DIR/nuget"
+          if dotnet restore tests/core/Hispania.Core.Tests.csproj --runtime linux-x64 \
+            --packages "$HISPANIA_RESULTS_DIR/nuget" > "$HISPANIA_RESULTS_DIR/restore.log" 2>&1; then
+            echo 'NuGet restore for linux-x64: PASS'
+          else
+            status=$?
+            echo "NuGet restore for linux-x64: FAIL (exit $status); detailed output is withheld from the workflow log."
+            exit "$status"
+          fi
+          if dotnet restore apps/module-host/Hispania.ModuleHost.csproj --runtime linux-x64 \
+            --packages "$HISPANIA_RESULTS_DIR/nuget" > "$HISPANIA_RESULTS_DIR/restore-modulehost.log" 2>&1; then
+            echo 'NuGet restore for ModuleHost linux-x64: PASS'
+          else
+            status=$?
+            echo "NuGet restore for ModuleHost linux-x64: FAIL (exit $status); detailed output is withheld from the workflow log."
+            exit "$status"
+          fi
+
+      - name: Build Core and Core tests for Linux x64
+        id: build
+        shell: bash
+        env:
+          DOTNET_CLI_HOME: ${{ runner.temp }}/hispania-slice10-backup-${{ github.run_id }}-${{ github.run_attempt }}/dotnet-cli
+        run: |
+          set -euo pipefail
+          cd "$HISPANIA_SOURCE_DIR"
+          if dotnet build apps/core/Hispania.Core.csproj --configuration Release --runtime linux-x64 --no-restore \
+            > "$HISPANIA_RESULTS_DIR/build-core.log" 2>&1; then
+            echo 'Core Release linux-x64 build: PASS'
+          else
+            status=$?
+            echo "Core Release linux-x64 build: FAIL (exit $status); detailed output is withheld from the workflow log."
+            exit "$status"
+          fi
+          if dotnet build tests/core/Hispania.Core.Tests.csproj --configuration Release --runtime linux-x64 --no-restore \
+            > "$HISPANIA_RESULTS_DIR/build-tests.log" 2>&1; then
+            echo 'Core test Release linux-x64 build: PASS'
+          else
+            status=$?
+            echo "Core test Release linux-x64 build: FAIL (exit $status); detailed output is withheld from the workflow log."
+            exit "$status"
+          fi
+          if dotnet build apps/module-host/Hispania.ModuleHost.csproj --configuration Release --runtime linux-x64 --no-restore \
+            > "$HISPANIA_RESULTS_DIR/build-modulehost.log" 2>&1; then
+            echo 'ModuleHost Release linux-x64 build: PASS'
+          else
+            status=$?
+            echo "ModuleHost Release linux-x64 build: FAIL (exit $status); detailed output is withheld from the workflow log."
+            exit "$status"
+          fi
+
+      - name: Run backup and portable persistence suites serially
+        id: tests
+        shell: bash
+        env:
+          DOTNET_CLI_HOME: ${{ runner.temp }}/hispania-slice10-backup-${{ github.run_id }}-${{ github.run_attempt }}/dotnet-cli
+        run: |
+          set -uo pipefail
+          cd "$HISPANIA_SOURCE_DIR"
+          test_output="$(find tests/core/bin/Release/net10.0 -type f -name Hispania.Core.Tests.dll -print -quit)"
+          if [[ -z "$test_output" ]]; then
+            echo 'Linux x64 Core test assembly was not produced.' >&2
+            exit 2
+          fi
+          test_output="$(dirname "$test_output")"
+          xunit_config="$test_output/xunit.runner.json"
+          if [[ -e "$xunit_config" || -L "$xunit_config" ]]; then
+            echo 'Refusing to overwrite an existing xunit.runner.json.' >&2
+            exit 2
+          fi
+          printf '%s\n' '{"parallelizeTestCollections":false,"parallelizeAssembly":false}' > "$xunit_config"
+          trap 'rm -f -- "$xunit_config"' EXIT
+          mkdir -p "$HISPANIA_RESULTS_DIR/trx/backup" "$HISPANIA_RESULTS_DIR/trx/persistence"
+          python3 - <<'PY'
+          import socket
+          with socket.socket() as listener:
+              try:
+                  listener.bind(("127.0.0.1", 5000))
+              except OSError:
+                  raise SystemExit("A test-owned fixed port is already occupied; refusing to run conflicting tests.")
+          PY
+          run_suite() {
+            name="$1"
+            filter="$2"
+            shift 2
+            set +e
+            dotnet test tests/core/Hispania.Core.Tests.csproj --configuration Release --runtime linux-x64 \
+              --no-build --no-restore --filter "$filter" --results-directory "$HISPANIA_RESULTS_DIR/trx/$name" \
+              --logger "trx;LogFileName=$name-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.trx" \
+              > "$HISPANIA_RESULTS_DIR/$name.log" 2>&1
+            status=$?
+            set -e
+            printf '%s\n' "$status" > "$HISPANIA_RESULTS_DIR/$name.exit"
+            if [[ "$status" -eq 0 ]]; then echo "$name suite: command PASS"; else echo "$name suite: command FAIL (exit $status)"; fi
+          }
+          set -e
+          run_suite backup 'FullyQualifiedName~Hispania.Core.Tests.CoreStateBackupTests'
+          run_suite persistence 'FullyQualifiedName~Hispania.Core.Tests.CorePersistenceTests&FullyQualifiedName!~StoragePathGuardRejectsDataDirectoryJunctionBeforeBootstrapWrites&FullyQualifiedName!~CoreModuleManagerRejectsJunctionAtStagingBeforeReadingOrWriting&FullyQualifiedName!~ModuleStoreJunctionIsRejectedBeforeDiscoveryOrInstallationWrites&FullyQualifiedName!~DataDirectoryJunctionRedirectingToCorePublishIsRejectedWithoutChangingPublishFiles&FullyQualifiedName!~RecursivePackageRemovalRejectsJunctionAndPreservesBothTrees'
+
+      - name: Create sanitized validation summary
+        id: summarize
+        if: always()
+        shell: bash
+        env:
+          RESTORE_OUTCOME: ${{ steps.restore.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+        run: |
+          set -euo pipefail
+          python3 - "$HISPANIA_RESULTS_DIR" "$GITHUB_SHA" "$RUNNER_NAME" "$RUNNER_OS" "$RUNNER_ARCH" "$RESTORE_OUTCOME" "$BUILD_OUTCOME" "$TEST_OUTCOME" <<'PY'
+          import json
+          import os
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          source_sha, runner, os_name, arch, restore, build, test_step = sys.argv[2:]
+          suites = {}
+          expected = {
+              "backup": (8, 8, 0, 0),
+              "persistence": (15, 14, 0, 1),
+          }
+          for name, counts in expected.items():
+              trx_files = sorted((root / "trx" / name).glob("*.trx"))
+              results = []
+              if len(trx_files) == 1:
+                  tree = ET.parse(trx_files[0])
+                  for item in tree.iter():
+                      if item.tag.rsplit("}", 1)[-1] == "UnitTestResult":
+                          results.append({"name": item.attrib.get("testName", ""), "outcome": item.attrib.get("outcome", "")})
+              outcomes = [item["outcome"].lower() for item in results]
+              passed = sum(value == "passed" for value in outcomes)
+              failed = sum(value == "failed" for value in outcomes)
+              skipped = sum(value in ("notexecuted", "skipped") for value in outcomes)
+              suite_pass = len(trx_files) == 1 and (len(results), passed, failed, skipped) == counts
+              if name == "persistence":
+                  expected_skip = "StoragePathGuardDetectsLinksWithoutTraversingOrDeletingTheirTargets"
+                  suite_pass = suite_pass and [r["name"].rsplit(".", 1)[-1] for r in results if r["outcome"].lower() in ("notexecuted", "skipped")] == [expected_skip]
+              exit_path = root / f"{name}.exit"
+              suite_pass = suite_pass and exit_path.is_file() and exit_path.read_text().strip() == "0"
+              suites[name] = {"result": "PASS" if suite_pass else "FAIL", "total": len(results), "passed": passed, "failed": failed, "skipped": skipped}
+
+          overall = "PASS" if restore == "success" and build == "success" and test_step == "success" and all(v["result"] == "PASS" for v in suites.values()) else "FAIL"
+          summary = {
+              "schemaVersion": 1,
+              "overall": overall,
+              "sourceCommit": source_sha,
+              "runner": runner,
+              "os": os_name,
+              "architecture": arch,
+              "runtimeIdentifier": "linux-x64",
+              "sdk": "10.0.401",
+              "restore": restore.upper(),
+              "build": build.upper(),
+              "testStep": test_step.upper(),
+              "suites": suites,
+              "historicalSymlinkSkipPreserved": True,
+              "backupArchivesUploaded": False,
+              "sqliteFilesUploaded": False,
+              "secretsIncluded": False,
+          }
+          root.mkdir(parents=True, exist_ok=True)
+          summary_path = root / "summary.json"
+          summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as report:
+              report.write("## HISPANIA Slice 10 Core state backup/restore — Linux x64\n\n")
+              report.write(f"Result: **{overall}**\n\n")
+              report.write(f"Commit: `{source_sha}`; runner: `{runner}` ({os_name}/{arch}); RID: `linux-x64`; .NET SDK: `10.0.401`.\n\n")
+              report.write(f"Restore: {restore}; build: {build}; test step: {test_step}.\n\n")
+              report.write("| Suite | Result | Passed | Failed | Skipped | Total |\n|---|---|---:|---:|---:|---:|\n")
+              for name, result in suites.items():
+                  report.write(f"| {name} | {result['result']} | {result['passed']} | {result['failed']} | {result['skipped']} | {result['total']} |\n")
+              report.write("\nThe historical direct-symlink SKIP is retained. Windows-only junction tests are outside this Linux job. No backup ZIP, SQLite database, module package or secret is uploaded.\n")
+          print(f"Sanitized validation summary: {overall}")
+          PY
+
+      - name: Upload sanitized summary only
+        if: always() && steps.summarize.outcome == 'success'
+        uses: actions/upload-artifact@v6
+        with:
+          name: hispania-slice10-backup-linux-x64-summary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hispania-slice10-backup-${{ github.run_id }}-${{ github.run_attempt }}/summary.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce required test results
+        if: always() && steps.summarize.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$HISPANIA_RESULTS_DIR/summary.json" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              summary = json.load(stream)
+          if summary.get("overall") != "PASS":
+              raise SystemExit("Required Linux x64 backup/restore validation did not pass.")
+          PY
+
+      - name: Clean only run-owned checkout, SDK and evidence directories
+        if: always()
+        shell: bash
+        env:
+          HISPANIA_SOURCE_DIR: ${{ github.workspace }}/.artifacts/slice10-source-${{ github.run_id }}-${{ github.run_attempt }}
+          HISPANIA_RESULTS_DIR: ${{ runner.temp }}/hispania-slice10-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          HISPANIA_DOTNET_DIR: ${{ runner.temp }}/hispania-slice10-dotnet-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          run_owner="$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT"
+          remove_owned_dir() {
+            path="$1"
+            marker="$path/.owner"
+            [[ -d "$path" && ! -L "$path" && -f "$marker" && "$(cat "$marker")" == "$run_owner" ]] || {
+              echo 'Refusing cleanup because the path lacks this run ownership marker.' >&2
+              return 2
+            }
+            if find "$path" -mindepth 1 -type l -print -quit | grep -q .; then
+              echo 'Refusing recursive cleanup of a tree containing symlinks.' >&2
+              return 2
+            fi
+            case "$path" in
+              "$RUNNER_TEMP"/hispania-slice10-backup-[0-9]*-[0-9]*|"$RUNNER_TEMP"/hispania-slice10-dotnet-[0-9]*-[0-9]*) ;;
+              "$GITHUB_WORKSPACE"/.artifacts/slice10-source-[0-9]*-[0-9]*) ;;
+              *) echo 'Refusing cleanup outside exact run-owned path patterns.' >&2; return 2 ;;
+            esac
+            rm -rf -- "$path"
+            [[ ! -e "$path" && ! -L "$path" ]]
+          }
+          remove_owned_dir "$HISPANIA_SOURCE_DIR"
+          remove_owned_dir "$HISPANIA_RESULTS_DIR"
+          remove_owned_dir "$HISPANIA_DOTNET_DIR"

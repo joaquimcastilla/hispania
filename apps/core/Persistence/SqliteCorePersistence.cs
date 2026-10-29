@@ -9,7 +9,7 @@ namespace Hispania.Core.Persistence;
 
 internal sealed class SqliteCorePersistence : ICorePersistence
 {
-    private const int CurrentSchemaVersion = 3;
+    internal const int CurrentSchemaVersion = 3;
     private const int BusyTimeoutMilliseconds = 5000;
     private const string MigrationTable = "core_schema_migrations";
     private const string InstanceTable = "core_instance";

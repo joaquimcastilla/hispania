@@ -86,6 +86,8 @@ internal static class CoreHost
         });
         builder.Services.AddSingleton(services => new CoreModuleManager(
             services.GetRequiredService<ModuleExtensionCatalog>(), hostOptions.Storage.DataDirectory));
+        builder.Services.AddSingleton<CoreDataDirectoryLeaseHostedService>();
+        builder.Services.AddHostedService<CoreDataDirectoryLeaseHostedService>(services => services.GetRequiredService<CoreDataDirectoryLeaseHostedService>());
         builder.Services.AddHostedService<PackageLifecycleHostedService>();
         builder.Services.AddSingleton<ICorePersistence, SqliteCorePersistence>();
         builder.Services.AddSingleton<SqliteCoreIdentityStore>();

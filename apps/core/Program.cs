@@ -3,6 +3,7 @@ using Hispania.Core.Hosting;
 using Hispania.Core.Identity;
 using Hispania.Core.Persistence;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Hispania.Core;
@@ -15,10 +16,14 @@ internal static class Program
         {
             if (args.Length != 0)
             {
+                if (args.Length == 2 && string.Equals(args[0], "backup-core-state", StringComparison.Ordinal))
+                    return await BackupCoreStateAsync(args[1]).ConfigureAwait(false);
+                if (args.Length == 2 && string.Equals(args[0], "restore-core-state", StringComparison.Ordinal))
+                    return await RestoreCoreStateAsync(args[1]).ConfigureAwait(false);
                 if (args.Length != 1 || !string.Equals(args[0], "bootstrap-admin", StringComparison.Ordinal) &&
                     !string.Equals(args[0], "invalidate-sessions", StringComparison.Ordinal))
                 {
-                    Console.Error.WriteLine("Usage: Hispania.Core [bootstrap-admin|invalidate-sessions]");
+                    Console.Error.WriteLine("Usage: Hispania.Core [bootstrap-admin|invalidate-sessions|backup-core-state <path>|restore-core-state <path>]");
                     return 2;
                 }
                 return string.Equals(args[0], "bootstrap-admin", StringComparison.Ordinal)
@@ -35,6 +40,11 @@ internal static class Program
             Console.Error.WriteLine($"Core configuration error: {exception.Message}");
             return 2;
         }
+        catch (CoreStateBackupException exception)
+        {
+            Console.Error.WriteLine($"Core state operation failed: {exception.Message}");
+            return 3;
+        }
         catch (Exception exception)
         {
             Console.Error.WriteLine($"Core host failed during startup or shutdown ({exception.GetType().Name}).");
@@ -45,6 +55,7 @@ internal static class Program
     private static async Task<int> BootstrapAdministratorAsync()
     {
         await using var app = CoreHost.Build(httpEnabled: false);
+        using var lease = CoreDataDirectoryLease.Acquire(app.Services.GetRequiredService<CoreStorageOptions>().DataDirectory, exclusive: false);
         var persistence = app.Services.GetRequiredService<ICorePersistence>();
         await persistence.InitializeAsync(CancellationToken.None).ConfigureAwait(false);
         var bootstrap = app.Services.GetRequiredService<ICoreBootstrapService>();
@@ -75,12 +86,35 @@ internal static class Program
     private static async Task<int> InvalidateSessionsAsync()
     {
         await using var app = CoreHost.Build(httpEnabled: false);
+        using var lease = CoreDataDirectoryLease.Acquire(app.Services.GetRequiredService<CoreStorageOptions>().DataDirectory, exclusive: false);
         var persistence = app.Services.GetRequiredService<ICorePersistence>();
         await persistence.InitializeAsync(CancellationToken.None).ConfigureAwait(false);
         var sessions = app.Services.GetRequiredService<ICoreSessionService>();
         var count = await sessions.InvalidateAllForLocalRecoveryAsync(DateTimeOffset.UtcNow, CancellationToken.None).ConfigureAwait(false);
         Console.WriteLine($"Local recovery complete. Sessions invalidated: {count}.");
         return 0;
+    }
+
+    private static async Task<int> BackupCoreStateAsync(string path)
+    {
+        var options = ReadStorageOptions();
+        var result = await CoreStateBackupService.CreateAsync(options, path, CancellationToken.None).ConfigureAwait(false);
+        Console.WriteLine($"Core state backup created. SHA-256: {result.Sha256}; bytes: {result.Length}.");
+        return 0;
+    }
+
+    private static async Task<int> RestoreCoreStateAsync(string path)
+    {
+        var options = ReadStorageOptions();
+        await CoreStateBackupService.RestoreAsync(options, path, CancellationToken.None).ConfigureAwait(false);
+        Console.WriteLine("Core state restore completed and passed SQLite integrity verification.");
+        return 0;
+    }
+
+    private static CoreStorageOptions ReadStorageOptions()
+    {
+        var configuration = new ConfigurationBuilder().AddEnvironmentVariables(prefix: "HISPANIA_CORE_").Build();
+        return CoreStorageOptions.Read(configuration, AppContext.BaseDirectory);
     }
 
     private static string ReadSecretInput(string prompt, bool echo)
