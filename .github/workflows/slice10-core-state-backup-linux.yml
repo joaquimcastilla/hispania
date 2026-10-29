@@ -17,6 +17,7 @@ jobs:
     if: github.event_name == 'push' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/feature/slice10-core-state-backup'
     env:
       HISPANIA_DIAGNOSTIC_ONLY: "${{ github.event.head_commit.message == 'ci(slice10): preserve sanitized Linux build diagnostics' }}"
+      HISPANIA_PERSISTENCE_DIAGNOSTIC_ONLY: "${{ github.event.head_commit.message == 'ci(slice10): diagnose Linux persistence regression' }}"
     runs-on:
       - self-hosted
       - Linux
@@ -296,8 +297,12 @@ jobs:
             if [[ "$status" -eq 0 ]]; then echo "$name suite: command PASS"; else echo "$name suite: command FAIL (exit $status)"; fi
           }
           set -e
-          run_suite backup 'FullyQualifiedName~Hispania.Core.Tests.CoreStateBackupTests'
-          run_suite persistence 'FullyQualifiedName~Hispania.Core.Tests.CorePersistenceTests&FullyQualifiedName!~StoragePathGuardRejectsDataDirectoryJunctionBeforeBootstrapWrites&FullyQualifiedName!~CoreModuleManagerRejectsJunctionAtStagingBeforeReadingOrWriting&FullyQualifiedName!~ModuleStoreJunctionIsRejectedBeforeDiscoveryOrInstallationWrites&FullyQualifiedName!~DataDirectoryJunctionRedirectingToCorePublishIsRejectedWithoutChangingPublishFiles&FullyQualifiedName!~RecursivePackageRemovalRejectsJunctionAndPreservesBothTrees'
+          if [[ "$HISPANIA_PERSISTENCE_DIAGNOSTIC_ONLY" == 'true' ]]; then
+            run_suite persistence 'FullyQualifiedName~Hispania.Core.Tests.CorePersistenceTests&FullyQualifiedName!~StoragePathGuardRejectsDataDirectoryJunctionBeforeBootstrapWrites&FullyQualifiedName!~CoreModuleManagerRejectsJunctionAtStagingBeforeReadingOrWriting&FullyQualifiedName!~ModuleStoreJunctionIsRejectedBeforeDiscoveryOrInstallationWrites&FullyQualifiedName!~DataDirectoryJunctionRedirectingToCorePublishIsRejectedWithoutChangingPublishFiles&FullyQualifiedName!~RecursivePackageRemovalRejectsJunctionAndPreservesBothTrees'
+          else
+            run_suite backup 'FullyQualifiedName~Hispania.Core.Tests.CoreStateBackupTests'
+            run_suite persistence 'FullyQualifiedName~Hispania.Core.Tests.CorePersistenceTests&FullyQualifiedName!~StoragePathGuardRejectsDataDirectoryJunctionBeforeBootstrapWrites&FullyQualifiedName!~CoreModuleManagerRejectsJunctionAtStagingBeforeReadingOrWriting&FullyQualifiedName!~ModuleStoreJunctionIsRejectedBeforeDiscoveryOrInstallationWrites&FullyQualifiedName!~DataDirectoryJunctionRedirectingToCorePublishIsRejectedWithoutChangingPublishFiles&FullyQualifiedName!~RecursivePackageRemovalRejectsJunctionAndPreservesBothTrees'
+          fi
 
       - name: Create sanitized validation summary
         id: summarize
@@ -308,30 +313,61 @@ jobs:
           BUILD_OUTCOME: ${{ steps.build.outcome }}
           TEST_OUTCOME: ${{ steps.tests.outcome }}
           DIAGNOSTIC_ONLY: ${{ env.HISPANIA_DIAGNOSTIC_ONLY }}
+          PERSISTENCE_DIAGNOSTIC_ONLY: ${{ env.HISPANIA_PERSISTENCE_DIAGNOSTIC_ONLY }}
         run: |
           set -euo pipefail
-          python3 - "$HISPANIA_RESULTS_DIR" "$GITHUB_SHA" "$RUNNER_NAME" "$RUNNER_OS" "$RUNNER_ARCH" "$RESTORE_OUTCOME" "$BUILD_OUTCOME" "$TEST_OUTCOME" "$DIAGNOSTIC_ONLY" <<'PY'
+          python3 - "$HISPANIA_SOURCE_DIR" "$HISPANIA_RESULTS_DIR" "$GITHUB_SHA" "$RUNNER_NAME" "$RUNNER_OS" "$RUNNER_ARCH" "$RESTORE_OUTCOME" "$BUILD_OUTCOME" "$TEST_OUTCOME" "$DIAGNOSTIC_ONLY" "$PERSISTENCE_DIAGNOSTIC_ONLY" <<'PY'
           import json
           import os
+          import re
           import sys
           import xml.etree.ElementTree as ET
           from pathlib import Path
 
-          root = Path(sys.argv[1])
-          source_sha, runner, os_name, arch, restore, build, test_step, diagnostic_only = sys.argv[2:]
+          source_root = Path(sys.argv[1])
+          root = Path(sys.argv[2])
+          source_sha, runner, os_name, arch, restore, build, test_step, diagnostic_only, persistence_diagnostic_only = sys.argv[3:]
+          diagnostic_mode = persistence_diagnostic_only.lower() == "true"
           suites = {}
+          failed_tests = []
           expected = {
               "backup": (8, 8, 0, 0),
               "persistence": (15, 14, 0, 1),
           }
-          for name, counts in expected.items():
+          selected_suites = {"persistence": expected["persistence"]} if diagnostic_mode else expected
+          secret_patterns = [
+              re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----.*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", re.IGNORECASE | re.DOTALL),
+              re.compile(r"\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{15,}\b"),
+              re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+              re.compile(r"(?i)\b(password|token|secret|credential|cookie)\s*[:=]\s*[^\s,;]+", re.IGNORECASE),
+          ]
+          def sanitize(value, limit):
+              text = value.replace(str(source_root), "<checkout>").replace(str(root), "<run-temp>")
+              text = re.sub(r"(?i)[A-Z]:\\(?:[^\\\s:]+\\)*([^\\\s:]+)", r"<path>/\1", text)
+              text = re.sub(r"(?<![A-Za-z0-9_>])/(?:[^/\s:]+/)*([^/\s:]+)", r"<path>/\1", text)
+              for pattern in secret_patterns:
+                  text = pattern.sub("[REDACTED]", text)
+              return text[:limit]
+
+          for name, counts in selected_suites.items():
               trx_files = sorted((root / "trx" / name).glob("*.trx"))
               results = []
               if len(trx_files) == 1:
                   tree = ET.parse(trx_files[0])
                   for item in tree.iter():
                       if item.tag.rsplit("}", 1)[-1] == "UnitTestResult":
-                          results.append({"name": item.attrib.get("testName", ""), "outcome": item.attrib.get("outcome", "")})
+                          result = {"name": item.attrib.get("testName", ""), "outcome": item.attrib.get("outcome", "")}
+                          results.append(result)
+                          if diagnostic_mode and result["outcome"].lower() == "failed":
+                              error_info = next((node for node in item.iter() if node.tag.rsplit("}", 1)[-1] == "ErrorInfo"), None)
+                              if error_info is not None:
+                                  message = next((node for node in error_info.iter() if node.tag.rsplit("}", 1)[-1] == "Message"), None)
+                                  stack = next((node for node in error_info.iter() if node.tag.rsplit("}", 1)[-1] == "StackTrace"), None)
+                                  failed_tests.append({
+                                      "name": result["name"],
+                                      "message": sanitize("".join(message.itertext()) if message is not None else "", 4000),
+                                      "stackTrace": sanitize("".join(stack.itertext()) if stack is not None else "", 8000),
+                                  })
               outcomes = [item["outcome"].lower() for item in results]
               passed = sum(value == "passed" for value in outcomes)
               failed = sum(value == "failed" for value in outcomes)
@@ -344,7 +380,12 @@ jobs:
               suite_pass = suite_pass and exit_path.is_file() and exit_path.read_text().strip() == "0"
               suites[name] = {"result": "PASS" if suite_pass else "FAIL", "total": len(results), "passed": passed, "failed": failed, "skipped": skipped}
 
-          overall = "PASS" if restore == "success" and build == "success" and test_step == "success" and all(v["result"] == "PASS" for v in suites.values()) else "FAIL"
+          overall = "FAIL" if diagnostic_mode else ("PASS" if restore == "success" and build == "success" and test_step == "success" and all(v["result"] == "PASS" for v in suites.values()) else "FAIL")
+          persistence_result = suites.get("persistence", {}).get("result", "NOT_RUN")
+          if diagnostic_mode:
+              diagnostic_result = "REPRODUCED" if persistence_result == "FAIL" and any(item["outcome"].lower() == "failed" for item in results) else ("NOT_REPRODUCED" if persistence_result == "PASS" else "INVALID")
+          else:
+              diagnostic_result = None
           summary = {
               "schemaVersion": 1,
               "overall": overall,
@@ -358,7 +399,10 @@ jobs:
               "build": build.upper(),
               "testStep": test_step.upper(),
               "diagnosticOnly": diagnostic_only.lower() == "true",
+              "persistenceDiagnosticOnly": diagnostic_mode,
+              "persistenceDiagnosticResult": diagnostic_result,
               "suites": suites,
+              "failedTests": failed_tests,
               "historicalSymlinkSkipPreserved": True,
               "backupArchivesUploaded": False,
               "sqliteFilesUploaded": False,
@@ -374,6 +418,10 @@ jobs:
               report.write(f"Result: **{overall}**\n\n")
               report.write(f"Commit: `{source_sha}`; runner: `{runner}` ({os_name}/{arch}); RID: `linux-x64`; .NET SDK: `10.0.401`.\n\n")
               report.write(f"Restore: {restore}; build: {build}; test step: {test_step}.\n\n")
+              if diagnostic_mode:
+                  report.write(f"Focused persistence diagnostic: **{diagnostic_result}**. This diagnostic-only run is never an acceptance PASS.\n\n")
+                  for failed in failed_tests:
+                      report.write(f"Failed test: `{failed['name']}`\n\n```text\n{failed['message']}\n{failed['stackTrace']}\n```\n\n")
               report.write("| Suite | Result | Passed | Failed | Skipped | Total |\n|---|---|---:|---:|---:|---:|\n")
               for name, result in suites.items():
                   report.write(f"| {name} | {result['result']} | {result['passed']} | {result['failed']} | {result['skipped']} | {result['total']} |\n")
