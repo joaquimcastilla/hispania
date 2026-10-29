@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       candidate_sha:
-        description: Full SHA of the exact Step 2.1 candidate commit to validate.
+        description: Full SHA of the exact legacy or authorized Slice 10 candidate commit at the selected branch HEAD.
         required: true
         type: string
 
@@ -17,7 +17,13 @@ permissions:
 
 jobs:
   validate:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'joaquimcastilla/hispania' &&
+      github.actor == 'joaquimcastilla' &&
+      github.triggering_actor == 'joaquimcastilla' &&
+      inputs.candidate_sha == github.sha &&
+      (github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' || github.ref == 'refs/heads/feature/slice10-core-state-backup')
     runs-on: [self-hosted, hispania, hispania-linux]
     steps:
       - uses: actions/checkout@v7
@@ -227,7 +233,13 @@ jobs:
         run: ./tools/test-security-canaries.ps1 -EvidenceDirectory .artifacts
 
   postgres16-disposable:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'joaquimcastilla/hispania' &&
+      github.actor == 'joaquimcastilla' &&
+      github.triggering_actor == 'joaquimcastilla' &&
+      inputs.candidate_sha == github.sha &&
+      (github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' || github.ref == 'refs/heads/feature/slice10-core-state-backup')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -258,7 +270,11 @@ jobs:
           test "$GITHUB_REPOSITORY" = joaquimcastilla/hispania
           test "$GITHUB_ACTOR" = joaquimcastilla
           test "$TRIGGERING_ACTOR" = joaquimcastilla
-          test "$GITHUB_REF" = refs/heads/codex/hispania-0.7.0-step2-1-production-readiness
+          case "$GITHUB_REF" in
+            refs/heads/codex/hispania-0.7.0-step2-1-production-readiness|refs/heads/feature/slice10-core-state-backup) ;;
+            *) echo 'Dispatch ref is not an explicitly authorized candidate branch.' >&2; exit 2 ;;
+          esac
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$GITHUB_SHA" = "$REQUESTED_SHA"
           echo "::add-mask::$PGPASSWORD"
 
@@ -266,8 +282,25 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Verify candidate branch HEAD, checkout and Slice 10 ancestry
+        if: github.ref == 'refs/heads/feature/slice10-core-state-backup'
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          expected_ref='refs/heads/feature/slice10-core-state-backup'
+          expected_base='fcfaee1a05726ae3702f2b815c86fad7c36e1ec7'
+          [[ "$GITHUB_REF" == "$expected_ref" ]]
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$REQUESTED_SHA" == "$GITHUB_SHA" ]]
+          [[ "$(git rev-parse HEAD)" == "$REQUESTED_SHA" ]]
+          remote_head="$(git ls-remote https://github.com/joaquimcastilla/hispania.git "$expected_ref" | awk -v ref="$expected_ref" '$2 == ref { print $1 }')"
+          [[ "$remote_head" == "$REQUESTED_SHA" ]]
+          git merge-base --is-ancestor "$expected_base" "$REQUESTED_SHA"
 
       - name: Install PostgreSQL 16 client tools
         shell: bash
@@ -316,7 +349,13 @@ jobs:
             .artifacts/postgres16-migrations
 
   validate-windows-launcher:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'joaquimcastilla/hispania' && github.actor == 'joaquimcastilla' && github.triggering_actor == 'joaquimcastilla' && github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' && inputs.candidate_sha == github.sha
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'joaquimcastilla/hispania' &&
+      github.actor == 'joaquimcastilla' &&
+      github.triggering_actor == 'joaquimcastilla' &&
+      inputs.candidate_sha == github.sha &&
+      (github.ref == 'refs/heads/codex/hispania-0.7.0-step2-1-production-readiness' || github.ref == 'refs/heads/feature/slice10-core-state-backup')
     runs-on: [self-hosted, hispania, hispania-windows]
     steps:
       - uses: actions/checkout@v7
