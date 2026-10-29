@@ -117,6 +117,7 @@ jobs:
           DOTNET_CLI_HOME: ${{ runner.temp }}/hispania-slice10-backup-${{ github.run_id }}-${{ github.run_attempt }}/dotnet-cli
         run: |
           set -euo pipefail
+          cd "$HISPANIA_SOURCE_DIR"
           mkdir -p "$DOTNET_CLI_HOME" "$HISPANIA_RESULTS_DIR/nuget"
           if dotnet restore tests/core/Hispania.Core.Tests.csproj --runtime linux-x64 \
             --packages "$HISPANIA_RESULTS_DIR/nuget" > "$HISPANIA_RESULTS_DIR/restore.log" 2>&1; then
@@ -173,8 +174,8 @@ jobs:
             exit "$status"
           fi
 
-      - name: Preserve sanitized Core compiler diagnostics for the authorized diagnostic run
-        if: always() && env.HISPANIA_DIAGNOSTIC_ONLY == 'true'
+      - name: Preserve sanitized Core compiler diagnostics for diagnostic runs and build failures
+        if: always() && (env.HISPANIA_DIAGNOSTIC_ONLY == 'true' || steps.build.outcome == 'failure')
         shell: bash
         env:
           HISPANIA_RESULTS_DIR: ${{ runner.temp }}/hispania-slice10-backup-${{ github.run_id }}-${{ github.run_attempt }}
@@ -240,8 +241,8 @@ jobs:
           print(f"Sanitized Core diagnostic lines retained: {len(diagnostics)}")
           PY
 
-      - name: Upload sanitized Core build diagnostic only for the authorized diagnostic run
-        if: always() && env.HISPANIA_DIAGNOSTIC_ONLY == 'true' && steps.build.outcome != 'skipped'
+      - name: Upload sanitized Core build diagnostic for diagnostic runs and build failures
+        if: always() && (env.HISPANIA_DIAGNOSTIC_ONLY == 'true' || steps.build.outcome == 'failure') && steps.build.outcome != 'skipped'
         uses: actions/upload-artifact@v6
         with:
           name: hispania-slice10-linux-build-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
