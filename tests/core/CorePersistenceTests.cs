@@ -214,15 +214,34 @@ public sealed class CorePersistenceTests
     }
 
     [Fact]
-    public void StorageConfigurationRejectsPublishOverlapWithWindowsCaseRules()
+    public void StorageConfigurationAppliesPublishOverlapUsingPlatformCaseRules()
     {
         using var directory = new TemporaryDirectory();
         Directory.CreateDirectory(directory.Path);
         var publish = Path.Combine(directory.Path, "CorePublish");
         Directory.CreateDirectory(publish);
+
+        var sameCase = Path.Combine(publish, "data");
+        var sameCaseConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["DATA_DIRECTORY"] = sameCase }).Build();
+        Assert.Throws<CoreConfigurationException>(() => CoreStorageOptions.Read(sameCaseConfiguration, publish));
+
         var inside = Path.Combine(directory.Path, "corepublish", "data");
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["DATA_DIRECTORY"] = inside }).Build();
-        Assert.Throws<CoreConfigurationException>(() => CoreStorageOptions.Read(configuration, publish));
+
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Throws<CoreConfigurationException>(() => CoreStorageOptions.Read(configuration, publish));
+            return;
+        }
+
+        var caseProbe = Path.Combine(directory.Path, "CaseSensitivityProbe");
+        Directory.CreateDirectory(caseProbe);
+        var fileSystemIsCaseSensitive = !Directory.Exists(Path.Combine(directory.Path, "casesensitivityprobe"));
+        if (fileSystemIsCaseSensitive)
+        {
+            var options = CoreStorageOptions.Read(configuration, publish);
+            Assert.Equal(Path.GetFullPath(inside), options.DataDirectory);
+        }
     }
 
     [Fact]
