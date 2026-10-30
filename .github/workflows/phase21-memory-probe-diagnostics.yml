@@ -1,0 +1,67 @@
+name: Phase 21 Windows memory probe diagnostics
+
+on:
+  push:
+    branches:
+      - feature/slice10-core-state-backup
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase21-memory-probe-diagnostics-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-memory-probe:
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'joaquimcastilla/hispania' &&
+      github.actor == 'joaquimcastilla' &&
+      github.ref == 'refs/heads/feature/slice10-core-state-backup'
+    runs-on: [self-hosted, hispania, hispania-windows]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
+      - name: Verify exact source revision
+        shell: pwsh
+        run: |
+          $head = (git rev-parse HEAD).Trim()
+          if ($head -cne $env:GITHUB_SHA) { throw 'Checkout SHA does not match the event SHA.' }
+          Write-Output "SOURCE_SHA=$head"
+      - name: Run only the Windows memory resource probe
+        shell: pwsh
+        run: >-
+          dotnet test tests/unit/Hispania.Runtime.Tests.csproj
+          --filter "FullyQualifiedName~FiniteChildProbesAreContainedByRealResourcePolicy&DisplayName~memory"
+          --results-directory ".artifacts/phase21-memory-diagnostics/${{ github.run_id }}"
+          --logger "trx;LogFileName=windows-memory-probe.trx"
+          --verbosity minimal
+      - name: Verify one focused test result
+        if: always()
+        shell: pwsh
+        run: |
+          $trxPath = ".artifacts/phase21-memory-diagnostics/${{ github.run_id }}/windows-memory-probe.trx"
+          if (-not (Test-Path -LiteralPath $trxPath -PathType Leaf)) { throw 'Focused test TRX is missing.' }
+          [xml]$trx = Get-Content -Raw -LiteralPath $trxPath
+          $results = @($trx.SelectNodes("//*[local-name()='UnitTestResult']"))
+          if ($results.Count -ne 1) { throw "Expected exactly one test result; found $($results.Count)." }
+          if ($results[0].testName -notmatch 'FiniteChildProbesAreContainedByRealResourcePolicy.*memory') { throw 'TRX does not contain the memory probe test.' }
+          if ($results[0].outcome -notin @('Passed', 'Failed')) { throw "Unexpected focused test outcome: $($results[0].outcome)." }
+          Write-Output "FOCUSED_TEST_OUTCOME=$($results[0].outcome)"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: phase21-windows-memory-diagnostics-${{ github.run_id }}
+          path: .artifacts/phase21-memory-diagnostics/${{ github.run_id }}/windows-memory-probe.trx
+          if-no-files-found: error
+          retention-days: 7

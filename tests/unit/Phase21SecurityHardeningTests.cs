@@ -68,27 +68,60 @@ public sealed class Phase21SecurityHardeningTests(Xunit.Abstractions.ITestOutput
         var start = new System.Diagnostics.ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
         start.ArgumentList.Add(probe); start.ArgumentList.Add("--phase21-resource-probe"); start.ArgumentList.Add(mode);
         typeof(OutOfProcessResourceLimits).GetMethod("Configure", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(policy, [start]);
+        var timer = System.Diagnostics.Stopwatch.StartNew();
         using var process = System.Diagnostics.Process.Start(start)!;
         IDisposable? limits = null;
+        var readyReceived = false;
+        var startSent = false;
         try
         {
             Assert.Equal("ready", await process.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(15)));
+            readyReceived = true;
             limits = (IDisposable?)typeof(OutOfProcessResourceLimits).GetMethod("ApplyTo", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(policy, [process]);
             if (OperatingSystem.IsWindows()) Assert.NotNull(limits);
-            var output = BoundedProcessOutput.DrainAsync(process.StandardOutput, new System.Text.StringBuilder());
-            var error = BoundedProcessOutput.DrainAsync(process.StandardError, new System.Text.StringBuilder());
+            var stdoutCapture = new System.Text.StringBuilder();
+            var stderrCapture = new System.Text.StringBuilder();
+            var output = BoundedProcessOutput.DrainAsync(process.StandardOutput, stdoutCapture);
+            var error = BoundedProcessOutput.DrainAsync(process.StandardError, stderrCapture);
             await process.StandardInput.WriteLineAsync("start"); await process.StandardInput.FlushAsync();
+            startSent = true;
             await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(20));
-            Assert.NotEqual(43, process.ExitCode);
-            Assert.NotEqual(64, process.ExitCode);
-            if (mode != "cpu") Assert.Equal(42, process.ExitCode);
             await Task.WhenAll(output, error);
+            var expectedExit = mode == "cpu" ? process.ExitCode is not 43 and not 64 : process.ExitCode == 42;
+            if (!expectedExit)
+            {
+                var diagnostics = mode == "memory" ? MemoryProbeFailureDiagnostics(stderrCapture) : "No memory-probe stderr emitted.";
+                var exitCodeHex = unchecked((uint)process.ExitCode).ToString("X8", System.Globalization.CultureInfo.InvariantCulture);
+                Assert.Fail(
+                    $"Resource probe exited unexpectedly: mode={mode}; exitCode={process.ExitCode}; exitCodeHex=0x{exitCodeHex}; " +
+                    $"readyReceived={readyReceived}; startSent={startSent}; limitsAttached={limits is not null}; " +
+                    $"windowsProcessMemoryBytes={policy.MaximumMemoryBytes}; windowsJobMemoryBytes={policy.MaximumMemoryBytes}; " +
+                    $"heapHardLimitHex={policy.MaximumMemoryBytes:X}; " +
+                    $"cpuSeconds={policy.MaximumCpuSeconds}; cpuRatePercent={policy.MaximumCpuRatePercent}; " +
+                    $"windowsProcessLimit={policy.MaximumWindowsProcessCount}; requireOperatingSystemLimits={policy.RequireOperatingSystemLimits}; " +
+                    $"elapsedMs={timer.ElapsedMilliseconds}; {diagnostics}");
+            }
         }
         finally
         {
             if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); }
             limits?.Dispose();
         }
+    }
+
+    private static string MemoryProbeFailureDiagnostics(System.Text.StringBuilder stderrCapture)
+    {
+        string captured;
+        lock (stderrCapture) captured = stderrCapture.ToString();
+        var lines = captured.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(line => line.StartsWith("PHASE21_MEMORY_PROBE mode=memory ", StringComparison.Ordinal) ||
+                           line is "Stack overflow." or "Process terminated." or "The process was terminated due to StackOverflowException.")
+            .TakeLast(8)
+            .Select(line => line.Length <= 180 ? line : line[..180])
+            .ToArray();
+        var tail = lines.Length == 0 ? "<none>" : string.Join(" | ", lines);
+        var lastMilestone = lines.Length == 0 ? "<none>" : lines[^1];
+        return $"lastMilestone={lastMilestone}; stderrTail={tail}";
     }
 
     [Fact]

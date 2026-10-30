@@ -2,11 +2,23 @@ using Hispania.ModuleSystem.Contracts;
 using Hispania.Runtime;
 using System.Text.Json;
 
+static void WriteMemoryProbeDiagnostic(string milestone, int? block = null)
+{
+    var detail = block.HasValue
+        ? $" milestone={milestone} block={block.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+        : $" milestone={milestone}";
+    Console.Error.WriteLine($"PHASE21_MEMORY_PROBE mode=memory{detail}");
+    Console.Error.Flush();
+}
+
 // Test-only, finite probes. Parent attaches the real resource policy before sending input.
 if (args.Length == 2 && args[0] == "--phase21-resource-probe")
 {
+    var memoryProbe = args[1] == "memory";
+    if (memoryProbe) WriteMemoryProbeDiagnostic("process-start");
     Console.WriteLine("ready");
     if (Console.ReadLine() != "start") return 64;
+    if (memoryProbe) WriteMemoryProbeDiagnostic("start-received");
     if (args[1] == "cpu")
     {
         var watch = System.Diagnostics.Stopwatch.StartNew();
@@ -15,18 +27,29 @@ if (args.Length == 2 && args[0] == "--phase21-resource-probe")
     }
     if (args[1] == "memory")
     {
+        WriteMemoryProbeDiagnostic("allocation-start");
         try
         {
             var retained = new List<byte[]>();
             for (var i = 0; i < 32; i++)
             {
+                WriteMemoryProbeDiagnostic("allocation-attempt", i + 1);
                 var block = new byte[4 * 1024 * 1024];
                 Array.Fill(block, (byte)1); retained.Add(block);
+                WriteMemoryProbeDiagnostic("allocation-completed", i + 1);
             }
             GC.KeepAlive(retained);
+            WriteMemoryProbeDiagnostic("allocation-limit-not-reached");
             return 43; // Never allocate more than 128 MiB even if containment is broken.
         }
-        catch (OutOfMemoryException) { return 42; }
+        catch (OutOfMemoryException)
+        {
+            Console.Error.WriteLine("PHASE21_MEMORY_PROBE mode=memory milestone=out-of-memory-caught");
+            Console.Error.Flush();
+            Console.Error.WriteLine("PHASE21_MEMORY_PROBE mode=memory milestone=exit-planned code=42");
+            Console.Error.Flush();
+            return 42;
+        }
     }
     if (args[1] == "process-count")
     {
