@@ -11,6 +11,33 @@ static void WriteMemoryProbeDiagnostic(string milestone, int? block = null)
     Console.Error.Flush();
 }
 
+static int RunMemoryProbe()
+{
+    WriteMemoryProbeDiagnostic("allocation-start");
+    try
+    {
+        var retained = new List<byte[]>();
+        for (var i = 0; i < 32; i++)
+        {
+            WriteMemoryProbeDiagnostic("allocation-attempt", i + 1);
+            var block = new byte[4 * 1024 * 1024];
+            Array.Fill(block, (byte)1); retained.Add(block);
+            WriteMemoryProbeDiagnostic("allocation-completed", i + 1);
+        }
+        GC.KeepAlive(retained);
+        WriteMemoryProbeDiagnostic("allocation-limit-not-reached");
+        return 43; // Never allocate more than 128 MiB even if containment is broken.
+    }
+    catch (OutOfMemoryException)
+    {
+        Console.Error.WriteLine("PHASE21_MEMORY_PROBE mode=memory milestone=out-of-memory-caught");
+        Console.Error.Flush();
+        Console.Error.WriteLine("PHASE21_MEMORY_PROBE mode=memory milestone=exit-planned code=42");
+        Console.Error.Flush();
+        return 42;
+    }
+}
+
 // Test-only, finite probes. Parent attaches the real resource policy before sending input.
 if (args.Length == 2 && args[0] == "--phase21-resource-probe")
 {
@@ -26,31 +53,7 @@ if (args.Length == 2 && args[0] == "--phase21-resource-probe")
         return 43; // The real CPU ceiling must terminate us first.
     }
     if (args[1] == "memory")
-    {
-        WriteMemoryProbeDiagnostic("allocation-start");
-        try
-        {
-            var retained = new List<byte[]>();
-            for (var i = 0; i < 32; i++)
-            {
-                WriteMemoryProbeDiagnostic("allocation-attempt", i + 1);
-                var block = new byte[4 * 1024 * 1024];
-                Array.Fill(block, (byte)1); retained.Add(block);
-                WriteMemoryProbeDiagnostic("allocation-completed", i + 1);
-            }
-            GC.KeepAlive(retained);
-            WriteMemoryProbeDiagnostic("allocation-limit-not-reached");
-            return 43; // Never allocate more than 128 MiB even if containment is broken.
-        }
-        catch (OutOfMemoryException)
-        {
-            Console.Error.WriteLine("PHASE21_MEMORY_PROBE mode=memory milestone=out-of-memory-caught");
-            Console.Error.Flush();
-            Console.Error.WriteLine("PHASE21_MEMORY_PROBE mode=memory milestone=exit-planned code=42");
-            Console.Error.Flush();
-            return 42;
-        }
-    }
+        return RunMemoryProbe();
     if (args[1] == "process-count")
     {
         try
